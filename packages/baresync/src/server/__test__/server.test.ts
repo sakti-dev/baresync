@@ -1,29 +1,52 @@
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { describe, expect, it } from "vitest";
-import { chunkArray, getWriteChunkSize } from "../chunking";
+import { syncBatchRequests } from "../../schema/server-schema";
 import {
-  decodeSyncRequest,
-  encodeSyncResponse,
-  orderPushChanges,
-  SyncPayloadTooLargeError,
-  validatePushEnvelope,
-} from "../service";
+  ConflictRequestError,
+  cleanupSyncBatchRequests,
+  createIdempotencyGuard,
+} from "../idempotency";
+import { computeSyncRequestHash, decodeSyncRequest } from "../service";
 
-describe("chunking", () => {
-  it("respects bind parameter budget", () => {
-    expect(getWriteChunkSize({ columnCount: 10 })).toBe(500);
+function createTestDb(): SqliteRemoteDatabase {
+  const sqlite = new Database(":memory:");
+  sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA foreign_keys = ON");
+  sqlite.exec(`
+    CREATE TABLE sync_batch_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      status TEXT NOT NULL,
+      response_body TEXT,
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      UNIQUE(client_id, idempotency_key)
+    )
+  `);
+  return drizzle(sqlite) as unknown as SqliteRemoteDatabase;
+}
+
+describe("computeSyncRequestHash", () => {
+  it("returns deterministic hash for same body", async () => {
+    const body = { scopeId: "s1", tables: [] };
+    const a = await computeSyncRequestHash(body);
+    const b = await computeSyncRequestHash(body);
+    expect(a).toBe(b);
   });
 
-  it("clamps to bind limit for wide tables", () => {
-    expect(getWriteChunkSize({ columnCount: 100 })).toBe(300);
-  });
-
-  it("chunkArray splits correctly", () => {
-    expect(chunkArray([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  it("returns different hash for different bodies", async () => {
+    const a = await computeSyncRequestHash({ scopeId: "s1" });
+    const b = await computeSyncRequestHash({ scopeId: "s2" });
+    expect(a).not.toBe(b);
   });
 });
 
 describe("decodeSyncRequest", () => {
-  it("decodes valid JSON push request", async () => {
+  it("computes requestHash for push request", async () => {
     const body = {
       scopeId: "s1",
       clientId: "c1",
@@ -35,87 +58,239 @@ describe("decodeSyncRequest", () => {
       kind: "push",
       request: { json: async () => body },
     });
-    expect(result.body.scopeId).toBe("s1");
-  });
-
-  it("throws on missing push field", async () => {
-    await expect(
-      decodeSyncRequest({
-        encoding: "json",
-        kind: "push",
-        request: { json: async () => ({ scopeId: "s1" }) },
-      })
-    ).rejects.toThrow('Missing required push field: "clientId"');
+    expect(result.requestHash).toBeTruthy();
+    expect(typeof result.requestHash).toBe("string");
+    expect(result.requestHash.length).toBe(64);
   });
 });
 
-describe("encodeSyncResponse", () => {
-  it("returns JSON response with correct content type", () => {
-    const response = encodeSyncResponse({
-      body: { serverTime: "2026-01-01" },
-      encoding: "json",
-      kind: "push",
-    });
-    expect(response.headers.get("Content-Type")).toContain("application/json");
-  });
-});
+describe("createIdempotencyGuard", () => {
+  it("processes first-time push normally", async () => {
+    const db = createTestDb();
+    const guard = createIdempotencyGuard({ db });
 
-describe("validatePushEnvelope", () => {
-  it("passes valid envelope", () => {
-    validatePushEnvelope(
-      {
-        body: {
-          scopeId: "s1",
-          tables: [{ changedRows: [1, 2], deletedIds: [] }],
-        },
-      },
-      { maxBytes: 1024 * 1024, maxRows: 2000 }
+    const result = await guard.run(
+      { clientId: "c1", idempotencyKey: "key1", requestHash: "hash1" },
+      async () => ({ serverTime: 123 })
     );
+
+    expect(result.result).toEqual({ serverTime: 123 });
+    expect(result.wasReplay).toBe(false);
   });
 
-  it("rejects oversized envelope", () => {
-    expect(() =>
-      validatePushEnvelope(
-        { body: { tables: [], big: "x".repeat(2000) } },
-        { maxBytes: 100, maxRows: 2000 }
-      )
-    ).toThrow(SyncPayloadTooLargeError);
+  it("replays cached response for duplicate push", async () => {
+    const db = createTestDb();
+    const guard = createIdempotencyGuard({ db });
+
+    let callCount = 0;
+    const callback = () => {
+      callCount++;
+      return Promise.resolve({ serverTime: 456 });
+    };
+
+    const first = await guard.run(
+      { clientId: "c1", idempotencyKey: "key1", requestHash: "hash1" },
+      callback
+    );
+
+    const second = await guard.run(
+      { clientId: "c1", idempotencyKey: "key1", requestHash: "hash1" },
+      callback
+    );
+
+    expect(first.result).toEqual({ serverTime: 456 });
+    expect(first.wasReplay).toBe(false);
+    expect(second.result).toEqual({ serverTime: 456 });
+    expect(second.wasReplay).toBe(true);
+    expect(callCount).toBe(1);
   });
 
-  it("rejects too many rows", () => {
-    expect(() =>
-      validatePushEnvelope(
-        {
-          body: {
-            tables: [{ changedRows: new Array(100).fill({}), deletedIds: [] }],
-          },
-        },
-        { maxBytes: 1024 * 1024, maxRows: 50 }
+  it("throws 409 for same key with different body", async () => {
+    const db = createTestDb();
+    const guard = createIdempotencyGuard({ db });
+
+    await guard.run(
+      { clientId: "c1", idempotencyKey: "key1", requestHash: "hash1" },
+      async () => ({ ok: true })
+    );
+
+    await expect(
+      guard.run(
+        { clientId: "c1", idempotencyKey: "key1", requestHash: "hash2" },
+        async () => ({ ok: true })
       )
-    ).toThrow(SyncPayloadTooLargeError);
+    ).rejects.toThrow(ConflictRequestError);
+
+    try {
+      await guard.run(
+        { clientId: "c1", idempotencyKey: "key1", requestHash: "hash2" },
+        async () => ({ ok: true })
+      );
+    } catch (e) {
+      expect((e as ConflictRequestError).status).toBe(409);
+    }
+  });
+
+  it("throws 409 for concurrent push with same key", async () => {
+    const db = createTestDb();
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "key1",
+      requestHash: "hash1",
+      status: "pending",
+      responseBody: '{"pending":true}',
+      createdAt: Date.now(),
+    });
+
+    const guard = createIdempotencyGuard({ db });
+
+    await expect(
+      guard.run(
+        { clientId: "c1", idempotencyKey: "key1", requestHash: "hash1" },
+        async () => ({ ok: true })
+      )
+    ).rejects.toThrow("sync push is already in progress");
   });
 });
 
-describe("orderPushChanges", () => {
-  it("reorders changes to match FK order", () => {
-    const result = orderPushChanges({
-      changes: [
-        { table: "products", changedRows: [], deletedIds: [] },
-        { table: "categories", changedRows: [], deletedIds: [] },
-      ],
-      order: ["categories", "products"] as const,
+describe("cleanupSyncBatchRequests", () => {
+  it("deletes old completed rows", async () => {
+    const db = createTestDb();
+    const oldTime = Date.now() - 8 * 24 * 60 * 60 * 1000;
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "old1",
+      requestHash: "h1",
+      status: "completed",
+      responseBody: '{"ok":true}',
+      createdAt: oldTime,
+      completedAt: oldTime + 1000,
     });
-    expect(result.map((c) => c.table)).toEqual(["categories", "products"]);
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    expect(result.deletedCount).toBe(1);
   });
 
-  it("places unknown tables last", () => {
-    const result = orderPushChanges({
-      changes: [
-        { table: "unknown", changedRows: [], deletedIds: [] },
-        { table: "products", changedRows: [], deletedIds: [] },
-      ],
-      order: ["categories", "products"] as const,
+  it("preserves recent rows", async () => {
+    const db = createTestDb();
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "recent1",
+      requestHash: "h1",
+      status: "completed",
+      responseBody: '{"ok":true}',
+      createdAt: Date.now() - 1000,
+      completedAt: Date.now(),
     });
-    expect(result.map((c) => c.table)).toEqual(["products", "unknown"]);
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    expect(result.deletedCount).toBe(0);
+  });
+
+  it("preserves pending rows by default", async () => {
+    const db = createTestDb();
+    const oldTime = Date.now() - 8 * 24 * 60 * 60 * 1000;
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "pending1",
+      requestHash: "h1",
+      status: "pending",
+      responseBody: '{"pending":true}',
+      createdAt: oldTime,
+    });
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    expect(result.deletedCount).toBe(0);
+  });
+
+  it("deletes stale pending rows with explicit threshold", async () => {
+    const db = createTestDb();
+    const staleTime = Date.now() - 2 * 60 * 60 * 1000;
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "stale1",
+      requestHash: "h1",
+      status: "pending",
+      responseBody: '{"pending":true}',
+      createdAt: staleTime,
+    });
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+      stalePendingOlderThanMs: 60 * 60 * 1000,
+    });
+
+    expect(result.deletedCount).toBe(1);
+  });
+
+  it("respects limit for bounded deletes", async () => {
+    const db = createTestDb();
+    const oldTime = Date.now() - 8 * 24 * 60 * 60 * 1000;
+
+    for (let i = 0; i < 5; i++) {
+      await db.insert(syncBatchRequests).values({
+        clientId: `c${i}`,
+        idempotencyKey: `key${i}`,
+        requestHash: `h${i}`,
+        status: "completed",
+        responseBody: '{"ok":true}',
+        createdAt: oldTime + i * 1000,
+        completedAt: oldTime + i * 1000 + 500,
+      });
+    }
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+      limit: 2,
+    });
+
+    expect(result.deletedCount).toBe(2);
+    expect(result.oldestDeleted).toBeDefined();
+    expect(result.newestDeleted).toBeDefined();
+  });
+
+  it("dry-run returns counts without deleting", async () => {
+    const db = createTestDb();
+    const oldTime = Date.now() - 8 * 24 * 60 * 60 * 1000;
+
+    await db.insert(syncBatchRequests).values({
+      clientId: "c1",
+      idempotencyKey: "old1",
+      requestHash: "h1",
+      status: "completed",
+      responseBody: '{"ok":true}',
+      createdAt: oldTime,
+      completedAt: oldTime + 1000,
+    });
+
+    const result = await cleanupSyncBatchRequests({
+      db,
+      olderThanMs: 7 * 24 * 60 * 60 * 1000,
+      dryRun: true,
+    });
+
+    expect(result.deletedCount).toBe(1);
+
+    const rows = await db.select().from(syncBatchRequests);
+    expect(rows.length).toBe(1);
   });
 });

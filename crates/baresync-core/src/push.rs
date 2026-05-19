@@ -2,12 +2,21 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{SqliteConnection, SqlitePool};
 use std::collections::{HashMap, HashSet};
+use std::collections::VecDeque;
 
 use super::config::SyncEngineConfig;
 use super::error::SyncError;
 use super::http::send_push_request;
 use super::outbox;
 use super::schema::{self, TableOutboxChanges};
+
+#[derive(Debug, Clone)]
+pub struct PendingTablePush {
+    pub table: String,
+    pub row: Option<Value>,
+    pub deleted_id: Option<String>,
+    pub outbox_ids: Vec<String>,
+}
 
 #[derive(Debug, serde::Serialize)]
 pub struct PushResult {
@@ -199,15 +208,145 @@ fn rejected_ids_by_table(response: &Value) -> HashMap<String, HashSet<String>> {
     result
 }
 
+pub fn flatten_pending_tables(
+    table_name: &str,
+    changes: &TableOutboxChanges,
+) -> Vec<PendingTablePush> {
+    let mut units = Vec::new();
+
+    for row in &changes.changes.changed_rows {
+        let row_id = row
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let outbox_ids = changes
+            .outbox_ids_by_row_id
+            .get(&row_id)
+            .cloned()
+            .unwrap_or_default();
+        units.push(PendingTablePush {
+            table: table_name.to_string(),
+            row: Some(row.clone()),
+            deleted_id: None,
+            outbox_ids,
+        });
+    }
+
+    for deleted_id in &changes.changes.deleted_ids {
+        let outbox_ids = changes
+            .outbox_ids_by_row_id
+            .get(deleted_id)
+            .cloned()
+            .unwrap_or_default();
+        units.push(PendingTablePush {
+            table: table_name.to_string(),
+            row: None,
+            deleted_id: Some(deleted_id.clone()),
+            outbox_ids,
+        });
+    }
+
+    units
+}
+
+pub fn merge_pending_units(units: Vec<PendingTablePush>) -> Vec<(String, schema::TablePushChanges)> {
+    let mut by_table: HashMap<String, schema::TablePushChanges> = HashMap::new();
+
+    for unit in units {
+        let entry = by_table.entry(unit.table.clone()).or_default();
+        if let Some(row) = unit.row {
+            entry.changed_rows.push(row);
+        }
+        if let Some(id) = unit.deleted_id {
+            entry.deleted_ids.push(id);
+        }
+    }
+
+    let mut result: Vec<(String, schema::TablePushChanges)> = by_table.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    result
+}
+
+pub fn encoded_push_chunk_len(
+    scope_id: &str,
+    client_id: &str,
+    idempotency_key: &str,
+    tables: &[(String, schema::TablePushChanges)],
+) -> usize {
+    let envelope = build_json_push_envelope(scope_id, client_id, idempotency_key, tables);
+    serde_json::to_string(&envelope)
+        .map(|s| s.len())
+        .unwrap_or(0)
+}
+
+pub fn collect_outbox_ids(units: &[PendingTablePush]) -> Vec<String> {
+    let mut ids: Vec<String> = units
+        .iter()
+        .flat_map(|u| u.outbox_ids.iter().cloned())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+pub fn chunk_pending_push_tables(
+    units: Vec<PendingTablePush>,
+    max_rows: usize,
+    max_bytes: usize,
+    scope_id: &str,
+    client_id: &str,
+) -> Vec<Vec<PendingTablePush>> {
+    if units.is_empty() {
+        return Vec::new();
+    }
+
+    let mut chunks: Vec<Vec<PendingTablePush>> = Vec::new();
+    let mut current: Vec<PendingTablePush> = Vec::new();
+
+    for unit in units {
+        let candidate_count = current.len() + 1;
+        let mut candidate = current.clone();
+        candidate.push(unit.clone());
+
+        let merged = merge_pending_units(candidate.clone());
+        let ids = collect_outbox_ids(&candidate);
+        let idem_key = generate_idempotency_key_from_outbox_ids(&ids);
+        let byte_len = encoded_push_chunk_len(scope_id, client_id, &idem_key, &merged);
+
+        if candidate_count > max_rows || byte_len > max_bytes {
+            if !current.is_empty() {
+                chunks.push(current);
+            }
+            current = vec![unit];
+        } else {
+            current = candidate;
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+pub fn split_push_chunk_for_retry(
+    chunk: &[PendingTablePush],
+) -> (Vec<PendingTablePush>, Vec<PendingTablePush>) {
+    let mid = chunk.len() / 2;
+    let first: Vec<PendingTablePush> = chunk[..mid].to_vec();
+    let second: Vec<PendingTablePush> = chunk[mid..].to_vec();
+    (first, second)
+}
+
 pub async fn push(
     pool: &SqlitePool,
     config: &SyncEngineConfig,
     upsert_order: &[String],
     local_only_columns: &[&str],
 ) -> Result<PushResult, SyncError> {
-    let mut all_table_changes: Vec<(String, schema::TablePushChanges)> = Vec::new();
-    let mut all_outbox_ids: Vec<String> = Vec::new();
-    let mut outbox_ids_by_table: HashMap<String, Vec<String>> = HashMap::new();
+    let mut all_units: Vec<PendingTablePush> = Vec::new();
 
     for table in upsert_order {
         let mut tx = pool.begin().await.map_err(|e| SyncError::Database(format!("Failed to begin tx: {}", e)))?;
@@ -226,14 +365,11 @@ pub async fn push(
             continue;
         }
 
-        for (_, ids) in &changes.outbox_ids_by_row_id {
-            all_outbox_ids.extend(ids.iter().cloned());
-        }
-        outbox_ids_by_table.insert(table.clone(), changes.outbox_ids_by_row_id.into_values().flatten().collect());
-        all_table_changes.push((table.clone(), changes.changes));
+        let units = flatten_pending_tables(table, &changes);
+        all_units.extend(units);
     }
 
-    if all_table_changes.is_empty() {
+    if all_units.is_empty() {
         return Ok(PushResult {
             tables_synced: Vec::new(),
             rejected_tables: Vec::new(),
@@ -242,31 +378,131 @@ pub async fn push(
         });
     }
 
-    let idempotency_key = generate_idempotency_key_from_outbox_ids(&all_outbox_ids);
-    let envelope = build_json_push_envelope(
+    let initial_chunks = chunk_pending_push_tables(
+        all_units,
+        config.max_push_rows,
+        config.target_push_bytes,
         &config.scope_id,
         &config.client_id,
-        &idempotency_key,
-        &all_table_changes,
     );
 
-    let response = send_push_request(&config.api_url, &envelope).await?;
+    let mut stack: VecDeque<Vec<PendingTablePush>> = initial_chunks.into_iter().collect();
+    let mut all_accepted: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut all_rejected: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut all_outbox_ids_by_table: HashMap<String, Vec<String>> = HashMap::new();
+    let mut final_server_time = String::new();
 
-    let server_time = response
-        .get("serverTime")
-        .and_then(|t| t.as_str())
-        .unwrap_or("")
-        .to_string();
+    while let Some(chunk) = stack.pop_front() {
+        let merged = merge_pending_units(chunk.clone());
+        let ids = collect_outbox_ids(&chunk);
+        let idem_key = generate_idempotency_key_from_outbox_ids(&ids);
 
-    let accepted = accepted_ids_by_table(&response);
-    let rejected = rejected_ids_by_table(&response);
-    let server_wins_count: usize = rejected.values().map(|s| s.len()).sum();
+        let byte_len = encoded_push_chunk_len(
+            &config.scope_id,
+            &config.client_id,
+            &idem_key,
+            &merged,
+        );
+
+        if byte_len > config.max_push_bytes && chunk.len() > 1 {
+            let (first, second) = split_push_chunk_for_retry(&chunk);
+            if !first.is_empty() {
+                stack.push_front(first);
+            }
+            if !second.is_empty() {
+                stack.push_front(second);
+            }
+            continue;
+        }
+
+        if chunk.len() == 1 && byte_len > config.max_push_bytes {
+            let unit = &chunk[0];
+            let table = unit.table.clone();
+            let id = unit
+                .row
+                .as_ref()
+                .and_then(|r| r.get("id").and_then(|v| v.as_str()))
+                .or(unit.deleted_id.as_deref())
+                .unwrap_or("unknown")
+                .to_string();
+            return Err(SyncError::SingleRowTooLarge { table, id });
+        }
+
+        for unit in &chunk {
+            all_outbox_ids_by_table
+                .entry(unit.table.clone())
+                .or_default()
+                .extend(unit.outbox_ids.iter().cloned());
+        }
+
+        let envelope = build_json_push_envelope(
+            &config.scope_id,
+            &config.client_id,
+            &idem_key,
+            &merged,
+        );
+
+        let response = match send_push_request(&config.api_url, &envelope).await {
+            Ok(r) => r,
+            Err(SyncError::Http { status: 413, .. }) => {
+                if chunk.len() == 1 {
+                    let unit = &chunk[0];
+                    let table = unit.table.clone();
+                    let id = unit
+                        .row
+                        .as_ref()
+                        .and_then(|r| r.get("id").and_then(|v| v.as_str()))
+                        .or(unit.deleted_id.as_deref())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    return Err(SyncError::SingleRowTooLarge { table, id });
+                }
+                let (first, second) = split_push_chunk_for_retry(&chunk);
+                if !first.is_empty() {
+                    stack.push_front(first);
+                }
+                if !second.is_empty() {
+                    stack.push_front(second);
+                }
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+
+        let server_time = response
+            .get("serverTime")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !server_time.is_empty() {
+            final_server_time = server_time;
+        }
+
+        let accepted = accepted_ids_by_table(&response);
+        let rejected = rejected_ids_by_table(&response);
+
+        for (table, ids) in &accepted {
+            all_accepted
+                .entry(table.clone())
+                .or_default()
+                .extend(ids.iter().cloned());
+        }
+        for (table, ids) in &rejected {
+            all_rejected
+                .entry(table.clone())
+                .or_default()
+                .extend(ids.iter().cloned());
+        }
+    }
+
+    let server_wins_count: usize = all_rejected.values().map(|s| s.len()).sum();
+    let rejected_tables: Vec<String> = all_rejected.keys().cloned().collect();
 
     let mut tables_synced = Vec::new();
     let mut tx = pool.begin().await.map_err(|e| SyncError::Database(format!("Failed to begin result tx: {}", e)))?;
 
     for table in upsert_order {
-        let Some(accepted_ids) = accepted.get(table) else {
+        let Some(accepted_ids) = all_accepted.get(table) else {
             continue;
         };
         if !accepted_ids.is_empty() {
@@ -274,12 +510,12 @@ pub async fn push(
                 .await
                 .map_err(|e| SyncError::Database(e))?;
 
-            let accepted_outbox_ids: Vec<String> = outbox_ids_by_table
+            let accepted_outbox_ids: Vec<String> = all_outbox_ids_by_table
                 .get(table)
                 .cloned()
                 .unwrap_or_default();
 
-            outbox::mark_outbox_synced_by_outbox_ids_tx(&mut tx, &server_time, &accepted_outbox_ids)
+            outbox::mark_outbox_synced_by_outbox_ids_tx(&mut tx, &final_server_time, &accepted_outbox_ids)
                 .await
                 .map_err(|e| SyncError::Database(e))?;
 
@@ -291,13 +527,11 @@ pub async fn push(
         .await
         .map_err(|e| SyncError::Database(format!("Failed to commit push result: {}", e)))?;
 
-    let rejected_tables: Vec<String> = rejected.keys().cloned().collect();
-
     Ok(PushResult {
         tables_synced,
         rejected_tables,
         server_wins_count,
-        server_time,
+        server_time: final_server_time,
     })
 }
 
@@ -330,5 +564,158 @@ mod tests {
         let query = build_upsert_query("products", &["id".to_string(), "name".to_string(), "updated_at".to_string()]);
         assert!(query.contains("ON CONFLICT(id) DO UPDATE"));
         assert!(query.contains("WHERE products.is_synced = 1 OR excluded.updated_at >= products.updated_at"));
+    }
+
+    fn make_changes(n_rows: usize, n_deletes: usize) -> TableOutboxChanges {
+        let mut changes = schema::TablePushChanges::default();
+        let mut outbox_ids_by_row_id = HashMap::new();
+        for i in 0..n_rows {
+            let id = format!("row-{}", i);
+            changes.changed_rows.push(serde_json::json!({
+                "id": id,
+                "name": format!("item {}", i),
+            }));
+            outbox_ids_by_row_id.insert(id, vec![format!("outbox-row-{}", i)]);
+        }
+        for i in 0..n_deletes {
+            let id = format!("del-{}", i);
+            changes.deleted_ids.push(id.clone());
+            outbox_ids_by_row_id.insert(id, vec![format!("outbox-del-{}", i)]);
+        }
+        TableOutboxChanges {
+            changes,
+            outbox_ids_by_row_id,
+        }
+    }
+
+    #[test]
+    fn flatten_produces_per_row_units() {
+        let changes = make_changes(3, 2);
+        let units = flatten_pending_tables("items", &changes);
+        assert_eq!(units.len(), 5);
+        assert_eq!(units.iter().filter(|u| u.row.is_some()).count(), 3);
+        assert_eq!(units.iter().filter(|u| u.deleted_id.is_some()).count(), 2);
+    }
+
+    #[test]
+    fn flatten_preserves_outbox_ids() {
+        let changes = make_changes(2, 0);
+        let units = flatten_pending_tables("items", &changes);
+        assert_eq!(units[0].outbox_ids, vec!["outbox-row-0"]);
+        assert_eq!(units[1].outbox_ids, vec!["outbox-row-1"]);
+    }
+
+    #[test]
+    fn merge_roundtrips_flatten() {
+        let changes = make_changes(3, 2);
+        let units = flatten_pending_tables("items", &changes);
+        let merged = merge_pending_units(units);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, "items");
+        assert_eq!(merged[0].1.changed_rows.len(), 3);
+        assert_eq!(merged[0].1.deleted_ids.len(), 2);
+    }
+
+    #[test]
+    fn chunk_splits_at_max_rows() {
+        let changes = make_changes(2500, 0);
+        let units = flatten_pending_tables("items", &changes);
+        let chunks = chunk_pending_push_tables(
+            units,
+            2000,
+            usize::MAX,
+            "scope",
+            "client",
+        );
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), 2000);
+        assert_eq!(chunks[1].len(), 500);
+    }
+
+    #[test]
+    fn chunk_respects_byte_limit() {
+        let changes = make_changes(10, 0);
+        let units = flatten_pending_tables("items", &changes);
+        let chunks = chunk_pending_push_tables(
+            units,
+            100,
+            1,
+            "scope",
+            "client",
+        );
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert_eq!(chunk.len(), 1);
+        }
+    }
+
+    #[test]
+    fn split_halves_at_midpoint() {
+        let changes = make_changes(4, 0);
+        let units = flatten_pending_tables("items", &changes);
+        let (first, second) = split_push_chunk_for_retry(&units);
+        assert_eq!(first.len(), 2);
+        assert_eq!(second.len(), 2);
+    }
+
+    #[test]
+    fn split_preserves_outbox_ids() {
+        let changes = make_changes(4, 0);
+        let units = flatten_pending_tables("items", &changes);
+        let (first, second) = split_push_chunk_for_retry(&units);
+        assert_eq!(first[0].outbox_ids, vec!["outbox-row-0"]);
+        assert_eq!(first[1].outbox_ids, vec!["outbox-row-1"]);
+        assert_eq!(second[0].outbox_ids, vec!["outbox-row-2"]);
+        assert_eq!(second[1].outbox_ids, vec!["outbox-row-3"]);
+    }
+
+    #[test]
+    fn accepted_and_rejected_ids_extracted_from_response() {
+        let response = serde_json::json!({
+            "tables": [{
+                "table": "products",
+                "acceptedCreatedIds": ["prod-1"],
+                "acceptedUpdatedIds": ["prod-3"],
+                "acceptedDeletedIds": ["prod-del-1"],
+                "rejected": [
+                    { "id": "prod-2", "reason": "server_newer" },
+                    { "id": "prod-4", "reason": "server_newer" }
+                ]
+            }, {
+                "table": "categories",
+                "acceptedCreatedIds": ["cat-1"],
+                "acceptedUpdatedIds": [],
+                "acceptedDeletedIds": [],
+                "rejected": []
+            }]
+        });
+
+        let accepted = accepted_ids_by_table(&response);
+        let rejected = rejected_ids_by_table(&response);
+
+        assert!(accepted.get("products").unwrap().contains("prod-1"));
+        assert!(accepted.get("products").unwrap().contains("prod-3"));
+        assert!(accepted.get("products").unwrap().contains("prod-del-1"));
+        assert!(accepted.get("categories").unwrap().contains("cat-1"));
+
+        let prod_rejected = rejected.get("products").unwrap();
+        assert_eq!(prod_rejected.len(), 2);
+        assert!(prod_rejected.contains("prod-2"));
+        assert!(prod_rejected.contains("prod-4"));
+    }
+
+    #[test]
+    fn single_oversized_row_gets_own_chunk() {
+        let changes = make_changes(1, 0);
+        let units = flatten_pending_tables("items", &changes);
+        let chunks = chunk_pending_push_tables(
+            units,
+            1,
+            usize::MAX,
+            "scope",
+            "client",
+        );
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 1);
     }
 }

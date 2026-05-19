@@ -4,6 +4,7 @@ pub mod db;
 pub mod drizzle_proxy;
 pub mod engine;
 pub mod error;
+pub mod gc;
 pub mod http;
 pub mod limits;
 pub mod migrations;

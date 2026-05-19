@@ -7,6 +7,12 @@ export {
   SQLITE_BIND_PARAM_LIMIT,
 } from "./chunking";
 export {
+  ConflictRequestError,
+  cleanupSyncBatchRequests,
+  createIdempotencyGuard,
+} from "./idempotency";
+export {
+  computeSyncRequestHash,
   decodeSyncRequest,
   encodeSyncResponse,
   orderPushChanges,

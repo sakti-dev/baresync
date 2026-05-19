@@ -6,6 +6,12 @@ use crate::cursor;
 use crate::error::SyncError;
 use crate::http::send_pull_request;
 
+#[derive(Debug, Clone)]
+pub enum PullStartCursor {
+    Baseline,
+    Stored,
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct PullResult {
     pub rows_received: usize,
@@ -73,17 +79,29 @@ pub async fn pull(
     delete_order: &[String],
     local_only_columns: &[String],
     limit: i32,
+    start_cursor: PullStartCursor,
+    table_filter: Option<&[String]>,
 ) -> Result<PullResult, SyncError> {
-    let stored_cursor = cursor::get_last_cursor(pool, &config.scope_id)
-        .await
-        .map_err(|e| SyncError::Database(e))?;
+    let cursor_value = match &start_cursor {
+        PullStartCursor::Baseline => String::new(),
+        PullStartCursor::Stored => {
+            cursor::get_last_cursor(pool, &config.scope_id)
+                .await
+                .map_err(|e| SyncError::Database(e))?
+        }
+    };
+
+    let tables_to_pull: &[String] = match table_filter {
+        Some(filter) => filter,
+        None => upsert_order,
+    };
 
     let response = send_pull_request(
         &config.api_url,
         &config.scope_id,
-        upsert_order,
+        tables_to_pull,
         limit,
-        &stored_cursor,
+        &cursor_value,
     )
     .await?;
 
@@ -116,7 +134,7 @@ pub async fn pull(
     )
     .await?;
 
-    if !new_cursor.is_empty() {
+    if matches!(start_cursor, PullStartCursor::Stored) && !new_cursor.is_empty() {
         cursor::set_last_cursor_tx(&mut tx, &config.scope_id, &new_cursor)
             .await
             .map_err(|e| SyncError::Database(e))?;

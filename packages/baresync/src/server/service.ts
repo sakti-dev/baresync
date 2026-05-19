@@ -13,6 +13,13 @@ export interface SyncRequestKind {
   kind: "push" | "pull";
 }
 
+export async function computeSyncRequestHash(body: unknown): Promise<string> {
+  const data = new TextEncoder().encode(JSON.stringify(body));
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function decodeSyncRequest(input: {
   encoding: "json";
   kind: "push" | "pull";
@@ -42,7 +49,8 @@ export async function decodeSyncRequest(input: {
     }
   }
 
-  return { body: obj, requestHash: "" };
+  const requestHash = await computeSyncRequestHash(obj);
+  return { body: obj, requestHash };
 }
 
 export function encodeSyncResponse(input: {

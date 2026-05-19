@@ -8,6 +8,7 @@ pub enum SyncError {
     Encoding(String),
     Migration(String),
     Http { status: u16, body: String, kind: String },
+    SingleRowTooLarge { table: String, id: String },
 }
 
 impl fmt::Display for SyncError {
@@ -20,6 +21,9 @@ impl fmt::Display for SyncError {
             Self::Migration(msg) => write!(f, "Migration error: {}", msg),
             Self::Http { status, body, kind } => {
                 write!(f, "HTTP error ({}): {} - {}", kind, status, body)
+            }
+            Self::SingleRowTooLarge { table, id } => {
+                write!(f, "Single row too large: table={}, id={}", table, id)
             }
         }
     }

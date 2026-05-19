@@ -26,3 +26,8 @@ export {
   syncSchema,
   syncServerSchema,
 } from "./schema";
+export {
+  createSyncClient,
+  type SyncClient,
+  type SyncClientConfig,
+} from "./tauri/index.js";
