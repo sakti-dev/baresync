@@ -9,5 +9,12 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["desktop/**/*.ts", "backend/**/*.ts", "**/*.d.ts", "vitest.d.ts"]
+  "include": [
+    "desktop/**/*.ts",
+    "backend/**/*.ts",
+    "generate-protobuf.ts",
+    "sync-proto.config.ts",
+    "**/*.d.ts",
+    "vitest.d.ts"
+  ]
 }

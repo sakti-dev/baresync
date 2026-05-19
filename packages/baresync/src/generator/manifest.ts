@@ -11,7 +11,11 @@ export interface SyncManifest {
   packageName: string;
   scopeMappings: Array<{ field: string; table: string }>;
   tableOrder: { delete: string[]; upsert: string[] };
-  tables: Array<{ fields: string[]; name: string }>;
+  tables: Array<{
+    fieldNumbers: Record<string, number>;
+    fields: string[];
+    name: string;
+  }>;
 }
 
 const GENERATOR_VERSION = "0.1.0";
@@ -19,7 +23,12 @@ const GENERATOR_VERSION = "0.1.0";
 export function writeManifest(
   contract: SyncContract,
   tableOrder: SyncTableOrder,
-  outputDir: string
+  outputDir: string,
+  outputPaths: string[] = [
+    "sync-contract.json",
+    "sync-table-order.ts",
+    "sync-contract.manifest.json",
+  ]
 ): void {
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -29,6 +38,9 @@ export function writeManifest(
     encoding: contract.encoding,
     packageName: contract.packageName,
     tables: contract.tablesMeta.map((t) => ({
+      fieldNumbers: Object.fromEntries(
+        t.columns.map((column, index) => [column, index + 1])
+      ),
       name: t.tableName,
       fields: t.columns,
     })),
@@ -40,11 +52,7 @@ export function writeManifest(
       upsert: tableOrder.upsertOrder,
       delete: tableOrder.deleteOrder,
     },
-    outputPaths: [
-      "sync-contract.json",
-      "sync-table-order.ts",
-      "sync-contract.manifest.json",
-    ],
+    outputPaths,
   };
 
   const manifestPath = path.join(outputDir, "sync-contract.manifest.json");

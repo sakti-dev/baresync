@@ -5,9 +5,10 @@
     "includes": [
       "apps/**",
       "packages/**",
+      "tests/**",
       "*.json",
       "*.jsonc",
-      "!!apps/baresync-fixture/src-tauri/gen",
+      "!!tests/fixture-app/src-tauri/gen",
       "!!**/node_modules",
       "!!**/dist",
       "!!docs/external"

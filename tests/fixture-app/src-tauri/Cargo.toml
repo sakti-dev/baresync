@@ -9,6 +9,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 baresync-core = { path = "../../../crates/baresync-core" }
+prost = "0.13"
 tauri = { version = "2", features = [] }
 tauri-plugin-baresync = { path = "../../../crates/tauri-plugin-baresync" }
 serde = { version = "1", features = ["derive"] }

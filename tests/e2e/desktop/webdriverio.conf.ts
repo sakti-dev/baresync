@@ -136,7 +136,7 @@ export const config = {
       "bun",
       ["run", "dev", "--host", "127.0.0.1", "--port", "5173"],
       {
-        cwd: path.resolve(__dirname, "../../../apps/baresync-fixture"),
+        cwd: path.resolve(__dirname, "../../../tests/fixture-app"),
         shell: true,
         stdio: ["ignore", runtime.process.stdout, runtime.process.stderr],
       }
@@ -155,7 +155,7 @@ export const config = {
         "--manifest-path",
         path.resolve(
           __dirname,
-          "../../../apps/baresync-fixture/src-tauri/Cargo.toml"
+          "../../../tests/fixture-app/src-tauri/Cargo.toml"
         ),
       ],
       {

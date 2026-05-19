@@ -134,6 +134,9 @@ describe("writeManifest", () => {
     expect(catTable!.fields).toContain("id");
     expect(catTable!.fields).toContain("merchant_id");
     expect(catTable!.fields).toContain("deleted_at");
+    expect(catTable!.fieldNumbers.id).toBe(1);
+    expect(catTable!.fieldNumbers.merchant_id).toBe(2);
+    expect(catTable!.fieldNumbers.deleted_at).toBe(4);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

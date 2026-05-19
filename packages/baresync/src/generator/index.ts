@@ -11,6 +11,11 @@ export type { GeneratorConfig } from "./config";
 export { runDiagnostics, type SyncDiagnostic } from "./diagnostics";
 export { computeSyncTableOrder, type SyncTableOrder } from "./fk-order";
 export { type SyncManifest, writeManifest } from "./manifest";
+export {
+  generateProtobufWorkspaceArtifacts,
+  type ProtobufWorkspaceConfig,
+  type ProtobufWorkspaceOutputs,
+} from "./protobuf-workspace";
 
 export interface GenerateOptions {
   check?: boolean;
@@ -64,7 +69,7 @@ export function generateSyncArtifacts(
   }
 
   for (const w of warnings) {
-    process.stderr.write(`[baresync warning] ${w.code}: ${w.message}\n`);
+    console.error(`[baresync warning] ${w.code}: ${w.message}`);
   }
 
   if (errors.length > 0) {

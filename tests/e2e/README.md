@@ -4,7 +4,7 @@ The host command and JS invoke simulation tests are the normal Phase 14 verifica
 
 Desktop and Android smoke files in this package are opt-in. They are not required by `cargo test --workspace`, `bun test`, or `bun x ultracite check`.
 
-The public fixture app lives under `apps/baresync-fixture` and is the only supported target for these smoke flows. `docs/external/sakti-pos` is not part of public fixture E2E.
+The public fixture app lives under `tests/fixture-app` and is the only supported target for these smoke flows. `docs/external/sakti-pos` is not part of public fixture E2E.
 
 ## Fixture Backend
 
@@ -13,7 +13,7 @@ The smoke app uses a deterministic local backend that serves fixed pull data and
 Start it in a separate terminal:
 
 ```sh
-bun --cwd packages/e2e run fixture:backend
+bun --cwd tests/e2e run fixture:backend
 ```
 
 Useful env vars:
@@ -36,7 +36,7 @@ Example command:
 ```sh
 BARESYNC_DESKTOP_APP_PATH=/path/to/fixture-app \
 BARESYNC_FIXTURE_API_URL=http://127.0.0.1:18080 \
-bun --cwd packages/e2e run desktop:sync
+bun --cwd tests/e2e run desktop:sync
 ```
 
 The desktop smoke should validate plugin registration, command names, WebView-to-Rust IPC, local SQLite file behavior, baseline pull, local create, manual sync, and restart persistence.
@@ -55,7 +55,7 @@ Example command:
 ```sh
 BARESYNC_ANDROID_APP_ID=com.example.app \
 BARESYNC_ANDROID_READY_TEXT=Baresync \
-bun --cwd packages/e2e run android:sync
+bun --cwd tests/e2e run android:sync
 ```
 
 `android:sync` now performs an adb preflight and refuses to run if no usable device is attached or if the fixture package is not installed on the selected target.

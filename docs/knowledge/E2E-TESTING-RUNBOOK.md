@@ -16,23 +16,23 @@ Baresync has three useful verification layers. Do not collapse them into one UI 
 2. JS/API tests and typechecks
    - Purpose: public JS API shape, mocked `invoke` behavior, package types, and app-consumer compile safety.
    - Commands: `bun test`, `bun run typecheck`, `bun x ultracite check`
-   - Typical files: `packages/baresync/src/**`, `packages/e2e/**`
+   - Typical files: `packages/baresync/src/**`, `tests/e2e/**`
 
 3. Opt-in device smoke tests
    - Purpose: real runtime wiring only: app launch, Tauri plugin registration, WebView-to-Rust IPC, embedded migrations, SQLite file persistence, baseline pull, local create, manual push, restart/app-data lifecycle.
-   - Desktop command: `bun --cwd packages/e2e run desktop:sync`
-   - Android command: `bun --cwd packages/e2e run android:sync`
+   - Desktop command: `bun --cwd tests/e2e run desktop:sync`
+   - Android command: `bun --cwd tests/e2e run android:sync`
    - Device smoke tests are not the place for protocol edge cases.
 
 ## Fixture App Contract
 
 The public fixture app is the only supported E2E target in this repo.
 
-- App path: `apps/baresync-fixture`
-- Tauri app path: `apps/baresync-fixture/src-tauri`
-- Backend path: `packages/e2e/backend/fixture-server.ts`
-- Desktop smoke: `packages/e2e/desktop/sync-smoke.test.ts`
-- Android smoke: `packages/e2e/android/sync-smoke.yaml`
+- App path: `tests/fixture-app`
+- Tauri app path: `tests/fixture-app/src-tauri`
+- Backend path: `tests/e2e/backend/fixture-server.ts`
+- Desktop smoke: `tests/e2e/desktop/sync-smoke.test.ts`
+- Android smoke: `tests/e2e/android/sync-smoke.yaml`
 
 Do not wire `docs/external/sakti-pos` into public E2E. Private downstream apps should copy the fixture integration pattern and keep their own E2E outside this public repo.
 
@@ -114,7 +114,7 @@ Typical command:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   BARESYNC_DESKTOP_APP_PATH=/home/eekrain/CODE/baresync/target/debug/baresync-fixture \
     bun run desktop:sync
 '
@@ -154,7 +154,7 @@ Install or refresh the public fixture APK before running the smoke:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   bun run android:install-fixture
 '
 ```
@@ -177,7 +177,7 @@ Run:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   BARESYNC_ANDROID_APP_ID=com.example.app \
   BARESYNC_ANDROID_READY_TEXT=Baresync \
     bun run android:sync
@@ -519,7 +519,7 @@ For desktop E2E changes:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   BARESYNC_DESKTOP_APP_PATH=/home/eekrain/CODE/baresync/target/debug/baresync-fixture \
     bun run desktop:sync
 '
@@ -529,7 +529,7 @@ For Android E2E changes:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   bun run android:install-fixture
   bun run android:sync
 '
@@ -539,7 +539,7 @@ If testing a non-default app ID or ready text:
 
 ```sh
 nix develop .#default --command bash -lc '
-  cd packages/e2e
+  cd tests/e2e
   BARESYNC_ANDROID_APP_ID=com.example.app \
   BARESYNC_ANDROID_READY_TEXT=Baresync \
     bun run android:sync

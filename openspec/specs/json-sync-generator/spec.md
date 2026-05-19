@@ -71,3 +71,28 @@ The `packages/baresync/src/cli.ts` module SHALL support `baresync generate` whic
 
 - **WHEN** `bun packages/baresync/src/cli.ts generate` is run with a valid contract configuration
 - **THEN** the generator output files are written to the configured output directory
+
+### Requirement: Protobuf-aware contract generation
+
+The `packages/baresync/src/generator/index.ts` module SHALL preserve protobuf encoding metadata when a `SyncContract` uses `encoding: "protobuf"`.
+The generator SHALL emit protobuf-aware metadata needed to preserve field-number stability across regenerations, including row field numbers, table wrapper field numbers, and protobuf scalar types derived from the reflected Drizzle schema.
+The protobuf generator workspace SHALL be config-driven so generated TypeScript and Rust runtime artifacts can target explicit output directories.
+
+#### Scenario: Protobuf contract preserves encoding metadata
+
+- **WHEN** `generateSyncArtifacts` is called with a contract whose encoding is `protobuf`
+- **THEN** the generated metadata SHALL preserve `encoding: "protobuf"`
+- **AND** protobuf field-number assignments SHALL remain stable across regenerations unless the schema intentionally changes
+- **AND** the emitted metadata SHALL be sufficient to encode and decode typed protobuf row messages without serializing row data as JSON text
+- **AND** the generator workspace SHALL have explicit output paths for generated protobuf runtime files
+
+### Requirement: JSON and protobuf share one reflected contract
+
+The generator SHALL derive JSON and protobuf outputs from the same reflected schema and the same table-order computation.
+It SHALL not require consumers to maintain separate contract definitions for the two encodings.
+
+#### Scenario: Same reflected schema drives both encodings
+
+- **WHEN** the same Drizzle schema is generated for JSON and protobuf contracts
+- **THEN** both outputs SHALL reflect the same tables, scope metadata, and table order
+- **AND** any protobuf-specific metadata SHALL be derived from that same source

@@ -33,9 +33,12 @@ source of truth for progress.
   implementation path was not linear.
 - Several PRD phases were bundled into larger OpenSpec changes, so the work does
   not map 1:1 to the original phase boundaries.
+- `tests/e2e` now owns the protobuf workspace config and generated protobuf
+  artifacts for the E2E fixture path, while `tests/fixture-app` owns the
+  generated Rust target used by the fixture app.
 - Phase 14 is complete in this repo: the host simulation checks and public
   fixture smoke flows now exist.
-- Phase 15 is complete in this repo: the public `apps/baresync-fixture` target
+- Phase 15 is complete in this repo: the public `tests/fixture-app` target
   is the supported desktop and Android smoke app, and the connected Android
   verification path has been proven against a real adb target.
 - Phase 16 is complete in this repo: the public documentation and E2E runbook
@@ -47,10 +50,9 @@ source of truth for progress.
 
 These items were intentionally left out or postponed and should stay visible:
 
-- Protobuf protocol wiring and protobuf-specific generator/runtime polish
-- Device-like simulation coverage beyond the host-only harness
-- Consumer-app migration to the public-like surface
-- Public documentation, example app, and publishing readiness
+- Example app
+- Publishing readiness
+- App migration to the public-like surface
 
 ## Phase 14 Breakdown
 
@@ -65,7 +67,8 @@ Phase 14 should only be marked complete after all of these are true:
 
 - Plugin command host tests pass
 - JS Tauri client invoke simulation tests pass
-- Desktop and Android smoke skeletons exist and are documented as opt-in
+- Desktop and Android smoke skeletons exist and are documented as opt-in under
+  `tests/e2e`
 - Device simulation documentation has been reviewed
 - Full repo verification passes
 

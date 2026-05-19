@@ -60,7 +60,7 @@ The `packages/baresync/src/schema/synced-table.ts` module SHALL export `syncedTa
 
 The `packages/baresync/src/schema/contract.ts` module SHALL export `defineSyncContract(input)` that accepts:
 
-- `encoding`: `"json"` (only `"json"` is valid in this slice)
+- `encoding`: `"json" | "protobuf"`
 - `packageName`: a dot-separated namespace string (e.g., `"example.sync.v1"`)
 - `tables`: an array of `SyncedTableDefinition` objects
 - Optional `limits` object with `maxPushBytes` and `maxPushRows`
@@ -72,19 +72,26 @@ The function SHALL return a `SyncContract` object.
 - **WHEN** `defineSyncContract` is called with `encoding: "json"`, a `packageName`, and at least one table
 - **THEN** a `SyncContract` object is returned with the specified encoding, package name, tables, and limits
 
-#### Scenario: defineSyncContract rejects unsupported encoding
+#### Scenario: defineSyncContract with protobuf encoding
 
-- **WHEN** `defineSyncContract` is called with `encoding: "protobuf"`
-- **THEN** an error is thrown indicating protobuf is not yet supported
+- **WHEN** `defineSyncContract` is called with `encoding: "protobuf"`, a `packageName`, and at least one table
+- **THEN** a `SyncContract` object is returned with `encoding: "protobuf"`
+- **AND** the same structural validation rules still apply
 
 ### Requirement: syncSchema batteries-included shorthand
 
 The `packages/baresync/src/schema/contract.ts` module SHALL export `syncSchema(input)` as a shorthand that calls `defineSyncContract` with default limits.
 
-#### Scenario: syncSchema uses default limits
+#### Scenario: syncSchema uses default JSON encoding
 
-- **WHEN** `syncSchema` is called without a `limits` property
-- **THEN** the resulting contract uses `maxPushBytes: 2097152` and `maxPushRows: 2000`
+- **WHEN** `syncSchema` is called without an `encoding` property
+- **THEN** the resulting contract uses `encoding: "json"`
+- **AND** the resulting contract uses `maxPushBytes: 2097152` and `maxPushRows: 2000`
+
+#### Scenario: syncSchema accepts protobuf encoding
+
+- **WHEN** `syncSchema` is called with `encoding: "protobuf"`
+- **THEN** the resulting contract preserves `encoding: "protobuf"`
 
 ### Requirement: Structural validation of synced tables
 

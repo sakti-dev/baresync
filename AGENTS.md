@@ -17,7 +17,7 @@
 
 ## E2E Testing Work
 
-Before changing or verifying desktop, Android, Tauri, fixture app, fixture backend, or `packages/e2e` smoke automation, read `docs/knowledge/E2E-TESTING-RUNBOOK.md`.
+Before changing or verifying desktop, Android, Tauri, fixture app, fixture backend, or `tests/e2e` smoke automation, read `docs/knowledge/E2E-TESTING-RUNBOOK.md`.
 
 That runbook is the source of truth for fixture app boundaries, required Nix tooling, backend ownership, run isolation, async UI waits, outbox/clean-state assertions, common failure modes, and the verification commands expected before claiming E2E work is complete.
 

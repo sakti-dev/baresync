@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package com.baresync.fixture.sync.v1;
+
+message SyncTableAck {
+  string table = 1;
+  repeated string accepted_created_ids = 2;
+  repeated string accepted_updated_ids = 3;
+  repeated string accepted_deleted_ids = 4;
+  repeated SyncRejectedRow rejected = 5;
+}
+
+message SyncRejectedRow {
+  string id = 1;
+  string reason = 2;
+}
+
+message CategoriesRow {
+  string id = 1;
+  string merchant_id = 2;
+  string name = 3;
+  int64 sort_order = 4;
+  string deleted_at = 5;
+  bool is_synced = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ProductsRow {
+  string id = 1;
+  string merchant_id = 2;
+  string category_id = 3;
+  string name = 4;
+  int64 price_minor_units = 5;
+  string deleted_at = 6;
+  bool is_synced = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message CategoriesChanges {
+  repeated CategoriesRow changed_rows = 1;
+  repeated string deleted_ids = 2;
+}
+
+message ProductsChanges {
+  repeated ProductsRow changed_rows = 1;
+  repeated string deleted_ids = 2;
+}
+
+message SyncPushBatchRequest {
+  string scope_id = 1;
+  string client_id = 2;
+  string idempotency_key = 3;
+  CategoriesChanges categories = 4;
+  ProductsChanges products = 5;
+}
+
+message SyncPushBatchResponse {
+  repeated SyncTableAck tables = 1;
+  string server_time = 2;
+}
+
+message SyncPullBatchRequest {
+  string scope_id = 1;
+  repeated string tables = 2;
+  string cursor = 3;
+  int64 limit = 4;
+}
+
+message SyncPullBatchResponse {
+  bool has_more = 1;
+  string cursor = 2;
+  string server_time = 3;
+  CategoriesChanges categories = 4;
+  ProductsChanges products = 5;
+}
+
+message SyncStatusRequest {
+  string scope_id = 1;
+  string cursor = 2;
+}
+
+message SyncStatusResponse {
+  repeated string changed_tables = 1;
+  bool has_changes = 2;
+  string cursor = 3;
+  string server_time = 4;
+}

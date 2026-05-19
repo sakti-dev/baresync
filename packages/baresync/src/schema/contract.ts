@@ -37,12 +37,6 @@ export function defineSyncContract(input: {
   tables: SyncedTableDefinition[];
   limits?: Partial<SyncContractLimits>;
 }): SyncContract {
-  if (input.encoding !== "json") {
-    throw new Error(
-      `Unsupported encoding "${input.encoding}". Only "json" is supported in this version.`
-    );
-  }
-
   const limits: SyncContractLimits = { ...DEFAULT_LIMITS, ...input.limits };
   const tablesMeta = input.tables.map((t) => validateAndExtractTableMeta(t));
 

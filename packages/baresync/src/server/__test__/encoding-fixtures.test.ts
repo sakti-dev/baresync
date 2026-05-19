@@ -16,6 +16,16 @@ function loadFixture(name: string) {
   return JSON.parse(fs.readFileSync(path.join(fixturesDir, name), "utf-8"));
 }
 
+function createJsonRequest(body: unknown): Request {
+  return new Request("http://localhost/sync", {
+    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+}
+
 describe("push fixture encoding parity", () => {
   it("decodes push fixture and re-encodes consistently", async () => {
     const pushFixture = loadFixture("category-product-push.json");
@@ -23,7 +33,7 @@ describe("push fixture encoding parity", () => {
     const decoded = await decodeSyncRequest({
       encoding: "json",
       kind: "push",
-      request: { json: async () => pushFixture },
+      request: createJsonRequest(pushFixture),
     });
 
     expect(decoded.body.scopeId).toBe("merchant-1");
@@ -72,7 +82,7 @@ describe("push primitives with fixture data", () => {
     const decoded = await decodeSyncRequest({
       encoding: "json",
       kind: "push",
-      request: { json: async () => pushFixture },
+      request: createJsonRequest(pushFixture),
     });
 
     validatePushEnvelope(decoded, {

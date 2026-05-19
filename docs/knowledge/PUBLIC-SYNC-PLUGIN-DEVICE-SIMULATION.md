@@ -2,7 +2,7 @@
 
 Phase 14 splits device-like confidence into deterministic host simulation plus small opt-in desktop and Android smoke tests.
 
-The public smoke target is the fixture app in `apps/baresync-fixture`. It exists so Baresync can prove real consumer integration without depending on private Sakti POS code under `docs/external/sakti-pos`.
+The public smoke target is the fixture app in `tests/fixture-app`. It exists so Baresync can prove real consumer integration without depending on private Sakti POS code under `docs/external/sakti-pos`.
 
 For operational E2E setup, commands, debugging, and failure modes, use `docs/knowledge/E2E-TESTING-RUNBOOK.md` as the source of truth.
 
@@ -19,7 +19,7 @@ Desktop and Android smoke tests are opt-in confidence checks. They should prove 
 
 Keep this boundary intact:
 
-- Public fixture E2E belongs in `apps/baresync-fixture` and `packages/e2e`.
+- Public fixture E2E belongs in `tests/fixture-app` and `tests/e2e`.
 - Private consumer app automation belongs outside this public fixture path.
 - `docs/external/sakti-pos` is not a public E2E target.
 

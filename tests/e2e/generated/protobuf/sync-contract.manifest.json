@@ -1,0 +1,80 @@
+{
+  "contractVersion": 1,
+  "generatorVersion": "0.1.0",
+  "encoding": "json",
+  "packageName": "com.baresync.fixture.sync.v1",
+  "tables": [
+    {
+      "fieldNumbers": {
+        "id": 1,
+        "merchant_id": 2,
+        "name": 3,
+        "sort_order": 4,
+        "deleted_at": 5,
+        "is_synced": 6,
+        "created_at": 7,
+        "updated_at": 8
+      },
+      "name": "categories",
+      "fields": [
+        "id",
+        "merchant_id",
+        "name",
+        "sort_order",
+        "deleted_at",
+        "is_synced",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "fieldNumbers": {
+        "id": 1,
+        "merchant_id": 2,
+        "category_id": 3,
+        "name": 4,
+        "price_minor_units": 5,
+        "deleted_at": 6,
+        "is_synced": 7,
+        "created_at": 8,
+        "updated_at": 9
+      },
+      "name": "products",
+      "fields": [
+        "id",
+        "merchant_id",
+        "category_id",
+        "name",
+        "price_minor_units",
+        "deleted_at",
+        "is_synced",
+        "created_at",
+        "updated_at"
+      ]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "table": "categories",
+      "field": "merchantId"
+    },
+    {
+      "table": "products",
+      "field": "merchantId"
+    }
+  ],
+  "tableOrder": {
+    "upsert": ["categories", "products"],
+    "delete": ["products", "categories"]
+  },
+  "outputPaths": [
+    "sync-contract.json",
+    "sync-contract.manifest.json",
+    "proto/sync.proto",
+    "runtime.ts",
+    "runtime.generated.ts",
+    "sync.generated.ts",
+    "../../../fixture-app/src-tauri/src/protobuf_generated.rs",
+    "sync-table-order.ts"
+  ]
+}

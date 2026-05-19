@@ -1,3 +1,16 @@
+import {
+  decodeProtobufBody,
+  encodeProtobufBody,
+  type SyncProtobufSchema,
+} from "../../../../tests/e2e/generated/protobuf/runtime.generated";
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+}
+
 export class SyncPayloadTooLargeError extends Error {
   constructor(
     readonly kind: "payload_too_large",
@@ -9,33 +22,64 @@ export class SyncPayloadTooLargeError extends Error {
 }
 
 export interface SyncRequestKind {
-  encoding: "json";
+  encoding: "json" | "protobuf";
   kind: "push" | "pull";
 }
 
 export async function computeSyncRequestHash(body: unknown): Promise<string> {
-  const data = new TextEncoder().encode(JSON.stringify(body));
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  let data: Uint8Array;
+  if (body instanceof Uint8Array) {
+    data = body;
+  } else if (body instanceof ArrayBuffer) {
+    data = new Uint8Array(body);
+  } else if (ArrayBuffer.isView(body)) {
+    data = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  } else if (typeof body === "string") {
+    data = new TextEncoder().encode(body);
+  } else {
+    data = new TextEncoder().encode(JSON.stringify(body));
+  }
+  const hashInput = data.buffer.slice(
+    data.byteOffset,
+    data.byteOffset + data.byteLength
+  ) as ArrayBuffer;
+  const hashBuffer = await crypto.subtle.digest("SHA-256", hashInput);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export async function decodeSyncRequest(input: {
-  encoding: "json";
+  encoding: "json" | "protobuf";
   kind: "push" | "pull";
-  request: { json(): Promise<unknown> };
+  request: Request;
+  protobufSchema?: SyncProtobufSchema;
 }) {
-  const body = await input.request.json();
+  const rawBody = new Uint8Array(await input.request.arrayBuffer());
+  let body: Record<string, unknown>;
 
-  if (typeof body !== "object" || body === null) {
-    throw new Error("Request body must be a JSON object");
+  if (input.encoding === "json") {
+    const text = new TextDecoder().decode(rawBody);
+    const parsed = JSON.parse(text) as unknown;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error("Request body must be a JSON object");
+    }
+    body = parsed as Record<string, unknown>;
+  } else {
+    body = decodeProtobufBody({
+      bytes: rawBody,
+      kind: input.kind,
+      message: "request",
+      schema: input.protobufSchema,
+    });
   }
-
-  const obj = body as Record<string, unknown>;
 
   if (input.kind === "push") {
     for (const field of ["scopeId", "clientId", "idempotencyKey", "tables"]) {
-      if (!(field in obj)) {
+      if (!(field in body)) {
         throw new Error(`Missing required push field: "${field}"`);
       }
     }
@@ -43,33 +87,50 @@ export async function decodeSyncRequest(input: {
 
   if (input.kind === "pull") {
     for (const field of ["scopeId", "tables", "cursor"]) {
-      if (!(field in obj)) {
+      if (!(field in body)) {
         throw new Error(`Missing required pull field: "${field}"`);
       }
     }
   }
 
-  const requestHash = await computeSyncRequestHash(obj);
-  return { body: obj, requestHash };
+  const requestHash = await computeSyncRequestHash(rawBody);
+  return { body, rawBodyByteLength: rawBody.byteLength, requestHash };
 }
 
 export function encodeSyncResponse(input: {
   body: unknown;
-  encoding: "json";
+  encoding: "json" | "protobuf";
   kind: "push" | "pull";
+  protobufSchema?: SyncProtobufSchema;
 }): Response {
+  if (input.encoding === "protobuf") {
+    const bytes = encodeProtobufBody({
+      body: input.body as Record<string, unknown>,
+      kind: input.kind,
+      message: "response",
+      schema: input.protobufSchema,
+    });
+    return new Response(toArrayBuffer(bytes), {
+      headers: {
+        "Content-Type": "application/x-protobuf",
+      },
+    });
+  }
+
   return Response.json(input.body);
 }
 
 export function validatePushEnvelope(
-  decoded: { body: Record<string, unknown> },
+  decoded: { body: Record<string, unknown>; rawBodyByteLength?: number },
   limits: { maxBytes: number; maxRows: number }
 ): void {
-  const bodyStr = JSON.stringify(decoded.body);
-  if (bodyStr.length > limits.maxBytes) {
+  const bodyBytes =
+    decoded.rawBodyByteLength ??
+    new TextEncoder().encode(JSON.stringify(decoded.body)).byteLength;
+  if (bodyBytes > limits.maxBytes) {
     throw new SyncPayloadTooLargeError(
       "payload_too_large",
-      `Push request body (${bodyStr.length} bytes) exceeds maxBytes (${limits.maxBytes})`
+      `Push request body (${bodyBytes} bytes) exceeds maxBytes (${limits.maxBytes})`
     );
   }
 

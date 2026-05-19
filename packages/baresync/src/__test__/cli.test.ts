@@ -56,6 +56,32 @@ describe("CLI runGenerate", () => {
 
     fs.rmSync(outputDir, { recursive: true, force: true });
   });
+
+  it("includes protobuf metadata for protobuf contracts", async () => {
+    const outputDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "baresync-cli-test-")
+    );
+
+    const contract = defineSyncContract({
+      encoding: "protobuf",
+      packageName: "cli.test.sync.v1",
+      tables: [categoriesSynced],
+    });
+
+    const { runGenerate } = await import("../cli");
+    await runGenerate(contract, outputDir);
+
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
+    );
+    expect(parsed.encoding).toBe("protobuf");
+    expect(parsed.protobuf.tables.categories.rowMessageName).toBe(
+      "CategoriesRow"
+    );
+    expect(parsed.protobuf.tables.categories.requestFieldNumber).toBe(4);
+
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  });
 });
 
 describe("doctor output format", () => {

@@ -3,5 +3,5 @@ resolver = "2"
 members = [
   "crates/baresync-core",
   "crates/tauri-plugin-baresync",
-  "apps/baresync-fixture/src-tauri",
+  "tests/fixture-app/src-tauri",
 ]

@@ -310,10 +310,18 @@ describe("simulation: full server primitive pipeline", () => {
       ],
     };
 
+    const pushRequest = new Request("http://localhost/sync", {
+      body: JSON.stringify(pushBodyObj),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
     const decoded = await decodeSyncRequest({
       encoding: "json",
       kind: "push",
-      request: { json: async () => pushBodyObj },
+      request: pushRequest,
     });
 
     validatePushEnvelope(decoded, {

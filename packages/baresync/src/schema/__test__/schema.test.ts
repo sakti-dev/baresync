@@ -79,14 +79,13 @@ describe("defineSyncContract validation", () => {
     expect(contract.limits.maxPushRows).toBe(2000);
   });
 
-  it("rejects protobuf encoding in this version", () => {
-    expect(() =>
-      defineSyncContract({
-        encoding: "protobuf",
-        packageName: "test.sync.v1",
-        tables: [categoriesSynced],
-      })
-    ).toThrow('Unsupported encoding "protobuf"');
+  it("accepts protobuf encoding", () => {
+    const contract = defineSyncContract({
+      encoding: "protobuf",
+      packageName: "test.sync.v1",
+      tables: [categoriesSynced],
+    });
+    expect(contract.encoding).toBe("protobuf");
   });
 
   it("uses custom limits", () => {
@@ -109,6 +108,15 @@ describe("syncSchema", () => {
     });
     expect(contract.encoding).toBe("json");
     expect(contract.limits.maxPushBytes).toBe(2 * 1024 * 1024);
+  });
+
+  it("accepts protobuf encoding", () => {
+    const contract = syncSchema({
+      encoding: "protobuf",
+      packageName: "test.sync.v1",
+      tables: [categoriesSynced],
+    });
+    expect(contract.encoding).toBe("protobuf");
   });
 });
 

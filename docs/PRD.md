@@ -6,7 +6,7 @@
 
 **Architecture:** Keep one public developer-facing JS package, but preserve internal boundaries between schema helpers, generator, local database runtime, server helpers, and Tauri runtime. Rust should be split into a pure sync engine crate and a thin Tauri plugin crate, with generated Rust mappers and embedded Drizzle migrations produced by consumer-run tooling and consumed by the plugin.
 
-**Tech Stack:** Tauri 2, Rust 2021, sqlx SQLite, reqwest, JSON, optional prost/protobuf, Bun, TypeScript, Drizzle ORM, ts-proto, Vitest, Cargo tests, Ultracite/Biome.
+**Tech Stack:** Tauri 2, Rust 2021, sqlx SQLite, reqwest, JSON, optional prost/protobuf, Bun, TypeScript, Drizzle ORM, Vitest, Cargo tests, Ultracite/Biome.
 
 ---
 
@@ -61,7 +61,8 @@ Use `baresync` as the public product name. During implementation this repo can u
 - Internal workspace alias before publish: `@repo/baresync`
 - Rust core crate: `crates/baresync-core`
 - Rust Tauri plugin crate: `crates/tauri-plugin-baresync`
-- Optional generated Rust crate: `crates/baresync-generated`
+- Fixture app used by E2E and the generated Rust target: `tests/fixture-app`
+- E2E workspace and protobuf generator config: `tests/e2e`
 
 Do not publish the package until docs, semver policy, license, exports, and release automation are ready. Internal import aliases may remain temporary, but public examples should already use the final `baresync` naming.
 
@@ -274,39 +275,8 @@ pub fn run() {
 ## Target Repository Layout
 
 ```text
-crates/
-  baresync-core/
-    Cargo.toml
-    src/
-      lib.rs
-      config.rs
-      cursor.rs
-      db.rs
-      drizzle_proxy.rs
-      engine.rs
-      error.rs
-      http.rs
-      limits.rs
-      migrations.rs
-      outbox.rs
-      pull.rs
-      push.rs
-      reconcile.rs
-      schema.rs
-      state.rs
-
-  tauri-plugin-baresync/
-    Cargo.toml
-    src/
-      lib.rs
-      builder.rs
-      commands.rs
-      config.rs
-      db.rs
-      state.rs
-
 packages/
-  sync/
+  baresync/
     package.json
     tsconfig.json
     src/
@@ -335,6 +305,67 @@ packages/
       tauri/
         index.ts
         client.ts
+
+crates/
+  baresync-core/
+    Cargo.toml
+    src/
+      lib.rs
+      config.rs
+      cursor.rs
+      db.rs
+      drizzle_proxy.rs
+      engine.rs
+      error.rs
+      gc.rs
+      http.rs
+      limits.rs
+      migrations.rs
+      outbox.rs
+      pull.rs
+      push.rs
+      reconcile.rs
+      schema.rs
+      state.rs
+
+  tauri-plugin-baresync/
+    Cargo.toml
+    src/
+      lib.rs
+      builder.rs
+      commands.rs
+      config.rs
+      db.rs
+      state.rs
+
+tests/
+  e2e/
+    package.json
+    tsconfig.json
+    sync-proto.config.ts
+    generate-protobuf.ts
+    generated/
+      protobuf/
+        proto/
+          sync.proto
+        runtime.generated.ts
+        runtime.ts
+        sync-contract.json
+        sync-contract.manifest.json
+        sync-table-order.ts
+        sync.generated.ts
+  fixture-app/
+    package.json
+    tsconfig.json
+    src/
+      fixture-schema.ts
+    src-tauri/
+      Cargo.toml
+      src/
+        lib.rs
+        protobuf_generated.rs
+      migrations/
+        0001_init_fixture_schema.sql
 ```
 
 Current code should move gradually from:
@@ -1128,7 +1159,7 @@ bun test packages/baresync/src/server
 bun test packages/baresync/src/tauri
 cargo test -p baresync-core
 cargo test -p tauri-plugin-baresync
-bun run sync-proto:check
+bun run check:protobuf
 ```
 
 Desktop Tauri smoke can be CI-optional at first. Android smoke should be opt-in/manual or run only in a dedicated mobile CI job.
@@ -1195,8 +1226,8 @@ Preferred tool: `tauri-driver`/WebDriver, matching official Tauri guidance. Linu
 Example location:
 
 ```text
-packages/e2e/desktop/sync-smoke.test.ts
-packages/e2e/desktop/webdriverio.conf.ts
+tests/e2e/desktop/sync-smoke.test.ts
+tests/e2e/desktop/webdriverio.conf.ts
 ```
 
 Minimum desktop smoke flow:
@@ -1273,7 +1304,7 @@ Android smoke rules:
 bun test apps/api/src/sync/__test__/service.test.ts apps/api/src/sync/__test__/protobuf.test.ts apps/api/src/sync/__test__/routes-protobuf.test.ts
 bun test apps/pos-app/src/db/__test__/sync-schema.test.ts apps/pos-app/src/store/__test__/sync.test.ts
 cargo test --manifest-path apps/pos-app/src-tauri/Cargo.toml --lib sync::
-bun run sync-proto:check
+bun run check:protobuf
 bun x ultracite check
 npm view baresync name version --json || true
 cargo search baresync --limit 10
@@ -1334,7 +1365,7 @@ cargo test --manifest-path apps/pos-app/src-tauri/Cargo.toml --lib sync::
 - Move to: `packages/baresync/src/generator/*`
 - Modify: `packages/baresync/src/generator/index.ts`
 - Modify: `packages/baresync/src/cli.ts`
-- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `tests/e2e/sync-proto.config.ts`
 - Modify: root `package.json`
 - Keep temporarily: `packages/sync-proto-generator/package.json`
 
@@ -1344,7 +1375,7 @@ cargo test --manifest-path apps/pos-app/src-tauri/Cargo.toml --lib sync::
 2. Keep `@repo/sync-proto-generator` as a compatibility wrapper at first.
 3. Move tests or duplicate targeted tests under `packages/baresync/src/generator/__test__`.
 4. Update the CLI so `bun packages/baresync/src/cli.ts generate` can generate the same artifacts.
-5. Keep `bun run sync-proto:check` passing during the transition.
+5. Keep `bun run check:protobuf` passing during the transition.
 6. Once stable, make `packages/sync-proto-generator` call into `@repo/baresync/generator` instead of owning logic.
 7. Rename public docs and code comments from "proto generator" to "sync contract generator" where they describe the public package.
 8. Keep protobuf-specific filenames only for protobuf-specific generated artifacts.
@@ -1352,11 +1383,11 @@ cargo test --manifest-path apps/pos-app/src-tauri/Cargo.toml --lib sync::
 **Verification:**
 
 ```bash
-bun run sync-proto:check
+bun run check:protobuf
 bun test packages/sync-proto-generator/src
 bun test packages/baresync/src/generator
-cd packages/protobuf && bun ../sync/src/cli.ts generate
-bun run sync-proto:check
+cd tests/e2e && bun ./generate-protobuf.ts
+bun run check:protobuf
 ```
 
 ## Phase 3: Add Drizzle Row-State Schema Helpers
@@ -1566,7 +1597,7 @@ bun test packages/baresync/src/db
 - Modify: `packages/baresync/src/generator/outputs.ts`
 - Modify: `packages/baresync/src/generator/index.ts`
 - Modify: `packages/baresync/src/cli.ts`
-- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `tests/e2e/sync-proto.config.ts`
 - Modify tests under: `packages/baresync/src/generator/__test__`
 - Modify tests under: `packages/sync-proto-generator/src/__test__` if compatibility wrapper remains
 
@@ -1609,7 +1640,7 @@ bun test packages/baresync/src/db
 **Verification:**
 
 ```bash
-bun run sync-proto:check
+bun run check:protobuf
 bun test packages/baresync/src/generator
 bun test packages/baresync/src/generator/__test__/diagnostics.test.ts
 bun test packages/baresync/src/generator/__test__/manifest.test.ts
@@ -1840,11 +1871,11 @@ bun test apps/pos-app/src/store/__test__/sync.test.ts
 **Files:**
 
 - Modify: `packages/baresync/src/generator/rust-mapper-writer.ts`
-- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `tests/e2e/sync-proto.config.ts`
 - Modify generated output target from app path to plugin or generated path when stable
 - Modify: `crates/baresync-core/src/lib.rs`
 - Modify: `crates/tauri-plugin-baresync/src/lib.rs`
-- Keep temporarily: `apps/pos-app/src-tauri/src/sync/protobuf_generated.rs`
+- Keep temporarily: `tests/fixture-app/src-tauri/src/protobuf_generated.rs`
 
 **Tasks:**
 
@@ -1867,8 +1898,8 @@ bun test apps/pos-app/src/store/__test__/sync.test.ts
 **Verification:**
 
 ```bash
-cd packages/protobuf && bun ../sync/src/cli.ts generate
-bun run sync-proto:check
+cd tests/e2e && bun ./generate-protobuf.ts
+bun run check:protobuf
 cargo test --workspace
 ```
 
@@ -1964,10 +1995,10 @@ cargo test --workspace
 
 - Create: `crates/tauri-plugin-baresync/tests/commands.rs`
 - Create: `packages/baresync/src/tauri/__test__/client.test.ts`
-- Create: `packages/e2e/desktop/sync-smoke.test.ts`
-- Create: `packages/e2e/desktop/webdriverio.conf.ts`
-- Create: `packages/e2e/android/sync-smoke.yaml`
-- Create: `packages/e2e/README.md`
+- Create: `tests/e2e/desktop/sync-smoke.test.ts`
+- Create: `tests/e2e/desktop/webdriverio.conf.ts`
+- Create: `tests/e2e/android/sync-smoke.yaml`
+- Create: `tests/e2e/README.md`
 - Modify: `apps/pos-app/src/store/__test__/sync.test.ts`
 - Modify: `apps/pos-app/src/components/__test__/sync-status.test.tsx`
 - Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md`
@@ -2004,7 +2035,7 @@ bun run e2e:desktop:sync
 Optional Android smoke verification:
 
 ```bash
-maestro test packages/e2e/android/sync-smoke.yaml
+maestro test tests/e2e/android/sync-smoke.yaml
 ```
 
 ## Phase 15: Full Device Automation
@@ -2014,7 +2045,7 @@ maestro test packages/e2e/android/sync-smoke.yaml
 - Modify: `apps/pos-app/src-tauri/src/lib.rs`
 - Modify: `apps/pos-app/src-tauri/Cargo.toml`
 - Modify: `apps/pos-app/src/store/sync.ts`
-- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `tests/e2e/sync-proto.config.ts`
 - Modify: `packages/database/src/local-schema.ts`
 - Modify: `packages/database/src/api-schema.ts`
 
@@ -2057,7 +2088,7 @@ These scenarios prove public package integration through real app boundaries. Sy
 bun test apps/api/src/sync/__test__/service.test.ts apps/api/src/sync/__test__/protobuf.test.ts apps/api/src/sync/__test__/routes-protobuf.test.ts
 bun test apps/pos-app/src/db/__test__/sync-schema.test.ts apps/pos-app/src/store/__test__/sync.test.ts
 cargo test --workspace
-bun run sync-proto:check
+bun run check:protobuf
 bun x ultracite check
 ```
 
@@ -2261,7 +2292,7 @@ cargo search tauri-plugin-baresync --limit 10
 - Modify: `apps/pos-app/src-tauri/src/lib.rs`
 - Modify: `apps/pos-app/src-tauri/Cargo.toml`
 - Modify: `apps/pos-app/src/store/sync.ts`
-- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `tests/e2e/sync-proto.config.ts`
 - Modify: `packages/database/src/local-schema.ts`
 - Modify: `packages/database/src/api-schema.ts`
 
@@ -2287,7 +2318,7 @@ cargo search tauri-plugin-baresync --limit 10
 bun test apps/api/src/sync/__test__/service.test.ts apps/api/src/sync/__test__/protobuf.test.ts apps/api/src/sync/__test__/routes-protobuf.test.ts
 bun test apps/pos-app/src/db/__test__/sync-schema.test.ts apps/pos-app/src/store/__test__/sync.test.ts
 cargo test --workspace
-bun run sync-proto:check
+bun run check:protobuf
 bun x ultracite check
 ```
 
@@ -2565,7 +2596,7 @@ Mitigation: Run diagnostics before file writes and stop generation if any error 
 - Generator has `doctor`, `generate --check`, and `--warnings-as-errors` modes.
 - Generator diagnostics include stable codes, severity, why, fix, and docs links.
 - Generator writes and checks `sync-contract.manifest.json`.
-- Existing `bun run sync-proto:check` passes.
+- Existing `bun run check:protobuf` passes.
 - Generated artifacts include contract/generator/artifact version metadata.
 - Runtime validates incompatible sync contract versions before DB work.
 - Stable sync error codes are documented.
@@ -2610,7 +2641,7 @@ cargo test --workspace
 cargo test -p baresync-core --test simulation
 cargo test -p baresync-core --test adaptive_chunking
 cargo test -p tauri-plugin-baresync --test commands
-bun run sync-proto:check
+bun run check:protobuf
 bun x ultracite check
 ```
 
@@ -2618,7 +2649,7 @@ Optional smoke verification:
 
 ```bash
 bun run e2e:desktop:sync
-maestro test packages/e2e/android/sync-smoke.yaml
+maestro test tests/e2e/android/sync-smoke.yaml
 ```
 
 ## Manual Verification Guide

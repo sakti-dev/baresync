@@ -11,8 +11,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "../../tests/e2e/generated/protobuf"]
 }

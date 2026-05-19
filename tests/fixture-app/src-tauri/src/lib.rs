@@ -5,6 +5,8 @@ use std::fs;
 use serde::Serialize;
 use tauri::{command, generate_context, generate_handler, State};
 
+pub mod protobuf_generated;
+
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
 

@@ -30,6 +30,16 @@ function createTestDb(): SqliteRemoteDatabase {
   return drizzle(sqlite) as unknown as SqliteRemoteDatabase;
 }
 
+function createJsonRequest(body: unknown): Request {
+  return new Request("http://localhost/sync", {
+    body: JSON.stringify(body),
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+}
+
 describe("computeSyncRequestHash", () => {
   it("returns deterministic hash for same body", async () => {
     const body = { scopeId: "s1", tables: [] };
@@ -56,7 +66,7 @@ describe("decodeSyncRequest", () => {
     const result = await decodeSyncRequest({
       encoding: "json",
       kind: "push",
-      request: { json: async () => body },
+      request: createJsonRequest(body),
     });
     expect(result.requestHash).toBeTruthy();
     expect(typeof result.requestHash).toBe("string");

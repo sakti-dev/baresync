@@ -9,7 +9,7 @@ const ROUTE_SRC_RE = /\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})\b/;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, "..");
 const repoRoot = resolve(packageDir, "..", "..");
-const fixtureDir = resolve(repoRoot, "apps/baresync-fixture");
+const fixtureDir = resolve(repoRoot, "tests/fixture-app");
 const androidProjectDir = resolve(fixtureDir, "src-tauri/gen/android");
 const apkOutputDir = resolve(androidProjectDir, "app/build/outputs/apk");
 

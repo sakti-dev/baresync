@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "fixture:backend": "bun run backend/fixture-server.ts",
+    "check:protobuf": "bun ./generate-protobuf.ts --check",
     "desktop:sync": "bun x wdio run desktop/webdriverio.conf.ts",
     "android:install-fixture": "bun run android/install-fixture.ts",
     "android:sync": "bun run android/run-smoke.ts",
+    "generate:protobuf": "bun ./generate-protobuf.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
