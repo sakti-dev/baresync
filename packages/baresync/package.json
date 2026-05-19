@@ -1,0 +1,24 @@
+{
+  "name": "@repo/baresync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./generator": "./src/generator/index.ts",
+    "./db": "./src/db/index.ts",
+    "./server": "./src/server/index.ts",
+    "./tauri": "./src/tauri/index.ts",
+    "./limits": "./src/limits.ts"
+  },
+  "bin": {
+    "baresync": "./src/cli.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}

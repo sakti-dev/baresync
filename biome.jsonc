@@ -1,0 +1,29 @@
+{
+  "extends": ["ultracite/biome/core"],
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "packages/baresync/src/**",
+      "*.json",
+      "*.jsonc",
+      "!!**/node_modules",
+      "!!**/dist",
+      "!!docs/external"
+    ]
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "noExportedImports": "off",
+        "noNonNullAssertion": "off",
+        "useFilenamingConvention": "off"
+      },
+      "suspicious": {
+        "noEmptyBlockStatements": "off"
+      },
+      "performance": {
+        "noNamespaceImport": "warn"
+      }
+    }
+  }
+}

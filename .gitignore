@@ -1,0 +1,10 @@
+.claude
+.codex
+.opencode
+.direnv
+docs/external
+
+node_modules
+target
+*.lock
+!.flake.lock

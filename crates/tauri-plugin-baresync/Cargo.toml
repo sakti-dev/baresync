@@ -1,0 +1,8 @@
+[package]
+name = "tauri-plugin-baresync"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+baresync-core = { path = "../baresync-core" }
