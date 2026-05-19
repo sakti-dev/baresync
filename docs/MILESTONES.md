@@ -1,220 +1,78 @@
 # Baresync Milestones
 
-Extraction-based batching of the 18 PRD phases into 4 waves. Extraction
-ordering preserves Sakti POS app correctness between phases. Phases within the
-same wave can run in parallel because they touch different packages, crates,
-and languages with no mutual imports.
-
-## Wave 1 — Shells (Sequential)
-
-Baseline verification and empty package/crate scaffolding.
-
-```
-Phase 0: Baseline And Guardrails
-Phase 1: Create Package And Crate Shells
-```
-
-**Gate**: `cargo test --workspace` and `bun x ultracite check packages/baresync`
-pass with empty crates and a minimal `limits.ts`.
-
----
-
-## Wave 2 — Extraction (Parallel Streams)
-
-Four independent streams extract reusable logic from the Sakti monorepo into
-`packages/baresync` and `crates/baresync-core`. Each stream touches different
-files, different languages, and different import boundaries.
-
-```
-                    Phase 1 (done)
-                         │
-          ┌──────────────┼──────────────┬──────────────┐
-          ▼              ▼              ▼              ▼
-   ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
-   │ Stream A   │ │ Stream B   │ │ Stream C   │ │ Stream D   │
-   │ Generator  │ │ Rust Core  │ │ Server     │ │ Schema     │
-   │ (JS/TS)    │ │ (Rust)     │ │ Helpers    │ │ Helpers    │
-   └────────────┘ └────────────┘ └────────────┘ └────────────┘
-```
-
-### Stream A — Generator (JS/TS)
-
-Extracts `packages/sync-proto-generator` into `packages/baresync/generator`,
-then upgrades it to consume contracts, encodings, diagnostics, and table order.
-
-| Phase | Description | Source → Target |
-|-------|-------------|-----------------|
-| P2 | Extract generator into `packages/baresync` | `packages/sync-proto-generator/src/*` → `packages/baresync/src/generator/*` |
-| P5 | Contracts, encodings, diagnostics, table order | New files in `packages/baresync/src/generator/` |
-
-P2 must complete before P5 starts within this stream. P5 depends on Stream D
-schema types being available, but the initial P2 extraction does not.
-
-### Stream B — Rust Core Engine
-
-Extracts local SQLite, Drizzle proxy, migrations, outbox, push, pull, and
-reconciliation into `crates/baresync-core`.
-
-| Phase | Description | Source → Target |
-|-------|-------------|-----------------|
-| P7 | Config, limits, error types, empty engine | New files in `crates/baresync-core/src/` |
-| P4 | DB, Drizzle proxy, migration runner | `apps/pos-app/src-tauri/src/db/*` → `crates/baresync-core/src/{db,drizzle_proxy,migrations}.rs` |
-| P8 | Outbox, schema, cursor, chunking | `apps/pos-app/src-tauri/src/sync/{schema,outbox,local_state,push}.rs` → `crates/baresync-core/src/{schema,outbox,cursor,push}.rs` |
-| P9 | Pull and reconciliation | `apps/pos-app/src-tauri/src/sync/{pull,protobuf,dto}.rs` → `crates/baresync-core/src/{pull,reconcile}.rs` |
-
-Internal ordering within Stream B:
-
-```
-P7 (types) ──► P4 (db/proxy/migrations) ──► P8 (outbox/cursor/chunking) ──► P9 (pull/reconcile)
-```
-
-P7 can start immediately after Wave 1. P4, P8, and P9 are sequential within
-Stream B because later phases import from earlier ones.
-
-### Stream C — Server Helpers (JS/TS)
-
-Extracts reusable server sync primitives from `apps/api/src/sync/`.
-
-| Phase | Description | Source → Target |
-|-------|-------------|-----------------|
-| P6 | Server limits, chunking, idempotency, routes, primitives | `apps/api/src/sync/*` → `packages/baresync/src/server/*` |
-
-P6 can start after Stream D schema types (`syncServerSchema`,
-`defineSyncedTable`) are available, but the initial extraction of chunking
-constants and limit validation does not depend on them. Practical start: after
-P3 lands or in parallel if initial work avoids schema helper imports.
-
-### Stream D — Schema Helpers (JS/TS)
-
-Creates row-state column helpers, `defineSyncedTable`, `defineSyncContract`,
-and `syncSchema`.
-
-| Phase | Description | Source → Target |
-|-------|-------------|-----------------|
-| P3 | Row-state helpers, synced table, contract, validation | New files in `packages/baresync/src/schema/` |
-
-No source extraction dependency. P3 can start immediately after Wave 1. P3
-output is consumed by P5 (generator), P6 (server), and P12 (JS client).
-
-### Stream Dependencies
-
-```
-Stream D (P3) ──────► Stream A (P5, schema-aware generator work)
-                ──────► Stream C (P6, server schema usage)
-                ──────► Wave 3 (P12, JS client types)
-
-Stream B has no cross-stream dependency.
-Stream A P2 (initial extraction) has no cross-stream dependency.
-```
-
-**Gate for Wave 2**: All four streams complete. Existing Sakti tests still pass.
-
----
-
-## Wave 3 — Integration (Sequential Convergence)
-
-Wires the extracted streams into a working Tauri plugin, connects the JS
-client, and runs the full simulation harness.
-
-```
-Phase 10: Tauri Plugin Wrapper       (needs Stream B done)
-Phase 11: Generated Rust Mappers      (needs Stream A + Stream B done)
-Phase 12: JS Tauri Client Wrapper     (needs P10 + Stream D done)
-Phase 13: Host-Only Sync Simulation   (needs P6 + P12 + Stream B done)
-Phase 14: Device-Like Simulation      (needs P13 done)
-```
-
-Internal ordering:
-
-```
-P10 ──► P11 ──► P12 ──► P13 ──► P14
-```
-
-P10 and P11 could potentially overlap if the Rust mapper trait boundary is
-defined early, but sequential is safer for extraction.
-
-**Gate for Wave 3**: Simulation tests pass on host without Android/device.
-
----
-
-## Wave 4 — Polish (Mixed)
-
-App migration, documentation, example, and publishing readiness.
-
-```
-Phase 15: App Migration           (sequential, needs Wave 3)
-     │
-     ├──── Phase 16: Public Documentation   (parallel)
-     └──── Phase 17: Example App            (parallel)
-               │
-          Phase 18: Publishing Readiness     (sequential, needs P16 + P17)
-```
-
-P16 and P17 can run in parallel after P15 completes.
-
-**Gate for Wave 4**: Full verification suite passes, example app works, docs
-reviewed.
-
----
-
-## Summary
-
-| Wave | Phases | Duration Estimate | Parallelism |
-|------|--------|-------------------|-------------|
-| 1 | P0, P1 | S | Sequential |
-| 2 | P2, P3, P4, P5, P6, P7, P8, P9 | L | 4 streams, ~2 per stream |
-| 3 | P10, P11, P12, P13, P14 | M | Sequential |
-| 4 | P15, P16, P17, P18 | M | P16+P17 parallel |
-
-## Risk: Cross-Stream Concept Drift
-
-All four streams in Wave 2 share concepts: row-state column names, cursor
-format, table order constants, encoding shape. Parallel extraction risks
-drift between streams if these concepts are defined independently.
-
-Mitigation: Stream D (P3 schema helpers) owns the canonical definitions. Other
-streams should import from `packages/baresync/schema` as soon as P3 lands,
-rather than duplicating column names or cursor formats in stream-local code.
-
-## Commit Boundaries Per Wave
-
-Wave 1:
-
-1. `chore(sync): verify baseline and registry availability`
-2. `chore(sync): add public sync package and rust workspace shells`
-
-Wave 2 (Stream A):
-
-3. `refactor(sync): expose contract generator through sync package`
-4. `feat(sync): generate sync table order from drizzle foreign keys`
-5. `feat(sync): add json and protobuf encoding contract`
-
-Wave 2 (Stream B):
-
-6. `refactor(sync): extract rust sync core types and config`
-7. `feat(sync): extract local sqlite drizzle proxy runtime`
-8. `refactor(sync): extract rust outbox cursor and chunking logic`
-9. `refactor(sync): extract rust pull and reconciliation logic`
-
-Wave 2 (Stream C):
-
-10. `refactor(sync): extract reusable server sync helpers`
-
-Wave 2 (Stream D):
-
-11. `feat(sync): add drizzle row-state schema helpers`
-
-Wave 3:
-
-12. `feat(sync): add tauri sync plugin wrapper`
-13. `refactor(sync): wire generated rust mappers into core`
-14. `feat(sync): add js tauri client wrapper`
-15. `test(sync): add host-only sync simulation harness`
-16. `test(sync): add device-like plugin simulation harness`
-
-Wave 4:
-
-17. `refactor(pos): run db and sync through tauri plugin`
-18. `docs(sync): document public tauri sync plugin`
-19. `test(sync): add public plugin example app`
-20. `chore(sync): publishing readiness`
+This document tracks the implementation order for the current `baresync` repo.
+The old wave grouping was too coarse, so the checklist at the bottom is the
+source of truth for progress.
+
+## Current Order
+
+1. Phase 0 - Baseline and guardrails
+2. Phase 1 - Create package and crate shells
+3. Phase 2 - Extract shared JS sync contract generator
+4. Phase 3 - Add Drizzle row-state schema helpers
+5. Phase 4 - Extract local SQLite, Drizzle proxy, and migration runner
+6. Phase 5 - Make the generator consume contracts, encodings, and table order
+7. Phase 6 - Extract server helpers
+8. Phase 7 - Create Rust core engine
+9. Phase 8 - Extract Rust outbox, schema, cursor, and chunking logic
+10. Phase 9 - Extract Rust pull and reconciliation logic
+11. Phase 10 - Create Tauri plugin wrapper
+12. Phase 11 - Generated Rust mapper integration
+13. Phase 12 - JS Tauri client wrapper
+14. Phase 13 - Host-only sync simulation harness
+15. Phase 14 - Device-like simulation harness
+16. Phase 15 - Full device automation
+17. Phase 16 - Public documentation
+18. Phase 17 - Example app
+19. Phase 18 - Publishing readiness
+20. Phase 19 - App migration to public-like surface
+
+## What This Means Now
+
+- The repo contains the extracted work for the early PRD phase groups, but the
+  implementation path was not linear.
+- Several PRD phases were bundled into larger OpenSpec changes, so the work does
+  not map 1:1 to the original phase boundaries.
+- Phase 14 is the next clearly unfinished milestone if you want more coverage
+  in this repo.
+- Phases 15 through 19 are the device-automation, public-package, example,
+  release, and final consumer-app migration sequence.
+
+## Deferred On Purpose
+
+These items were intentionally left out or postponed and should stay visible:
+
+- Protobuf protocol wiring and protobuf-specific generator/runtime polish
+- Device-like simulation coverage beyond the host-only harness
+- Consumer-app migration to the public-like surface
+- Public documentation, example app, and publishing readiness
+
+## Phase 14 Breakdown
+
+If you want to keep the next chunk small, work on Phase 14 in this order:
+
+1. Host tests for plugin command handlers
+2. JS client tests with mocked Tauri `invoke`
+3. Desktop smoke skeleton
+4. Android smoke skeleton
+
+Phase 14 should only be marked complete after all of these are true:
+
+- Plugin command host tests pass
+- JS Tauri client invoke simulation tests pass
+- Desktop and Android smoke skeletons exist and are documented as opt-in
+- Device simulation documentation has been reviewed
+- Full repo verification passes
+
+## Tracking Checklist
+
+- [x] Phase group 1 - Baseline, shells, schema helpers, and generator extraction
+- [x] Phase group 2 - Rust core, local DB, push/pull, and server primitives
+- [x] Phase group 3 - Plugin wrapper, Rust mapper integration, and JS client
+- [x] Phase group 4 - Host-only sync simulation harness
+- [ ] Phase 14 - Device-like simulation harness
+- [ ] Phase 15 - Full device automation
+- [ ] Phase 16 - Public documentation
+- [ ] Phase 17 - Example app
+- [ ] Phase 18 - Publishing readiness
+- [ ] Phase 19 - App migration to public-like surface

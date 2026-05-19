@@ -1195,8 +1195,8 @@ Preferred tool: `tauri-driver`/WebDriver, matching official Tauri guidance. Linu
 Example location:
 
 ```text
-e2e/desktop/sync-smoke.test.ts
-e2e/desktop/webdriverio.conf.ts
+packages/e2e/desktop/sync-smoke.test.ts
+packages/e2e/desktop/webdriverio.conf.ts
 ```
 
 Minimum desktop smoke flow:
@@ -1964,10 +1964,10 @@ cargo test --workspace
 
 - Create: `crates/tauri-plugin-baresync/tests/commands.rs`
 - Create: `packages/baresync/src/tauri/__test__/client.test.ts`
-- Create: `e2e/desktop/sync-smoke.test.ts`
-- Create: `e2e/desktop/webdriverio.conf.ts`
-- Create: `e2e/android/sync-smoke.yaml`
-- Create: `e2e/README.md`
+- Create: `packages/e2e/desktop/sync-smoke.test.ts`
+- Create: `packages/e2e/desktop/webdriverio.conf.ts`
+- Create: `packages/e2e/android/sync-smoke.yaml`
+- Create: `packages/e2e/README.md`
 - Modify: `apps/pos-app/src/store/__test__/sync.test.ts`
 - Modify: `apps/pos-app/src/components/__test__/sync-status.test.tsx`
 - Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md`
@@ -2004,10 +2004,10 @@ bun run e2e:desktop:sync
 Optional Android smoke verification:
 
 ```bash
-maestro test e2e/android/sync-smoke.yaml
+maestro test packages/e2e/android/sync-smoke.yaml
 ```
 
-## Phase 15: App Migration To Public-Like Surface
+## Phase 15: Full Device Automation
 
 **Files:**
 
@@ -2026,13 +2026,30 @@ maestro test e2e/android/sync-smoke.yaml
 4. Keep any Sakti-specific commands that are not generic outside the plugin.
 5. Convert selected schema tables to use row-state helpers where it is low risk.
 6. Do not attempt to rewrite every table in the first pass if it creates migration noise.
-7. Confirm generated artifacts still match current runtime behavior.
-8. Re-run manual sync flows:
+7. Turn the desktop smoke skeleton into a real desktop automation flow.
+8. Turn the Android smoke skeleton into a real Android automation flow.
+9. Re-run manual sync flows:
    - fresh install baseline pull
    - offline create then push
    - server soft delete wins
    - rejected/server-wins reconciliation if feasible
    - manual cloud icon sync
+10. Keep automated device coverage opt-in until CI infrastructure exists.
+
+**Public-readiness device scenarios:**
+
+- Fresh install opens the app, initializes SQLite, runs embedded migrations, and creates or reuses the client identity.
+- Baseline pull restores server rows into the local SQLite database and renders them after app startup.
+- Offline local create persists locally, survives app restart, and pushes successfully after network recovery.
+- Manual sync flows through the public JS client and real Tauri IPC into plugin commands.
+- Server soft delete pulls into the device, updates local SQLite state, and remains correct after restart.
+- Push rejection or server-wins reconciliation reaches the expected final local state.
+- App restart preserves cursor, outbox, client identity, and local DB state.
+- Android install, app data reset, or uninstall/reinstall produces a clean baseline sync.
+- Failure paths expose stable UI/error state and structured logs without leaking raw rows, tokens, or secrets.
+- Packaged desktop and Android builds can run the same minimal sync smoke flow against test data.
+
+These scenarios prove public package integration through real app boundaries. Sync edge-case correctness still belongs in the deterministic Rust, JS server, fixture, plugin-command, and mocked-invoke suites.
 
 **Verification:**
 
@@ -2235,6 +2252,43 @@ cargo package -p baresync-core --allow-dirty
 cargo package -p tauri-plugin-baresync --allow-dirty
 cargo search baresync-core --limit 10
 cargo search tauri-plugin-baresync --limit 10
+```
+
+## Phase 19: App Migration To Public-Like Surface
+
+**Files:**
+
+- Modify: `apps/pos-app/src-tauri/src/lib.rs`
+- Modify: `apps/pos-app/src-tauri/Cargo.toml`
+- Modify: `apps/pos-app/src/store/sync.ts`
+- Modify: `packages/protobuf/sync-proto.config.ts`
+- Modify: `packages/database/src/local-schema.ts`
+- Modify: `packages/database/src/api-schema.ts`
+
+**Tasks:**
+
+1. Replace direct app sync module calls with plugin calls.
+2. Replace direct app Drizzle proxy wrappers with `createTauriDrizzleDatabase`.
+3. Replace direct app DB init/migration runtime with plugin DB runtime.
+4. Keep any Sakti-specific commands that are not generic outside the plugin.
+5. Convert selected schema tables to use row-state helpers where it is low risk.
+6. Do not attempt to rewrite every table in the first pass if it creates migration noise.
+7. Confirm generated artifacts still match current runtime behavior.
+8. Re-run manual sync flows:
+   - fresh install baseline pull
+   - offline create then push
+   - server soft delete wins
+   - rejected/server-wins reconciliation if feasible
+   - manual cloud icon sync
+
+**Verification:**
+
+```bash
+bun test apps/api/src/sync/__test__/service.test.ts apps/api/src/sync/__test__/protobuf.test.ts apps/api/src/sync/__test__/routes-protobuf.test.ts
+bun test apps/pos-app/src/db/__test__/sync-schema.test.ts apps/pos-app/src/store/__test__/sync.test.ts
+cargo test --workspace
+bun run sync-proto:check
+bun x ultracite check
 ```
 
 ## Compatibility And Versioning Guardrails
@@ -2564,7 +2618,7 @@ Optional smoke verification:
 
 ```bash
 bun run e2e:desktop:sync
-maestro test e2e/android/sync-smoke.yaml
+maestro test packages/e2e/android/sync-smoke.yaml
 ```
 
 ## Manual Verification Guide

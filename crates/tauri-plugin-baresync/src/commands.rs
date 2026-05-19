@@ -31,9 +31,25 @@ fn make_engine(
     })
 }
 
+pub async fn run_sql_with_state(
+    state: &PluginState,
+    query: SqlQuery,
+) -> Result<Vec<drizzle_proxy::SqlRow>, String> {
+    drizzle_proxy::run_sql(&state.pool, query)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[command]
 pub async fn run_sql(query: SqlQuery, state: State<'_, PluginState>) -> Result<Vec<drizzle_proxy::SqlRow>, String> {
-    drizzle_proxy::run_sql(&state.pool, query)
+    run_sql_with_state(&state, query).await
+}
+
+pub async fn run_sql_batch_with_state(
+    state: &PluginState,
+    statements: Vec<SqlStatement>,
+) -> Result<BatchResult, String> {
+    drizzle_proxy::run_sql_batch(&state.pool, statements)
         .await
         .map_err(|e| e.to_string())
 }
@@ -43,18 +59,19 @@ pub async fn run_sql_batch(
     statements: Vec<SqlStatement>,
     state: State<'_, PluginState>,
 ) -> Result<BatchResult, String> {
-    drizzle_proxy::run_sql_batch(&state.pool, statements)
-        .await
-        .map_err(|e| e.to_string())
+    run_sql_batch_with_state(&state, statements).await
 }
 
-#[command]
-pub async fn get_db_info(state: State<'_, PluginState>) -> Result<baresync_core::db::DbInfo, String> {
+pub async fn get_db_info_with_state(state: &PluginState) -> Result<baresync_core::db::DbInfo, String> {
     baresync_core::db::get_db_info(&state.db_path).await.map_err(|e| e.to_string())
 }
 
 #[command]
-pub async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String> {
+pub async fn get_db_info(state: State<'_, PluginState>) -> Result<baresync_core::db::DbInfo, String> {
+    get_db_info_with_state(&state).await
+}
+
+pub async fn run_migrations_with_state(state: &PluginState) -> Result<(), String> {
     let config = MigrationConfig::strict();
     migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
         .await
@@ -62,10 +79,19 @@ pub async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String>
 }
 
 #[command]
-pub async fn get_migration_status(state: State<'_, PluginState>) -> Result<Vec<MigrationRecord>, String> {
+pub async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String> {
+    run_migrations_with_state(&state).await
+}
+
+pub async fn get_migration_status_with_state(state: &PluginState) -> Result<Vec<MigrationRecord>, String> {
     migrations::get_migration_status(&state.pool)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn get_migration_status(state: State<'_, PluginState>) -> Result<Vec<MigrationRecord>, String> {
+    get_migration_status_with_state(&state).await
 }
 
 #[command]
@@ -104,13 +130,28 @@ pub async fn sync_full_resync(
     engine.sync_full_resync(1000).await.map_err(|e| e.to_string())
 }
 
+pub async fn get_sync_local_state_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<LocalSyncState, String> {
+    let engine = make_engine(state, scope_id).await;
+    engine.get_sync_local_state().await.map_err(|e| e.to_string())
+}
+
 #[command]
 pub async fn get_sync_local_state(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<LocalSyncState, String> {
-    let engine = make_engine(&state, scope_id).await;
-    engine.get_sync_local_state().await.map_err(|e| e.to_string())
+    get_sync_local_state_with_state(&state, scope_id).await
+}
+
+pub async fn purge_synced_outbox_with_state(
+    state: &PluginState,
+    older_than: String,
+) -> Result<u64, String> {
+    let engine = make_engine(state, String::new()).await;
+    engine.purge_synced_outbox(&older_than).await.map_err(|e| e.to_string())
 }
 
 #[command]
@@ -118,8 +159,15 @@ pub async fn purge_synced_outbox(
     state: State<'_, PluginState>,
     older_than: String,
 ) -> Result<u64, String> {
-    let engine = make_engine(&state, String::new()).await;
-    engine.purge_synced_outbox(&older_than).await.map_err(|e| e.to_string())
+    purge_synced_outbox_with_state(&state, older_than).await
+}
+
+pub async fn run_garbage_collection_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<usize, String> {
+    let engine = make_engine(state, scope_id).await;
+    engine.run_garbage_collection().await.map_err(|e| e.to_string())
 }
 
 #[command]
@@ -127,8 +175,7 @@ pub async fn run_garbage_collection(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<usize, String> {
-    let engine = make_engine(&state, scope_id).await;
-    engine.run_garbage_collection().await.map_err(|e| e.to_string())
+    run_garbage_collection_with_state(&state, scope_id).await
 }
 
 #[cfg(test)]

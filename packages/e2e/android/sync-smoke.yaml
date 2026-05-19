@@ -1,0 +1,4 @@
+appId: ${BARESYNC_ANDROID_APP_ID}
+---
+- launchApp
+- assertVisible: ${BARESYNC_ANDROID_READY_TEXT}
