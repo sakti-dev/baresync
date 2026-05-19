@@ -16,13 +16,15 @@
       "style": {
         "noExportedImports": "off",
         "noNonNullAssertion": "off",
+        "noParameterProperties": "off",
         "useFilenamingConvention": "off"
       },
       "suspicious": {
         "noEmptyBlockStatements": "off"
       },
       "performance": {
-        "noNamespaceImport": "warn"
+        "noNamespaceImport": "warn",
+        "noBarrelFile": "off"
       }
     }
   }

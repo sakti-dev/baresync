@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 tauri = { version = "2", features = [] }
 baresync-core = { path = "../baresync-core" }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }

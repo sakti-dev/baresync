@@ -1,6 +1,6 @@
 # Baresync Public Tauri Sync Plugin Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+**Sakti POS Source Code**: its in `docs/external/sakti-pos`, extract code from there by copying, not moving.
 
 **Goal:** Extract the hardened Sakti POS sync layer into a public, reusable, Tauri-only, SQLite/libSQL-first sync platform with one JS package, a Rust Tauri plugin runtime, Drizzle schema helpers, and a consumer-run sync contract generator with JSON and protobuf encodings.
 
@@ -157,7 +157,7 @@ export async function pushRoute(request: Request, session: Session) {
         scope: scope.value,
         syncUpdatedAt: Date.now(),
       });
-    }
+    },
   );
 
   return encodeSyncResponse({
@@ -183,7 +183,7 @@ export const categories = syncedTable(
     name: text("name").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
   }),
-  { scope: "merchant" }
+  { scope: "merchant" },
 );
 
 export const products = syncedTable(
@@ -194,7 +194,7 @@ export const products = syncedTable(
     name: text("name").notNull(),
     priceMinorUnits: integer("price_minor_units").notNull(),
   }),
-  { scope: "merchant" }
+  { scope: "merchant" },
 );
 
 export const schema = syncSchema({
@@ -405,8 +405,16 @@ The sync contract generator must derive table write order from Drizzle foreign-k
 The current generator already has this direction in `computeSyncTableOrder`; the public plugin should promote it into generated contract metadata:
 
 ```ts
-export const SYNC_UPSERT_ORDER = ["merchants", "categories", "products"] as const;
-export const SYNC_DELETE_ORDER = ["products", "categories", "merchants"] as const;
+export const SYNC_UPSERT_ORDER = [
+  "merchants",
+  "categories",
+  "products",
+] as const;
+export const SYNC_DELETE_ORDER = [
+  "products",
+  "categories",
+  "merchants",
+] as const;
 ```
 
 Rust generated artifacts should also include equivalent constants:
@@ -444,7 +452,7 @@ Recommended server-side pull/status index:
 index("products_sync_scope_watermark_idx").on(
   products.merchantId,
   products.syncUpdatedAt,
-  products.id
+  products.id,
 );
 ```
 
@@ -454,7 +462,7 @@ For outlet-like scope columns:
 index("orders_sync_scope_watermark_idx").on(
   orders.outletId,
   orders.syncUpdatedAt,
-  orders.id
+  orders.id,
 );
 ```
 
@@ -464,7 +472,7 @@ For local app tables, document optional indexes based on local query patterns:
 index("products_local_sync_state_idx").on(
   products.isSynced,
   products.updatedAt,
-  products.id
+  products.id,
 );
 ```
 
@@ -679,21 +687,25 @@ export async function pushRoute(request: Request, session: Session) {
       const tables = [];
       for (const tableChange of orderedChanges) {
         if (tableChange.table === "categories") {
-          tables.push(await pushCategories({
-            changedRows: tableChange.changedRows,
-            deletedIds: tableChange.deletedIds,
-            scope: scope.value,
-            syncUpdatedAt,
-          }));
+          tables.push(
+            await pushCategories({
+              changedRows: tableChange.changedRows,
+              deletedIds: tableChange.deletedIds,
+              scope: scope.value,
+              syncUpdatedAt,
+            }),
+          );
         }
 
         if (tableChange.table === "products") {
-          tables.push(await pushProducts({
-            changedRows: tableChange.changedRows,
-            deletedIds: tableChange.deletedIds,
-            scope: scope.value,
-            syncUpdatedAt,
-          }));
+          tables.push(
+            await pushProducts({
+              changedRows: tableChange.changedRows,
+              deletedIds: tableChange.deletedIds,
+              scope: scope.value,
+              syncUpdatedAt,
+            }),
+          );
         }
       }
 
@@ -701,7 +713,7 @@ export async function pushRoute(request: Request, session: Session) {
         serverTime: new Date().toISOString(),
         tables,
       };
-    }
+    },
   );
 
   return encodeSyncResponse({
@@ -1392,8 +1404,12 @@ bun run sync-proto:check
 export const localSyncRowState = {
   deletedAt: text("deleted_at"),
   isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
-  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
 };
 
 export const apiSyncRowState = {
@@ -1576,10 +1592,12 @@ bun test packages/baresync/src/db
 9. Add tests proving generated table order handles parent/child tables, reverse delete order, cycles, nullable external references, and required external references.
 10. Add tests proving JSON and protobuf outputs use the same reflected contract.
 11. Add generator diagnostics:
-   - structured `SyncDiagnostic`
-   - error/warning/info severity
-   - actionable `why` and `fix`
-   - docs link support
+
+- structured `SyncDiagnostic`
+- error/warning/info severity
+- actionable `why` and `fix`
+- docs link support
+
 12. Add `baresync doctor`.
 13. Add `baresync generate --check`.
 14. Add `baresync generate --warnings-as-errors`.
@@ -1649,11 +1667,15 @@ bun test packages/sync-proto-generator/src
    - `formatSyncCursor`
    - `mapSyncError`
 10. Add optional framework adapters:
-   - `createElysiaSyncRoutes`
-   - `handleFetchSyncRequest`
+
+- `createElysiaSyncRoutes`
+- `handleFetchSyncRequest`
+
 11. Support both request encodings through the same server algorithm:
-   - JSON routes use `application/json`.
-   - Protobuf routes use `application/x-protobuf`.
+
+- JSON routes use `application/json`.
+- Protobuf routes use `application/x-protobuf`.
+
 12. Make low-level primitives the default public docs path.
 13. Keep low-level route handlers responsible for auth/session/scope extraction.
 14. Do not require Elysia in the reusable package. Provide Elysia examples separately.
@@ -2091,31 +2113,41 @@ bun x ultracite check
    - minimal Android smoke
 10. Document operational limits.
 11. Document compatibility/versioning policy:
-   - sync contract version
-   - generator version
-   - generated artifact version
-   - incompatible version errors
+
+- sync contract version
+- generator version
+- generated artifact version
+- incompatible version errors
+
 12. Document observability contract:
-   - stable sync event names
-   - logging hooks
-   - metrics fields
-   - no secrets or raw rows by default
+
+- stable sync event names
+- logging hooks
+- metrics fields
+- no secrets or raw rows by default
+
 13. Document security model:
-   - untrusted `scopeId`
-   - forced server-side scope fields
-   - cleanup route auth requirements
-   - safe SQL/proxy boundaries
+
+- untrusted `scopeId`
+- forced server-side scope fields
+- cleanup route auth requirements
+- safe SQL/proxy boundaries
+
 14. Document schema evolution:
-   - additive changes
-   - dangerous changes
-   - protobuf field reservations
-   - JSON unknown field behavior
+
+- additive changes
+- dangerous changes
+- protobuf field reservations
+- JSON unknown field behavior
+
 15. Document debugging and log expectations.
 16. Document non-goals:
-   - no browser runtime v1
-   - no React Native v1
-   - no Postgres client v1
-   - no hidden build-time generation v1
+
+- no browser runtime v1
+- no React Native v1
+- no Postgres client v1
+- no hidden build-time generation v1
+
 17. Add ADR for the public package architecture.
 
 **Verification:**

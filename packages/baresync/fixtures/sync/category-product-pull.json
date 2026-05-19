@@ -1,0 +1,36 @@
+{
+  "cursor": "sync:1716120000000:products:prod-1",
+  "hasMore": false,
+  "serverTime": "2026-05-19T12:00:00.000Z",
+  "tables": [
+    {
+      "table": "categories",
+      "changedRows": [
+        {
+          "id": "cat-1",
+          "merchantId": "merchant-1",
+          "name": "Drinks",
+          "sortOrder": 1,
+          "createdAt": "2026-05-17T00:00:00.000Z",
+          "updatedAt": "2026-05-19T12:00:00.000Z"
+        }
+      ],
+      "deletedIds": []
+    },
+    {
+      "table": "products",
+      "changedRows": [
+        {
+          "id": "prod-1",
+          "merchantId": "merchant-1",
+          "categoryId": "cat-1",
+          "name": "Kopi Susu Updated",
+          "priceMinorUnits": 18000,
+          "createdAt": "2026-05-17T00:00:00.000Z",
+          "updatedAt": "2026-05-19T12:00:00.000Z"
+        }
+      ],
+      "deletedIds": ["prod-deleted-1"]
+    }
+  ]
+}

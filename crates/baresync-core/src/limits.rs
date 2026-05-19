@@ -1,0 +1,4 @@
+pub const DEFAULT_POS_TARGET_PUSH_BYTES: usize = 256 * 1024;
+pub const DEFAULT_API_MAX_PUSH_BYTES: usize = 2 * 1024 * 1024;
+pub const DEFAULT_MAX_PUSH_ROWS: usize = 2000;
+pub const DEFAULT_DB_BIND_PARAMETER_BUDGET: usize = 30_000;
