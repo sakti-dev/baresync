@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+import { runDiagnostics } from "../generator/diagnostics";
+import type { SyncContract } from "../schema/contract";
 import { defineSyncContract } from "../schema/contract";
 import { defineSyncedTable } from "../schema/synced-table";
 
@@ -53,5 +55,48 @@ describe("CLI runGenerate", () => {
     expect(parsed.packageName).toBe("cli.test.sync.v1");
 
     fs.rmSync(outputDir, { recursive: true, force: true });
+  });
+});
+
+describe("doctor output format", () => {
+  it("produces diagnostics with required fields for errors", () => {
+    const table = sqliteTable("no_col", {
+      id: text("id").primaryKey(),
+      scope: text("scope").notNull(),
+      deletedAt: text("deleted_at"),
+      createdAt: text("created_at").notNull(),
+      updatedAt: text("updated_at").notNull(),
+    });
+    const { getTableConfig: gtc } =
+      require("drizzle-orm/sqlite-core") as typeof import("drizzle-orm/sqlite-core");
+    const config = gtc(table);
+    const contract: SyncContract = {
+      encoding: "json",
+      packageName: "test",
+      tables: [
+        {
+          table,
+          scope: { source: "scope", field: "scope", column: table.scope },
+        },
+      ],
+      tablesMeta: [
+        {
+          tableName: config.name,
+          columns: config.columns.map((c) => c.name),
+          scope: { field: "scope" },
+          localOnlyColumns: [],
+          serverOnlyColumns: [],
+        },
+      ],
+      limits: { maxPushBytes: 2_097_152, maxPushRows: 2000 },
+    };
+    const diagnostics = runDiagnostics(contract);
+    const errors = diagnostics.filter((d) => d.severity === "error");
+    expect(errors.length).toBeGreaterThan(0);
+    for (const e of errors) {
+      expect(e.code).toBeTruthy();
+      expect(e.why).toBeTruthy();
+      expect(e.fix).toBeTruthy();
+    }
   });
 });

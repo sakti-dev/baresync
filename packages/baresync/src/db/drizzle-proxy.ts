@@ -1,15 +1,29 @@
 import { drizzle } from "drizzle-orm/sqlite-proxy";
 
+export type InvokeFn = (
+  cmd: string,
+  args?: Record<string, unknown>
+) => Promise<unknown>;
+
 export interface TauriDrizzleDatabaseConfig {
   commands?: {
     runSql?: string;
     runSqlBatch?: string;
   };
+  invoke?: InvokeFn;
   onQueryError?: (
     error: unknown,
     query: { sql: string; params: unknown[]; method: string }
   ) => void;
   schema: Record<string, unknown>;
+}
+
+async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
+  if (custom) {
+    return custom;
+  }
+  const { invoke } = await import("@tauri-apps/api/core" as string);
+  return invoke as InvokeFn;
 }
 
 export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
@@ -19,7 +33,7 @@ export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
   return drizzle(
     async (sql: string, params: unknown[], method: string) => {
       try {
-        const { invoke } = await import("@tauri-apps/api/core" as string);
+        const invoke = await resolveInvoke(config.invoke);
         const result = await invoke(runSqlCmd, {
           query: { sql, params, method },
         });
@@ -30,7 +44,7 @@ export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
       }
     },
     async (statements: { sql: string; params: unknown[] }[]) => {
-      const { invoke } = await import("@tauri-apps/api/core" as string);
+      const invoke = await resolveInvoke(config.invoke);
       const result = await invoke(runSqlBatchCmd, { statements });
       return result as { rows: Record<string, unknown>[] }[];
     },

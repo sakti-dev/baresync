@@ -124,3 +124,105 @@ export function orderPushChanges(input: {
   known.sort((a, b) => a._order - b._order);
   return [...known.map(({ _order, ...rest }) => rest), ...unknown];
 }
+
+export function parseSyncCursor(
+  cursor: string
+): { syncUpdatedAt: number; tableName: string; rowId: string } | null {
+  if (!cursor) {
+    return null;
+  }
+  const parts = cursor.split(":");
+  if (parts[0] !== "sync" || parts.length !== 4) {
+    throw new Error(
+      `Invalid sync cursor format: "${cursor}". Expected "sync:timestamp:tableName:rowId".`
+    );
+  }
+  const syncUpdatedAt = Number(parts[1]);
+  if (!Number.isFinite(syncUpdatedAt)) {
+    throw new Error(
+      `Invalid sync cursor timestamp: "${parts[1]}" is not a number.`
+    );
+  }
+  return { syncUpdatedAt, tableName: parts[2], rowId: parts[3] };
+}
+
+export function formatSyncCursor(input: {
+  syncUpdatedAt: number;
+  tableName: string;
+  rowId: string;
+}): string {
+  return `sync:${input.syncUpdatedAt}:${input.tableName}:${input.rowId}`;
+}
+
+export function orderDeleteChanges(input: {
+  changes: Array<{
+    table: string;
+    changedRows: unknown[];
+    deletedIds: string[];
+  }>;
+  order: readonly string[];
+}): Array<{ table: string; changedRows: unknown[]; deletedIds: string[] }> {
+  const reversedOrder = [...input.order].reverse();
+  return orderPushChanges({ changes: input.changes, order: reversedOrder });
+}
+
+export function mapSyncError(error: unknown): {
+  code: string;
+  message: string;
+} {
+  if (error instanceof SyncPayloadTooLargeError) {
+    return { code: "sync_payload_too_large", message: error.message };
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "status" in error &&
+    (error as { status: number }).status === 409
+  ) {
+    return {
+      code: "sync_idempotency_conflict",
+      message: (error as Error).message ?? "Conflict",
+    };
+  }
+
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as { status: number }).status;
+    if (status === 401) {
+      return { code: "sync_unauthorized", message: "Authentication required" };
+    }
+    if (status === 413) {
+      return {
+        code: "sync_payload_too_large",
+        message: "Payload exceeds limit",
+      };
+    }
+    if (status === 403 || status === 404) {
+      return { code: "sync_scope_invalid", message: "Invalid scope" };
+    }
+    if (status === 400) {
+      return { code: "sync_cursor_invalid", message: "Bad request" };
+    }
+  }
+
+  if (error instanceof TypeError) {
+    return { code: "sync_network_error", message: error.message };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return { code: "sync_unknown", message };
+}
+
+export function countPushRows(body: Record<string, unknown>): number {
+  const tables = body.tables as
+    | Array<{ changedRows?: unknown[]; deletedIds?: unknown[] }>
+    | undefined;
+  if (!tables) {
+    return 0;
+  }
+  let total = 0;
+  for (const table of tables) {
+    total += (table.changedRows?.length ?? 0) + (table.deletedIds?.length ?? 0);
+  }
+  return total;
+}

@@ -13,9 +13,14 @@ export {
 } from "./idempotency";
 export {
   computeSyncRequestHash,
+  countPushRows,
   decodeSyncRequest,
   encodeSyncResponse,
+  formatSyncCursor,
+  mapSyncError,
+  orderDeleteChanges,
   orderPushChanges,
+  parseSyncCursor,
   SyncPayloadTooLargeError,
   validatePushEnvelope,
 } from "./service";

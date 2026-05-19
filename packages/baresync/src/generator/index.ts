@@ -1,20 +1,48 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SyncContract } from "../schema/contract";
 import type { GeneratorConfig } from "./config";
+import type { SyncDiagnostic } from "./diagnostics";
+import { runDiagnostics } from "./diagnostics";
 import { computeSyncTableOrder } from "./fk-order";
+import { writeManifest } from "./manifest";
 import { writeSyncContractJson, writeTableOrderConstants } from "./outputs";
 
 export type { GeneratorConfig } from "./config";
+export { runDiagnostics, type SyncDiagnostic } from "./diagnostics";
 export { computeSyncTableOrder, type SyncTableOrder } from "./fk-order";
+export { type SyncManifest, writeManifest } from "./manifest";
+
+export interface GenerateOptions {
+  check?: boolean;
+  warningsAsErrors?: boolean;
+}
+
+export class SyncDiagnosticError extends Error {
+  diagnostics: SyncDiagnostic[];
+
+  constructor(diagnostics: SyncDiagnostic[]) {
+    const errorCount = diagnostics.filter((d) => d.severity === "error").length;
+    const warningCount = diagnostics.filter(
+      (d) => d.severity === "warning"
+    ).length;
+    super(
+      `Sync diagnostics failed: ${errorCount} error(s), ${warningCount} warning(s)`
+    );
+    this.name = "SyncDiagnosticError";
+    this.diagnostics = diagnostics;
+  }
+}
 
 export function generateSyncArtifacts(config: GeneratorConfig): void;
 export function generateSyncArtifacts(
   contract: SyncContract,
-  outputDir: string
+  outputDir: string,
+  options?: GenerateOptions
 ): void;
 export function generateSyncArtifacts(
   configOrContract: GeneratorConfig | SyncContract,
-  outputDir?: string
+  outputDir?: string,
+  options?: GenerateOptions
 ): void {
   let contract: SyncContract;
   let dir: string;
@@ -25,6 +53,22 @@ export function generateSyncArtifacts(
   } else {
     contract = configOrContract;
     dir = outputDir!;
+  }
+
+  const diagnostics = runDiagnostics(contract);
+  const errors = diagnostics.filter((d) => d.severity === "error");
+  const warnings = diagnostics.filter((d) => d.severity === "warning");
+
+  if (options?.warningsAsErrors) {
+    errors.push(...warnings);
+  }
+
+  for (const w of warnings) {
+    process.stderr.write(`[baresync warning] ${w.code}: ${w.message}\n`);
+  }
+
+  if (errors.length > 0) {
+    throw new SyncDiagnosticError(diagnostics);
   }
 
   const schemaModule: Record<string, unknown> = {};
@@ -40,4 +84,5 @@ export function generateSyncArtifacts(
 
   writeSyncContractJson(contract, tableOrder, dir);
   writeTableOrderConstants(tableOrder, dir);
+  writeManifest(contract, tableOrder, dir);
 }

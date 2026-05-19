@@ -24,6 +24,8 @@ const categories = sqliteTable("categories", {
   deletedAt: text("deleted_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  syncUpdatedAt: integer("sync_updated_at").notNull().default(0),
+  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
 });
 
 const products = sqliteTable("products", {
@@ -37,6 +39,8 @@ const products = sqliteTable("products", {
   deletedAt: text("deleted_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  syncUpdatedAt: integer("sync_updated_at").notNull().default(0),
+  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
 });
 
 const _merchantsSynced = defineSyncedTable({
@@ -52,12 +56,16 @@ const categoriesSynced = defineSyncedTable({
     column: categories.merchantId,
   },
   localOnlyColumns: ["isSynced"],
+  conflict: { strategy: "last-write-wins", column: categories.updatedAt },
+  delete: { mode: "soft", column: categories.deletedAt },
 });
 
 const productsSynced = defineSyncedTable({
   table: products,
   scope: { source: "scope", field: "merchantId", column: products.merchantId },
   localOnlyColumns: ["isSynced"],
+  conflict: { strategy: "last-write-wins", column: products.updatedAt },
+  delete: { mode: "soft", column: products.deletedAt },
 });
 
 describe("computeSyncTableOrder", () => {

@@ -3,7 +3,15 @@ export {
   type MigrationEntry,
   type MigrationStatus,
 } from "./db";
-export { computeSyncTableOrder, generateSyncArtifacts } from "./generator";
+export {
+  computeSyncTableOrder,
+  generateSyncArtifacts,
+  runDiagnostics,
+  type SyncDiagnostic,
+  type SyncDiagnosticError,
+  type SyncManifest,
+  writeManifest,
+} from "./generator";
 export {
   DEFAULT_API_MAX_PUSH_BYTES,
   DEFAULT_DB_BIND_PARAMETER_BUDGET,
