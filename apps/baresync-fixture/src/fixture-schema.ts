@@ -81,12 +81,22 @@ export const fixtureDb = createTauriDrizzleDatabase({
   invoke: invoke as unknown as InvokeFn,
 });
 
-export const syncClient = createSyncClient({
-  apiUrl: "http://127.0.0.1:18080",
-  encoding: "json",
-  scopeId: fixtureScopeId,
-  invoke: invoke as unknown as InvokeFn,
-});
+export interface FixtureRuntimeConfig {
+  api_url: string;
+}
+
+export async function getFixtureRuntimeConfig() {
+  return (await invoke("get_fixture_runtime_config")) as FixtureRuntimeConfig;
+}
+
+export function createFixtureSyncClient(apiUrl: string) {
+  return createSyncClient({
+    apiUrl,
+    encoding: "json",
+    scopeId: fixtureScopeId,
+    invoke: invoke as unknown as InvokeFn,
+  });
+}
 
 export function latestRowsQuery() {
   return {

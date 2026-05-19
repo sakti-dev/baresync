@@ -35,11 +35,13 @@ source of truth for progress.
   not map 1:1 to the original phase boundaries.
 - Phase 14 is complete in this repo: the host simulation checks and public
   fixture smoke flows now exist.
-- Phase 15 is fixture-based here: the public `apps/baresync-fixture` target is
-  the supported desktop and Android smoke app, while the private consumer-app
-  migration work remains separate.
-- Phases 16 through 19 are the public documentation, example, release, and
-  final consumer-app migration sequence.
+- Phase 15 is complete in this repo: the public `apps/baresync-fixture` target
+  is the supported desktop and Android smoke app, and the connected Android
+  verification path has been proven against a real adb target.
+- Phase 16 is complete in this repo: the public documentation and E2E runbook
+  now describe the verified fixture and Android workflows.
+- Phases 17 through 19 are the example app, publishing readiness, and final
+  consumer-app migration sequence.
 
 ## Deferred On Purpose
 
@@ -74,8 +76,8 @@ Phase 14 should only be marked complete after all of these are true:
 - [x] Phase group 3 - Plugin wrapper, Rust mapper integration, and JS client
 - [x] Phase group 4 - Host-only sync simulation harness
 - [x] Phase 14 - Device-like simulation harness
-- [ ] Phase 15 - Full device automation
-- [ ] Phase 16 - Public documentation
+- [x] Phase 15 - Full device automation
+- [x] Phase 16 - Public documentation
 - [ ] Phase 17 - Example app
 - [ ] Phase 18 - Publishing readiness
 - [ ] Phase 19 - App migration to public-like surface

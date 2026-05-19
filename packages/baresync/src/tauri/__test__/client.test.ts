@@ -161,6 +161,22 @@ describe("createSyncClient", () => {
     await expect(client.getState()).rejects.toBe(error);
   });
 
+  it("preserves structured command rejection values unchanged", async () => {
+    const error = {
+      code: "AUTH_EXPIRED",
+      message: "session expired",
+      retryable: false,
+    };
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.reject(error),
+    });
+
+    await expect(client.syncNow()).rejects.toBe(error);
+  });
+
   it("preserves command argument shape across all sync methods", async () => {
     const calls: Array<{ args?: Record<string, unknown>; cmd: string }> = [];
     const client = createSyncClient({

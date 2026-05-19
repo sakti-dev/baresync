@@ -6,7 +6,8 @@
   "scripts": {
     "fixture:backend": "bun run backend/fixture-server.ts",
     "desktop:sync": "bun x wdio run desktop/webdriverio.conf.ts",
-    "android:sync": "maestro test android/sync-smoke.yaml",
+    "android:install-fixture": "bun run android/install-fixture.ts",
+    "android:sync": "bun run android/run-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

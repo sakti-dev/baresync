@@ -32,15 +32,15 @@ describe("createTauriDrizzleDatabase", () => {
     expect((calls[0].args.query as { sql: string }).sql).toContain("items");
   });
 
-  test("routes batch through custom invoke", async () => {
-    const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
+  test("routes batch through custom invoke and command mapping", async () => {
+    const calls: Array<{ args: Record<string, unknown>; cmd: string }> = [];
 
     const mockInvoke: InvokeFn = (cmd, args) => {
       calls.push({ cmd, args: args ?? {} });
       if (cmd === "run_sql") {
         return Promise.resolve([]);
       }
-      return Promise.resolve({ last_insert_id: 1, rows_affected: 1 });
+      return Promise.resolve([{ rows: [] }, { rows: [] }]);
     };
 
     const db = createTauriDrizzleDatabase({
@@ -49,10 +49,25 @@ describe("createTauriDrizzleDatabase", () => {
       schema: { items },
     });
 
-    await db.insert(items).values({ id: "test", name: "test-item" });
+    await db.batch([
+      db.insert(items).values({ id: "test-1", name: "test-item-1" }),
+      db.insert(items).values({ id: "test-2", name: "test-item-2" }),
+    ]);
 
     const batchCalls = calls.filter((c) => c.cmd === "custom_batch");
-    expect(batchCalls.length).toBeGreaterThanOrEqual(0);
+    expect(batchCalls.length).toBe(1);
+    expect(batchCalls[0].args.statements).toEqual([
+      {
+        method: "run",
+        params: ["test-1", "test-item-1", 0],
+        sql: 'insert into "items" ("id", "name", "count") values (?, ?, ?)',
+      },
+      {
+        method: "run",
+        params: ["test-2", "test-item-2", 0],
+        sql: 'insert into "items" ("id", "name", "count") values (?, ?, ?)',
+      },
+    ]);
   });
 
   test("uses custom command names", async () => {
@@ -72,5 +87,33 @@ describe("createTauriDrizzleDatabase", () => {
     await db.select().from(items);
 
     expect(calls[0].cmd).toBe("custom_run");
+  });
+
+  test("reports query context without hiding original invoke error", async () => {
+    const error = { code: "SQLITE_BUSY", message: "database is locked" };
+    const contexts: Array<{
+      method: string;
+      params: unknown[];
+      sql: string;
+    }> = [];
+
+    const db = createTauriDrizzleDatabase({
+      invoke: () => Promise.reject(error),
+      onQueryError: (_error, query) => {
+        contexts.push(query);
+      },
+      schema: { items },
+    });
+
+    await expect(db.select().from(items).execute()).rejects.toMatchObject({
+      cause: error,
+    });
+    expect(contexts).toEqual([
+      {
+        method: "all",
+        params: [],
+        sql: 'select "id", "name", "count" from "items"',
+      },
+    ]);
   });
 });

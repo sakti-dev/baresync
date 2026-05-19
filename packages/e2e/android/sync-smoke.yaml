@@ -5,20 +5,34 @@ appId: ${BARESYNC_ANDROID_APP_ID}
 - waitForAnimationToEnd
 - assertVisible: "Baresync Fixture"
 - assertVisible: "ready"
+- assertVisible: "DB Path"
+- assertVisible: "Dirty Rows"
 - assertVisible: "Migration Count"
+- assertVisible: "Needs Baseline"
 - tapOn: "Baseline sync"
 - waitForAnimationToEnd
-- assertVisible: "baseline:"
+- extendedWaitUntil:
+    visible: ".*Drinks.*"
+    timeout: 30000
+- assertVisible: ".*Drinks.*"
+- assertVisible: ".*Kopi Susu.*"
 - tapOn: "Create local row"
 - waitForAnimationToEnd
-- assertVisible: "Fixture Category 001"
-- assertVisible: "Fixture Product 001"
+- assertVisible: ".*Fixture Category 001.*"
+- assertVisible: ".*Fixture Product 001.*"
 - tapOn: "Manual sync"
 - waitForAnimationToEnd
-- assertVisible: "manual:"
+- extendedWaitUntil:
+    visible: '.*"is_synced":1.*'
+    timeout: 30000
+- assertVisible: '.*"is_synced":1.*'
 - killApp
 - launchApp:
     stopApp: false
 - waitForAnimationToEnd
-- assertVisible: "Fixture Category 001"
-- assertVisible: "Fixture Product 001"
+- extendedWaitUntil:
+    visible: "ready"
+    timeout: 30000
+- assertVisible: ".*Fixture Category 001.*"
+- assertVisible: ".*Fixture Product 001.*"
+- assertVisible: '.*"is_synced":1.*'

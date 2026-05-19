@@ -58,5 +58,13 @@ BARESYNC_ANDROID_READY_TEXT=Baresync \
 bun --cwd packages/e2e run android:sync
 ```
 
+`android:sync` now performs an adb preflight and refuses to run if no usable device is attached or if the fixture package is not installed on the selected target.
+
+Android backend rules:
+
+- Emulator builds should use the fixture backend URL that maps to the host, typically `http://10.0.2.2:18080`.
+- Physical-device builds must use a LAN-reachable backend URL and should be built with `BARESYNC_FIXTURE_API_URL` set before packaging the app.
+- The public fixture app resolves the backend URL from Rust at startup, so the installed Android build must match the target it was built for.
+
 The Android smoke is final lifecycle and filesystem confidence only. Sync correctness belongs in the host command, JS invoke, and host-only simulation suites.
 When Android smoke fails, collect logcat output and, when practical, capture the fixture backend `/__state` response or a SQLite snapshot for the local app data.

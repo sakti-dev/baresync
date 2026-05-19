@@ -3,16 +3,19 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FixtureRowInsert } from "./fixture-schema";
 import {
   categories,
+  createFixtureSyncClient,
   fixtureDb,
   fixtureScopeId,
+  getFixtureRuntimeConfig,
   products,
-  syncClient,
 } from "./fixture-schema";
 
 const state = {
   nextLocalIndex: 1,
   ready: false,
 };
+
+let syncClient = createFixtureSyncClient("http://127.0.0.1:18080");
 
 const el = <T extends HTMLElement>(selector: string) =>
   document.querySelector(selector) as T;
@@ -231,6 +234,8 @@ async function resetFixtureState() {
 async function bootstrap() {
   setBusy(true);
   try {
+    const runtimeConfig = await getFixtureRuntimeConfig();
+    syncClient = createFixtureSyncClient(runtimeConfig.api_url);
     await ensureMigrations();
     await refreshStatus();
     state.ready = true;

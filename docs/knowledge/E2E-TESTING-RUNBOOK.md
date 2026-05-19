@@ -77,10 +77,16 @@ The desktop WDIO config should:
 
 Each smoke run should be isolated from previous runs.
 
-Use `BARESYNC_FIXTURE_RUN_ID` to derive the local DB path:
+Use `BARESYNC_FIXTURE_RUN_ID` to derive the local DB path.
 
 ```sh
 /tmp/baresync-fixture-${BARESYNC_FIXTURE_RUN_ID}.db
+```
+
+Android cannot assume `/tmp` exists or is writable. Android fixture builds should use an app-private path and create the parent directory before initializing the plugin, for example:
+
+```sh
+/data/user/0/com.baresync.fixture/files/baresync-fixture-${BARESYNC_FIXTURE_RUN_ID}.db
 ```
 
 The desktop runner should set a unique run ID by default, for example `desktop-${Date.now()}`.
@@ -140,6 +146,26 @@ Prerequisites:
 - connected emulator or physical device visible to `adb devices`
 - `BARESYNC_ANDROID_APP_ID`
 - `BARESYNC_ANDROID_READY_TEXT`
+- emulator builds should use the host-mapped backend URL `http://10.0.2.2:18080`
+- physical-device builds should be packaged with `BARESYNC_FIXTURE_API_URL` set to a LAN-reachable backend URL
+- the fixture Android build resolves the backend URL from Rust at startup, so the binary and the target need to match
+
+Install or refresh the public fixture APK before running the smoke:
+
+```sh
+nix develop .#default --command bash -lc '
+  cd packages/e2e
+  bun run android:install-fixture
+'
+```
+
+The installer should:
+
+- select a usable `adb devices` target
+- detect the target ABI and pass the matching Tauri Android target
+- infer or accept a backend URL reachable from the selected target
+- build the debug APK
+- install with `adb install -r`
 
 Maestro is provided by the default Nix dev shell:
 
@@ -158,16 +184,26 @@ nix develop .#default --command bash -lc '
 '
 ```
 
+`bun run android:sync` performs adb preflight first. It fails early when no usable device is attached or when the fixture package is not installed on the selected target.
+
 Android smoke should prove:
 
 - fresh app launch reaches readiness
-- SQLite and migrations initialize on Android
-- baseline pull renders visible fixture state
-- local create renders visible state
-- manual sync completes
+- DB path, migration count, and Drizzle-backed local state are visible
+- baseline pull renders fixture rows and baseline state becomes satisfied
+- local create renders visible fixture rows before manual sync
+- manual sync pushes rows and marks them clean/synced
+- restart preserves rows and clean state
 - app data reset or reinstall produces a fresh baseline
 
 Android smoke should not test idempotency, conflict resolution, adaptive chunking, or detailed protocol semantics. Those belong in host tests.
+
+Android smoke assertions need Android-specific selector discipline:
+
+- Maestro text selectors match accessibility text nodes, not arbitrary substrings inside a long JSON row. Use regex selectors such as `.*Fixture Category 001.*` for rendered JSON rows.
+- Use `extendedWaitUntil` for baseline/manual sync results or visible synced rows when device networking is slower than Maestro's default assertion timeout.
+- SQLite booleans render as `1` or `0`, so clean-state assertions should match `"is_synced":1`, not `"is_synced":true`.
+- Prefer asserting durable semantic state such as rendered baseline rows, created local rows, clean state, and backend `/__state` over brittle full sync-result JSON.
 
 ## Flake And Tooling
 
@@ -230,6 +266,14 @@ export const fixtureDb = createTauriDrizzleDatabase({
 ```
 
 If `invoke` is missing, fail with a clear error instead of silently trying a runtime import that may not bundle.
+
+For production Tauri/WebView builds, do not externalize `@tauri-apps/api/core` from the fixture Vite bundle. If Vite leaves it as a bare module specifier, Android WebView can render the static HTML while app JS never runs. The visible symptom is the fixture staying at `booting`; logcat shows an error like:
+
+```text
+Uncaught TypeError: Failed to resolve module specifier "@tauri-apps/api/core"
+```
+
+Fix the Vite config first; do not treat this as a sync or backend failure.
 
 ## Outbox And Clean State
 
@@ -321,14 +365,23 @@ Likely causes:
 - WebKit runtime failure
 - command registration mismatch
 - frontend bundle failed to resolve Tauri imports
+- Android SQLite path is outside the app sandbox or the parent directory does not exist
 - backend URL is wrong and bootstrap code does not handle it well
 
 Fix:
 
 - run inside `nix develop .#default`
 - check app stderr
+- check Android `adb logcat` for `RustStdoutStderr`, `Tauri/Console`, `SQLite`, and `unable to open database file`
 - verify command names called by frontend match registered Tauri commands
 - verify `BARESYNC_FIXTURE_API_URL`
+- on Android, verify the fixture DB path is under `/data/user/0/<app-id>/files` and the directory is created before plugin initialization
+
+Android examples:
+
+- Native startup panic with SQLite code 14, `unable to open database file`: the DB parent directory is missing or the path is not app-writable.
+- WebView console error about failing to resolve `@tauri-apps/api/core`: Vite left Tauri API imports external and app JS did not bootstrap.
+- App reaches `ready` but Maestro cannot see row text: the row may be inside a long JSON text node; use a regex selector such as `.*Drinks.*`.
 
 ### Manual sync returns `tables_synced: []`
 
@@ -477,6 +530,16 @@ For Android E2E changes:
 ```sh
 nix develop .#default --command bash -lc '
   cd packages/e2e
+  bun run android:install-fixture
+  bun run android:sync
+'
+```
+
+If testing a non-default app ID or ready text:
+
+```sh
+nix develop .#default --command bash -lc '
+  cd packages/e2e
   BARESYNC_ANDROID_APP_ID=com.example.app \
   BARESYNC_ANDROID_READY_TEXT=Baresync \
     bun run android:sync
@@ -484,6 +547,13 @@ nix develop .#default --command bash -lc '
 ```
 
 If Android cannot run because no device/emulator or app build is available, say that exactly. Do not mark it as a passing device run.
+
+A real Android pass should include both:
+
+- APK build/install success for the connected target
+- `android:sync` success against that same target
+
+For the public fixture, `android:sync` should launch the app, reach `ready`, run baseline pull, create the local rows, run manual sync, assert backend `/__state` includes `local-cat-001` and `local-prod-001`, kill/relaunch, and assert local clean-state persistence.
 
 ## What To Document In Future E2E Changes
 
