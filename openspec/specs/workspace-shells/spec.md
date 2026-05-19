@@ -1,74 +1,40 @@
-## ADDED Requirements
-
-### Requirement: Bun workspace package with subpath exports
-
-The `packages/baresync` package SHALL be a Bun workspace member with
-`"type": "module"` and the following subpath exports:
-
-- `"."` → `src/index.ts`
-- `"./schema"` → `src/schema/index.ts`
-- `"./generator"` → `src/generator/index.ts`
-- `"./db"` → `src/db/index.ts`
-- `"./server"` → `src/server/index.ts`
-- `"./tauri"` → `src/tauri/index.ts`
-- `"./limits"` → `src/limits.ts`
-
-The package SHALL define a `"bin"` entry `"baresync"` pointing to
-`./src/cli.ts`.
-
-#### Scenario: Package resolves all subpath exports
-
-- **WHEN** a consumer imports from any baresync subpath (`baresync`,
-  `baresync/schema`, `baresync/generator`, `baresync/db`, `baresync/server`,
-  `baresync/tauri`, `baresync/limits`)
-- **THEN** the import resolves without error (even if the module exports
-  nothing yet)
-
-#### Scenario: Package name uses internal alias
-
-- **WHEN** the `package.json` is read
-- **THEN** the `"name"` field is `"@repo/baresync"`
-
-### Requirement: Sync limit constants exported from limits module
-
-The `packages/baresync/src/limits.ts` module SHALL export four named constants:
-
-- `DEFAULT_POS_TARGET_PUSH_BYTES` with value `262144` (256 KiB)
-- `DEFAULT_API_MAX_PUSH_BYTES` with value `2097152` (2 MiB)
-- `DEFAULT_MAX_PUSH_ROWS` with value `2000`
-- `DEFAULT_DB_BIND_PARAMETER_BUDGET` with value `30000`
-
-#### Scenario: Limits are importable from baresync/limits
-
-- **WHEN** a consumer imports from `baresync/limits`
-- **THEN** all four constants are available as named exports with the specified
-  values
+## MODIFIED Requirements
 
 ### Requirement: Empty module stubs for future extraction targets
 
-The package SHALL contain empty re-export files at:
+The package SHALL contain files at:
 
-- `src/index.ts`
-- `src/schema/index.ts`
-- `src/generator/index.ts`
-- `src/db/index.ts`
-- `src/server/index.ts`
-- `src/tauri/index.ts`
-- `src/cli.ts`
+- `src/index.ts` — re-exports from `./schema`, `./generator`, `./db`, `./limits`
+- `src/schema/index.ts` — re-exports `localSyncRowState`, `apiSyncRowState`, `defineSyncedTable`, `syncedTable`, `defineSyncContract`, `syncSchema`, `syncServerSchema`
+- `src/generator/index.ts` — exports `generateSyncArtifacts`
+- `src/db/index.ts` — re-exports from `./drizzle-proxy` and `./migrations`
+- `src/db/drizzle-proxy.ts` — exports `createTauriDrizzleDatabase`
+- `src/db/migrations.ts` — exports migration helper types
+- `src/server/index.ts` — re-exports from `./service` and `./chunking`
+- `src/server/service.ts` — exports `decodeSyncRequest`, `encodeSyncResponse`, `validatePushEnvelope`, `orderPushChanges`
+- `src/server/chunking.ts` — exports chunking constants and utilities
+- `src/tauri/index.ts` — empty stub (unchanged, Wave 3)
+- `src/cli.ts` — supports `baresync generate` command
+- `src/limits.ts` — unchanged
 
-Each stub file SHALL compile without error and export nothing.
+Each file SHALL compile without error and export the symbols listed above.
 
-#### Scenario: Stub modules compile cleanly
+#### Scenario: All subpath exports resolve with real symbols
 
-- **WHEN** `bun x ultracite check packages/baresync` is run
-- **THEN** no compilation or lint errors are reported
+- **WHEN** a consumer imports from `baresync/schema`
+- **THEN** `defineSyncedTable`, `syncedTable`, `defineSyncContract`, `syncSchema`, `localSyncRowState`, `apiSyncRowState`, and `syncServerSchema` are available as named exports
 
-### Requirement: TypeScript configuration
+#### Scenario: Generator subpath exports generate function
 
-The package SHALL include a `tsconfig.json` that extends the project's shared
-TypeScript config and includes the `src/` directory.
+- **WHEN** a consumer imports from `baresync/generator`
+- **THEN** `generateSyncArtifacts` is available as a named export
 
-#### Scenario: TypeScript resolves package sources
+#### Scenario: Server subpath exports primitives
 
-- **WHEN** `tsc --noEmit` is run in `packages/baresync`
-- **THEN** no type errors are reported
+- **WHEN** a consumer imports from `baresync/server`
+- **THEN** `decodeSyncRequest`, `encodeSyncResponse`, `validatePushEnvelope`, `orderPushChanges`, and chunking utilities are available as named exports
+
+#### Scenario: DB subpath exports Drizzle helper
+
+- **WHEN** a consumer imports from `baresync/db`
+- **THEN** `createTauriDrizzleDatabase` is available as a named export
