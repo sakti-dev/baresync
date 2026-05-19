@@ -1,0 +1,15 @@
+[package]
+name = "baresync-fixture"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+baresync-core = { path = "../../../crates/baresync-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-baresync = { path = "../../../crates/tauri-plugin-baresync" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

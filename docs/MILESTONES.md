@@ -33,10 +33,13 @@ source of truth for progress.
   implementation path was not linear.
 - Several PRD phases were bundled into larger OpenSpec changes, so the work does
   not map 1:1 to the original phase boundaries.
-- Phase 14 is the next clearly unfinished milestone if you want more coverage
-  in this repo.
-- Phases 15 through 19 are the device-automation, public-package, example,
-  release, and final consumer-app migration sequence.
+- Phase 14 is complete in this repo: the host simulation checks and public
+  fixture smoke flows now exist.
+- Phase 15 is fixture-based here: the public `apps/baresync-fixture` target is
+  the supported desktop and Android smoke app, while the private consumer-app
+  migration work remains separate.
+- Phases 16 through 19 are the public documentation, example, release, and
+  final consumer-app migration sequence.
 
 ## Deferred On Purpose
 
@@ -70,7 +73,7 @@ Phase 14 should only be marked complete after all of these are true:
 - [x] Phase group 2 - Rust core, local DB, push/pull, and server primitives
 - [x] Phase group 3 - Plugin wrapper, Rust mapper integration, and JS client
 - [x] Phase group 4 - Host-only sync simulation harness
-- [ ] Phase 14 - Device-like simulation harness
+- [x] Phase 14 - Device-like simulation harness
 - [ ] Phase 15 - Full device automation
 - [ ] Phase 16 - Public documentation
 - [ ] Phase 17 - Example app

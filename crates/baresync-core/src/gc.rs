@@ -93,10 +93,12 @@ mod tests {
     async fn gc_preserves_non_deleted_and_unsynced() {
         let pool = test_pool().await;
 
-        sqlx::query("INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('1', 'active', NULL, 0)")
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('1', 'active', NULL, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         sqlx::query("INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('2', 'active-synced', NULL, 1)")
             .execute(&pool)
             .await

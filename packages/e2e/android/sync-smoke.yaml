@@ -1,4 +1,24 @@
 appId: ${BARESYNC_ANDROID_APP_ID}
 ---
-- launchApp
-- assertVisible: ${BARESYNC_ANDROID_READY_TEXT}
+- launchApp:
+    clearState: true
+- waitForAnimationToEnd
+- assertVisible: "Baresync Fixture"
+- assertVisible: "ready"
+- assertVisible: "Migration Count"
+- tapOn: "Baseline sync"
+- waitForAnimationToEnd
+- assertVisible: "baseline:"
+- tapOn: "Create local row"
+- waitForAnimationToEnd
+- assertVisible: "Fixture Category 001"
+- assertVisible: "Fixture Product 001"
+- tapOn: "Manual sync"
+- waitForAnimationToEnd
+- assertVisible: "manual:"
+- killApp
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd
+- assertVisible: "Fixture Category 001"
+- assertVisible: "Fixture Product 001"

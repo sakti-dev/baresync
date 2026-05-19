@@ -2,8 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sqlx::{
     sqlite::{
-        SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow,
-        SqliteSynchronous,
+        SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow, SqliteSynchronous,
     },
     Column, Row, SqlitePool, TypeInfo,
 };
@@ -37,7 +36,12 @@ impl LocalDatabase {
         )
         .execute(&pool)
         .await
-        .map_err(|e| SyncError::Database(format!("Failed to create sync_client_identity table: {}", e)))?;
+        .map_err(|e| {
+            SyncError::Database(format!(
+                "Failed to create sync_client_identity table: {}",
+                e
+            ))
+        })?;
 
         Ok(Self { pool })
     }
@@ -141,12 +145,11 @@ pub fn format_file_size(bytes: u64) -> String {
 }
 
 pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncError> {
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT client_id FROM sync_client_identity ORDER BY id LIMIT 1",
-    )
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| SyncError::Database(format!("Failed to query client identity: {}", e)))?;
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT client_id FROM sync_client_identity ORDER BY id LIMIT 1")
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| SyncError::Database(format!("Failed to query client identity: {}", e)))?;
 
     if let Some(client_id) = existing {
         return Ok(client_id);
@@ -159,14 +162,12 @@ pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncEr
         .as_millis();
     let created_at = format!("{}", now);
 
-    sqlx::query(
-        "INSERT INTO sync_client_identity (client_id, created_at) VALUES (?1, ?2)",
-    )
-    .bind(&client_id)
-    .bind(&created_at)
-    .execute(pool)
-    .await
-    .map_err(|e| SyncError::Database(format!("Failed to insert client identity: {}", e)))?;
+    sqlx::query("INSERT INTO sync_client_identity (client_id, created_at) VALUES (?1, ?2)")
+        .bind(&client_id)
+        .bind(&created_at)
+        .execute(pool)
+        .await
+        .map_err(|e| SyncError::Database(format!("Failed to insert client identity: {}", e)))?;
 
     Ok(client_id)
 }
@@ -186,7 +187,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "baresync-test-wal-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("test.db");
@@ -213,7 +217,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "baresync-test-dbinfo-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("info_test.db");

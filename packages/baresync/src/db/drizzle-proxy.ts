@@ -18,12 +18,11 @@ export interface TauriDrizzleDatabaseConfig {
   schema: Record<string, unknown>;
 }
 
-async function resolveInvoke(custom?: InvokeFn): Promise<InvokeFn> {
+function resolveInvoke(custom?: InvokeFn): InvokeFn {
   if (custom) {
     return custom;
   }
-  const { invoke } = await import("@tauri-apps/api/core" as string);
-  return invoke as InvokeFn;
+  throw new Error("createTauriDrizzleDatabase requires an invoke function");
 }
 
 export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
@@ -33,7 +32,7 @@ export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
   return drizzle(
     async (sql: string, params: unknown[], method: string) => {
       try {
-        const invoke = await resolveInvoke(config.invoke);
+        const invoke = resolveInvoke(config.invoke);
         const result = await invoke(runSqlCmd, {
           query: { sql, params, method },
         });
@@ -44,7 +43,7 @@ export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
       }
     },
     async (statements: { sql: string; params: unknown[] }[]) => {
-      const invoke = await resolveInvoke(config.invoke);
+      const invoke = resolveInvoke(config.invoke);
       const result = await invoke(runSqlBatchCmd, { statements });
       return result as { rows: Record<string, unknown>[] }[];
     },

@@ -1,60 +1,26 @@
 # Public Sync Plugin Device Simulation
 
-Phase 14 splits device-like confidence into host simulation and optional smoke tests.
+Phase 14 splits device-like confidence into deterministic host simulation plus small opt-in desktop and Android smoke tests.
 
-## Normal Verification
+The public smoke target is the fixture app in `apps/baresync-fixture`. It exists so Baresync can prove real consumer integration without depending on private Sakti POS code under `docs/external/sakti-pos`.
 
-Run these on a normal development machine and in CI:
+For operational E2E setup, commands, debugging, and failure modes, use `docs/knowledge/E2E-TESTING-RUNBOOK.md` as the source of truth.
 
-```sh
-cargo test -p tauri-plugin-baresync --test commands
-bun test packages/baresync/src/tauri/__test__/client.test.ts
-```
+## Verification Model
 
-The Rust command tests construct plugin state with a temporary SQLite database, embedded migrations, sync config, contract tables, and DB path. They call host-testable command logic without Android, adb, a WebView, a desktop driver, or network access.
+Normal verification should stay host-runnable:
 
-The JS client tests inject a mocked `invoke` function. They verify command names, argument shape, resolved result propagation, and rejected error propagation without a Tauri runtime.
+- Rust core and plugin command tests cover SQLite, migrations, outbox behavior, push/pull semantics, and Tauri command logic without Android, adb, WebView, or desktop drivers.
+- JS tests cover public client APIs and mocked `invoke` behavior without a Tauri runtime.
 
-## Optional Desktop Smoke
+Desktop and Android smoke tests are opt-in confidence checks. They should prove runtime wiring, lifecycle, IPC, migrations, SQLite persistence, baseline pull, local create, manual sync, and restart/app-data behavior. They should not carry protocol edge cases such as conflicts, idempotency, adaptive chunking, or reconciliation; those belong in host tests.
 
-Desktop smoke testing is opt-in and lives under `packages/e2e/desktop`.
+## Boundary
 
-Use it after host verification passes and a consumer Tauri desktop app exists.
+Keep this boundary intact:
 
-Prerequisites:
+- Public fixture E2E belongs in `apps/baresync-fixture` and `packages/e2e`.
+- Private consumer app automation belongs outside this public fixture path.
+- `docs/external/sakti-pos` is not a public E2E target.
 
-- A built local Tauri desktop app that consumes `tauri-plugin-baresync`
-- `tauri-driver`
-- WebDriverIO tooling in the consumer app workspace
-
-Example:
-
-```sh
-BARESYNC_DESKTOP_APP_PATH=/path/to/app \
-BARESYNC_DESKTOP_SMOKE_URL=http://127.0.0.1:1420 \
-bun x wdio run packages/e2e/desktop/webdriverio.conf.ts
-```
-
-Desktop smoke should prove plugin registration, command names, WebView-to-Rust IPC, and SQLite file behavior. It is not the primary sync correctness suite.
-
-## Optional Android Smoke
-
-Android smoke testing is opt-in and lives under `packages/e2e/android`.
-
-Use it only for final lifecycle and filesystem confidence after host and desktop checks.
-
-Prerequisites:
-
-- A prepared Android build that consumes `tauri-plugin-baresync`
-- Maestro
-- A connected emulator or physical device
-
-Example:
-
-```sh
-BARESYNC_ANDROID_APP_ID=com.example.app \
-BARESYNC_ANDROID_READY_TEXT=Baresync \
-maestro test packages/e2e/android/sync-smoke.yaml
-```
-
-Android smoke should stay small. It should not replace deterministic Rust and JS simulation coverage.
+This prevents public verification from depending on private routes, auth, assets, data shape, or future downstream app removal.

@@ -180,9 +180,10 @@ export function mapSyncError(error: unknown): {
     "status" in error &&
     (error as { status: number }).status === 409
   ) {
+    const conflictError = error as { status: number; message?: string };
     return {
       code: "sync_idempotency_conflict",
-      message: (error as Error).message ?? "Conflict",
+      message: conflictError.message ?? "Conflict",
     };
   }
 

@@ -30,6 +30,7 @@
             cairo
             gdk-pixbuf
             glib
+            dbus
             gtk3
             libsoup_3
             pango
@@ -71,6 +72,7 @@
                 gcc
                 gnumake
                 jdk21
+                maestro
                 nodejs_22
                 pkg-config
                 protobuf
@@ -94,6 +96,8 @@
               export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
               export PATH="$HOME/.cargo/bin:$PATH"
               export ANDROID_DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
+              export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
+              export MAESTRO_CLI_NO_ANALYTICS=true
 
               mkdir -p "$(dirname "$ANDROID_DEBUG_KEYSTORE")"
               if [ -f "$ANDROID_DEBUG_KEYSTORE" ] && ! keytool -list -v -keystore "$ANDROID_DEBUG_KEYSTORE" -storepass android 2>/dev/null | grep -qi '^Alias name: AndroidDebugKey$'; then
@@ -113,7 +117,7 @@
               fi
 
               echo "Sakti POS dev shell."
-              echo "Includes host Rust/Bun verification and Android SDK/NDK/JDK."
+              echo "Includes host Rust/Bun verification, Maestro, and Android SDK/NDK/JDK."
               echo "Mirrors distrobox as closely as Nix allows:"
               echo "- JDK: distrobox system Java 17, Android Studio JBR 21.0.10; this shell uses JDK 21."
               echo "- Android build-tools: 35.0.0, 36.0.0, 36.1.0, 37.0.0."

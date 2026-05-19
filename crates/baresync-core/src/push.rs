@@ -1,8 +1,8 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{SqliteConnection, SqlitePool};
-use std::collections::{HashMap, HashSet};
 use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 
 use super::config::SyncEngineConfig;
 use super::error::SyncError;
@@ -118,7 +118,9 @@ pub async fn soft_delete_row(
         .bind(id)
         .execute(&mut *conn)
         .await
-        .map_err(|e| SyncError::Database(format!("Failed to soft delete {} row {}: {}", table, id, e)))?;
+        .map_err(|e| {
+            SyncError::Database(format!("Failed to soft delete {} row {}: {}", table, id, e))
+        })?;
     Ok(result.rows_affected())
 }
 
@@ -170,8 +172,14 @@ fn accepted_ids_by_table(response: &Value) -> HashMap<String, HashSet<String>> {
             .get("table")
             .and_then(|t| t.as_str())
             .unwrap_or("");
-        let ids = result.entry(table_name.to_string()).or_insert_with(HashSet::new);
-        for key in &["acceptedCreatedIds", "acceptedUpdatedIds", "acceptedDeletedIds"] {
+        let ids = result
+            .entry(table_name.to_string())
+            .or_insert_with(HashSet::new);
+        for key in &[
+            "acceptedCreatedIds",
+            "acceptedUpdatedIds",
+            "acceptedDeletedIds",
+        ] {
             if let Some(arr) = table_ack.get(key).and_then(|v| v.as_array()) {
                 for id in arr {
                     if let Some(s) = id.as_str() {
@@ -194,13 +202,13 @@ fn rejected_ids_by_table(response: &Value) -> HashMap<String, HashSet<String>> {
             .get("table")
             .and_then(|t| t.as_str())
             .unwrap_or("");
-        let ids = result
-            .entry(table_name.to_string())
-            .or_insert_with(HashSet::new);
         if let Some(rejected) = table_ack.get("rejected").and_then(|v| v.as_array()) {
             for row in rejected {
                 if let Some(id) = row.get("id").and_then(|v| v.as_str()) {
-                    ids.insert(id.to_string());
+                    result
+                        .entry(table_name.to_string())
+                        .or_insert_with(HashSet::new)
+                        .insert(id.to_string());
                 }
             }
         }
@@ -250,7 +258,9 @@ pub fn flatten_pending_tables(
     units
 }
 
-pub fn merge_pending_units(units: Vec<PendingTablePush>) -> Vec<(String, schema::TablePushChanges)> {
+pub fn merge_pending_units(
+    units: Vec<PendingTablePush>,
+) -> Vec<(String, schema::TablePushChanges)> {
     let mut by_table: HashMap<String, schema::TablePushChanges> = HashMap::new();
 
     for unit in units {
@@ -349,7 +359,10 @@ pub async fn push(
     let mut all_units: Vec<PendingTablePush> = Vec::new();
 
     for table in upsert_order {
-        let mut tx = pool.begin().await.map_err(|e| SyncError::Database(format!("Failed to begin tx: {}", e)))?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| SyncError::Database(format!("Failed to begin tx: {}", e)))?;
         let changes: TableOutboxChanges = schema::read_unsynced_table_changes_from_outbox_tx(
             &mut tx,
             table,
@@ -397,12 +410,8 @@ pub async fn push(
         let ids = collect_outbox_ids(&chunk);
         let idem_key = generate_idempotency_key_from_outbox_ids(&ids);
 
-        let byte_len = encoded_push_chunk_len(
-            &config.scope_id,
-            &config.client_id,
-            &idem_key,
-            &merged,
-        );
+        let byte_len =
+            encoded_push_chunk_len(&config.scope_id, &config.client_id, &idem_key, &merged);
 
         if byte_len > config.max_push_bytes && chunk.len() > 1 {
             let (first, second) = split_push_chunk_for_retry(&chunk);
@@ -435,12 +444,8 @@ pub async fn push(
                 .extend(unit.outbox_ids.iter().cloned());
         }
 
-        let envelope = build_json_push_envelope(
-            &config.scope_id,
-            &config.client_id,
-            &idem_key,
-            &merged,
-        );
+        let envelope =
+            build_json_push_envelope(&config.scope_id, &config.client_id, &idem_key, &merged);
 
         let response = match send_push_request(&config.api_url, &envelope).await {
             Ok(r) => r,
@@ -499,23 +504,30 @@ pub async fn push(
     let rejected_tables: Vec<String> = all_rejected.keys().cloned().collect();
 
     let mut tables_synced = Vec::new();
-    let mut tx = pool.begin().await.map_err(|e| SyncError::Database(format!("Failed to begin result tx: {}", e)))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| SyncError::Database(format!("Failed to begin result tx: {}", e)))?;
 
     for table in upsert_order {
         let Some(accepted_ids) = all_accepted.get(table) else {
             continue;
         };
         if !accepted_ids.is_empty() {
-            schema::mark_rows_synced_by_id_tx(&mut tx, table, accepted_ids)
-                .await
-                .map_err(|e| SyncError::Database(e))?;
-
             let accepted_outbox_ids: Vec<String> = all_outbox_ids_by_table
                 .get(table)
                 .cloned()
                 .unwrap_or_default();
 
-            outbox::mark_outbox_synced_by_outbox_ids_tx(&mut tx, &final_server_time, &accepted_outbox_ids)
+            outbox::mark_outbox_synced_by_outbox_ids_tx(
+                &mut tx,
+                &final_server_time,
+                &accepted_outbox_ids,
+            )
+            .await
+            .map_err(|e| SyncError::Database(e))?;
+
+            schema::mark_rows_synced_by_id_tx(&mut tx, table, accepted_ids)
                 .await
                 .map_err(|e| SyncError::Database(e))?;
 
@@ -561,9 +573,18 @@ mod tests {
 
     #[test]
     fn build_upsert_query_generates_conflict_clause() {
-        let query = build_upsert_query("products", &["id".to_string(), "name".to_string(), "updated_at".to_string()]);
+        let query = build_upsert_query(
+            "products",
+            &[
+                "id".to_string(),
+                "name".to_string(),
+                "updated_at".to_string(),
+            ],
+        );
         assert!(query.contains("ON CONFLICT(id) DO UPDATE"));
-        assert!(query.contains("WHERE products.is_synced = 1 OR excluded.updated_at >= products.updated_at"));
+        assert!(query.contains(
+            "WHERE products.is_synced = 1 OR excluded.updated_at >= products.updated_at"
+        ));
     }
 
     fn make_changes(n_rows: usize, n_deletes: usize) -> TableOutboxChanges {
@@ -620,13 +641,7 @@ mod tests {
     fn chunk_splits_at_max_rows() {
         let changes = make_changes(2500, 0);
         let units = flatten_pending_tables("items", &changes);
-        let chunks = chunk_pending_push_tables(
-            units,
-            2000,
-            usize::MAX,
-            "scope",
-            "client",
-        );
+        let chunks = chunk_pending_push_tables(units, 2000, usize::MAX, "scope", "client");
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].len(), 2000);
         assert_eq!(chunks[1].len(), 500);
@@ -636,13 +651,7 @@ mod tests {
     fn chunk_respects_byte_limit() {
         let changes = make_changes(10, 0);
         let units = flatten_pending_tables("items", &changes);
-        let chunks = chunk_pending_push_tables(
-            units,
-            100,
-            1,
-            "scope",
-            "client",
-        );
+        let chunks = chunk_pending_push_tables(units, 100, 1, "scope", "client");
         assert!(chunks.len() > 1);
         for chunk in &chunks {
             assert_eq!(chunk.len(), 1);
@@ -702,19 +711,14 @@ mod tests {
         assert_eq!(prod_rejected.len(), 2);
         assert!(prod_rejected.contains("prod-2"));
         assert!(prod_rejected.contains("prod-4"));
+        assert!(!rejected.contains_key("categories"));
     }
 
     #[test]
     fn single_oversized_row_gets_own_chunk() {
         let changes = make_changes(1, 0);
         let units = flatten_pending_tables("items", &changes);
-        let chunks = chunk_pending_push_tables(
-            units,
-            1,
-            usize::MAX,
-            "scope",
-            "client",
-        );
+        let chunks = chunk_pending_push_tables(units, 1, usize::MAX, "scope", "client");
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].len(), 1);
     }

@@ -11,11 +11,8 @@ static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 async fn temp_db() -> SqlitePool {
     let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "baresync-test-{}-{}",
-        std::process::id(),
-        counter
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("baresync-test-{}-{}", std::process::id(), counter));
     let _ = std::fs::create_dir_all(&dir);
     let db_path = dir.join("test.db");
     let db = baresync_core::db::LocalDatabase::connect(db_path.to_str().unwrap())
@@ -72,18 +69,16 @@ async fn pull_baseline_applies_rows_in_fk_order() {
 
     assert_eq!(applied, 2);
 
-    let cat_name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_name, "Drinks Updated");
 
-    let prod_name: String =
-        sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod_name, "Kopi Susu Updated");
 }
 
@@ -105,11 +100,10 @@ async fn pull_upserted_rows_are_marked_synced() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let is_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(is_synced, 1);
 }
 
@@ -142,13 +136,12 @@ async fn pull_soft_deletes_in_reverse_fk_order() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let prod_deleted: Option<String> = sqlx::query_scalar(
-        "SELECT deleted_at FROM products WHERE id = 'prod-1'",
-    )
-    .fetch_optional(&pool)
-    .await
-    .unwrap()
-    .flatten();
+    let prod_deleted: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+            .fetch_optional(&pool)
+            .await
+            .unwrap()
+            .flatten();
     assert!(prod_deleted.is_some());
 }
 
@@ -322,18 +315,16 @@ async fn push_upsert_query_works() {
         .unwrap();
     tx.commit().await.unwrap();
 
-    let name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(name, "Drinks");
 
-    let is_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(is_synced, 1);
 }
 
@@ -362,22 +353,17 @@ async fn push_soft_delete_marks_row() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let deleted_at: Option<String> = sqlx::query_scalar(
-        "SELECT deleted_at FROM categories WHERE id = 'cat-1'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        deleted_at,
-        Some("2026-05-19T12:00:00.000Z".to_string())
-    );
-
-    let is_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+    let deleted_at: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM categories WHERE id = 'cat-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
+    assert_eq!(deleted_at, Some("2026-05-19T12:00:00.000Z".to_string()));
+
+    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(is_synced, 1);
 }
 
@@ -400,18 +386,16 @@ async fn gc_after_pull_and_push_lifecycle() {
     .unwrap();
     assert_eq!(purged, 1);
 
-    let prod_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod_count, 0);
 
-    let cat_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_count, 1);
 }
 
@@ -523,23 +507,14 @@ async fn push_flatten_chunk_roundtrip_from_outbox() {
 
     assert!(all_units.len() >= 2);
 
-    let chunks = push::chunk_pending_push_tables(
-        all_units,
-        1,
-        usize::MAX,
-        "merchant-1",
-        "client-1",
-    );
+    let chunks =
+        push::chunk_pending_push_tables(all_units, 1, usize::MAX, "merchant-1", "client-1");
     assert!(chunks.len() >= 2);
 
     for chunk in &chunks {
         let merged = push::merge_pending_units(chunk.clone());
-        let _envelope = push::build_json_push_envelope(
-            "merchant-1",
-            "client-1",
-            "test-key",
-            &merged,
-        );
+        let _envelope =
+            push::build_json_push_envelope("merchant-1", "client-1", "test-key", &merged);
     }
 }
 
@@ -555,7 +530,9 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
         "updatedAt": "2026-01-01T00:00:00.000Z"
     });
     let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &cat_row).await.unwrap();
+    push::upsert_row(&mut tx, "categories", &cat_row)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     sqlx::query(fixtures::insert_outbox_sql())
@@ -580,7 +557,9 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
         "updatedAt": "2026-01-01T00:00:00.000Z"
     });
     let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "products", &prod_row).await.unwrap();
+    push::upsert_row(&mut tx, "products", &prod_row)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     sqlx::query(fixtures::insert_outbox_sql())
@@ -602,18 +581,20 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
             .unwrap();
     assert_eq!(outbox_count, 2);
 
-    let cat_outbox: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'categories' AND synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_outbox: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'categories' AND synced_at IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(cat_outbox, 1);
 
-    let prod_outbox: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'products' AND synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_outbox: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'products' AND synced_at IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(prod_outbox, 1);
 }
 
@@ -651,16 +632,17 @@ async fn sim_push_reads_outbox_in_upsert_order() {
 
     for table in &upsert_order {
         let mut tx = pool.begin().await.unwrap();
-        let changes = schema::read_unsynced_table_changes_from_outbox_tx(
-            &mut tx,
-            table,
-            "merchant-1",
-            &[],
-        )
-        .await
-        .unwrap();
+        let changes =
+            schema::read_unsynced_table_changes_from_outbox_tx(&mut tx, table, "merchant-1", &[])
+                .await
+                .unwrap();
         drop(tx);
-        all_units.push(push::flatten_pending_tables(table, &changes).into_iter().next().unwrap());
+        all_units.push(
+            push::flatten_pending_tables(table, &changes)
+                .into_iter()
+                .next()
+                .unwrap(),
+        );
     }
 
     assert_eq!(all_units[0].table, "categories");
@@ -687,20 +669,18 @@ async fn sim_pull_deleted_ids_soft_deletes_product() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let deleted_at: Option<String> = sqlx::query_scalar(
-        "SELECT deleted_at FROM products WHERE id = 'prod-1'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert!(deleted_at.is_some());
-    assert!(deleted_at.unwrap().len() > 0);
-
-    let is_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
+    let deleted_at: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
+    assert!(deleted_at.is_some());
+    assert!(deleted_at.unwrap().len() > 0);
+
+    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(is_synced, 1);
 }
 
@@ -725,11 +705,10 @@ async fn sim_server_wins_rejection_reconciled_by_pull() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let cat_name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_name, "Drinks Server Version");
 
     let cat_updated: String =
@@ -774,26 +753,17 @@ async fn sim_adaptive_chunking_splits_on_413() {
     }
 
     let mut tx = pool.begin().await.unwrap();
-    let changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
-        "products",
-        "merchant-1",
-        &[],
-    )
-    .await
-    .unwrap();
+    let changes =
+        schema::read_unsynced_table_changes_from_outbox_tx(&mut tx, "products", "merchant-1", &[])
+            .await
+            .unwrap();
     drop(tx);
 
     let units = push::flatten_pending_tables("products", &changes);
     assert_eq!(units.len(), 4);
 
-    let chunks = push::chunk_pending_push_tables(
-        units.clone(),
-        4,
-        usize::MAX,
-        "merchant-1",
-        "client-1",
-    );
+    let chunks =
+        push::chunk_pending_push_tables(units.clone(), 4, usize::MAX, "merchant-1", "client-1");
     assert_eq!(chunks.len(), 1);
 
     let (first, second) = push::split_push_chunk_for_retry(&chunks[0]);
@@ -905,18 +875,16 @@ async fn sim_gc_purges_soft_deleted_synced_rows() {
     .unwrap();
     assert_eq!(purged, 1);
 
-    let prod_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod_count, 0);
 
-    let cat_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_count, 1);
 }
 
@@ -953,11 +921,10 @@ async fn sim_full_sync_lifecycle() {
     tx.commit().await.unwrap();
     assert_eq!(applied, 2);
 
-    let cat_name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_name, "Drinks Updated");
 
     let local_cat = serde_json::json!({
@@ -968,7 +935,9 @@ async fn sim_full_sync_lifecycle() {
         "updatedAt": "2026-05-19T13:00:00.000Z"
     });
     let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &local_cat).await.unwrap();
+    push::upsert_row(&mut tx, "categories", &local_cat)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     sqlx::query(fixtures::insert_outbox_sql())
@@ -1016,12 +985,11 @@ async fn sim_full_sync_lifecycle() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let prod_deleted: Option<String> = sqlx::query_scalar(
-        "SELECT deleted_at FROM products WHERE id = 'prod-1'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let prod_deleted: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(prod_deleted.is_some());
 
     let purged = gc::run_garbage_collection(
@@ -1033,11 +1001,10 @@ async fn sim_full_sync_lifecycle() {
     .unwrap();
     assert!(purged >= 1);
 
-    let prod_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod_count, 0);
 
     let second_outbox: i64 =
@@ -1054,33 +1021,29 @@ async fn sim_migrations_applied_once_skipped_on_second_run() {
 
     let pool = temp_db().await;
 
-    let migs = vec![
-        EmbeddedMigration {
-            name: "0001_create_test_items",
-            sql: "CREATE TABLE test_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
-        },
-    ];
+    let migs = vec![EmbeddedMigration {
+        name: "0001_create_test_items",
+        sql: "CREATE TABLE test_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+    }];
 
     migrations::run_migrations(&pool, &MigrationConfig::tolerant(), &migs)
         .await
         .unwrap();
 
-    let count1: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let count1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(count1, 1);
 
     migrations::run_migrations(&pool, &MigrationConfig::tolerant(), &migs)
         .await
         .unwrap();
 
-    let count2: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let count2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(count2, 1);
 }
 
@@ -1135,7 +1098,10 @@ async fn sim_push_deletes_only() {
     let merged = push::merge_pending_units(units.clone());
     let idem_key = push::generate_idempotency_key_from_outbox_ids(&units[0].outbox_ids);
     let envelope = push::build_json_push_envelope("merchant-1", "client-1", &idem_key, &merged);
-    assert!(envelope.get("tables").and_then(|t| t.as_array()).map_or(false, |a| !a.is_empty()));
+    assert!(envelope
+        .get("tables")
+        .and_then(|t| t.as_array())
+        .map_or(false, |a| !a.is_empty()));
 
     let mut tx = pool.begin().await.unwrap();
     baresync_core::outbox::mark_outbox_synced_by_outbox_ids_tx(
@@ -1213,19 +1179,17 @@ async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
             .unwrap();
     assert_eq!(prod2_synced, 1);
 
-    let prod2_name: String =
-        sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-2'")
+    let prod2_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-2'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(prod2_name, "Latte");
+
+    let prod1_deleted: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(prod2_name, "Latte");
-
-    let prod1_deleted: Option<String> = sqlx::query_scalar(
-        "SELECT deleted_at FROM products WHERE id = 'prod-1'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
     assert!(prod1_deleted.is_some());
 
     let prod1_synced: i64 =
@@ -1317,18 +1281,16 @@ async fn sim_paginated_pull_two_batches() {
     tx.commit().await.unwrap();
     assert_eq!(applied2, 1);
 
-    let prod_name: String =
-        sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod_name, "Kopi Susu");
 
-    let cat_name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_name, "Drinks");
 
     let cursor: String =
@@ -1430,11 +1392,10 @@ async fn sim_resync_after_server_wins_reconciliation() {
     .unwrap();
     tx.commit().await.unwrap();
 
-    let cat_name: String =
-        sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_name, "Drinks Server Version");
 
     let new_cat = serde_json::json!({
@@ -1445,7 +1406,9 @@ async fn sim_resync_after_server_wins_reconciliation() {
         "updatedAt": "2026-05-19T15:00:00.000Z"
     });
     let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &new_cat).await.unwrap();
+    push::upsert_row(&mut tx, "categories", &new_cat)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
     sqlx::query(fixtures::insert_outbox_sql())
@@ -1474,14 +1437,21 @@ async fn sim_resync_after_server_wins_reconciliation() {
     let units = push::flatten_pending_tables("categories", &changes);
     assert_eq!(units.len(), 1);
     assert_eq!(
-        units[0].row.as_ref().and_then(|r| r.get("name")).and_then(|v| v.as_str()),
+        units[0]
+            .row
+            .as_ref()
+            .and_then(|r| r.get("name"))
+            .and_then(|v| v.as_str()),
         Some("New Local Category")
     );
 
     let merged = push::merge_pending_units(units.clone());
     let idem_key = push::generate_idempotency_key_from_outbox_ids(&units[0].outbox_ids);
     let envelope = push::build_json_push_envelope("merchant-1", "client-1", &idem_key, &merged);
-    assert!(envelope.get("tables").and_then(|t| t.as_array()).map_or(false, |a| !a.is_empty()));
+    assert!(envelope
+        .get("tables")
+        .and_then(|t| t.as_array())
+        .map_or(false, |a| !a.is_empty()));
 
     let mut tx = pool.begin().await.unwrap();
     baresync_core::outbox::mark_outbox_synced_by_outbox_ids_tx(
@@ -1572,13 +1542,15 @@ async fn sim_push_partial_acceptance() {
             .unwrap();
     assert_eq!(cat1_synced, 1);
 
-    let cat1_outbox_synced: Option<String> = sqlx::query_scalar(
-        "SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-1'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(cat1_outbox_synced, Some("2026-05-19T14:00:00.000Z".to_string()));
+    let cat1_outbox_synced: Option<String> =
+        sqlx::query_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        cat1_outbox_synced,
+        Some("2026-05-19T14:00:00.000Z".to_string())
+    );
 
     let cat2_synced: i64 =
         sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-2'")
@@ -1587,18 +1559,17 @@ async fn sim_push_partial_acceptance() {
             .unwrap();
     assert_eq!(cat2_synced, 0);
 
-    let cat2_outbox_synced: Option<String> = sqlx::query_scalar(
-        "SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-2'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let cat2_outbox_synced: Option<String> =
+        sqlx::query_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-2'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert!(cat2_outbox_synced.is_none());
 }
 
 #[tokio::test]
 async fn sim_run_sql_batch_rolls_back_on_failure() {
-    use baresync_core::drizzle_proxy::{SqlStatement, run_sql_batch};
+    use baresync_core::drizzle_proxy::{run_sql_batch, SqlStatement};
 
     let pool = temp_db().await;
     sqlx::query("CREATE TABLE batch_test (id TEXT PRIMARY KEY, val INTEGER NOT NULL)")

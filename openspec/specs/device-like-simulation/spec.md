@@ -39,17 +39,17 @@ The system SHALL provide JS client tests that simulate Tauri IPC through an inje
 
 ### Requirement: Opt-in smoke scaffolding
 
-The system SHALL provide desktop and Android smoke test entry points that are excluded from normal verification by default.
+The system SHALL provide desktop and Android smoke test entry points that drive the public Baresync fixture app and remain excluded from normal verification by default.
 
-#### Scenario: Desktop smoke skeleton
+#### Scenario: Desktop smoke automation
 
-- **WHEN** a developer runs the desktop smoke command with the required local tooling
-- **THEN** the skeleton SHALL provide a clear entry point for launching a sync smoke flow through Tauri desktop infrastructure
+- **WHEN** a developer runs the desktop smoke command with the required local tooling and fixture app build
+- **THEN** the smoke flow SHALL launch the public fixture app through Tauri desktop infrastructure and validate plugin registration, Tauri IPC, embedded migrations, Drizzle proxy reads, local SQLite persistence, baseline pull, local create, push, and restart behavior
 
-#### Scenario: Android smoke skeleton
+#### Scenario: Android smoke automation
 
-- **WHEN** a developer runs the Android smoke command with Maestro and a prepared app/device
-- **THEN** the skeleton SHALL provide a clear entry point for validating lifecycle and filesystem confidence on Android
+- **WHEN** a developer runs the Android smoke command with Maestro and a prepared fixture app/device
+- **THEN** the smoke flow SHALL launch the public fixture app and validate Android lifecycle and filesystem confidence for SQLite initialization, baseline pull, local persistence, manual sync, and clean app-data reset behavior
 
 ### Requirement: Device simulation documentation
 

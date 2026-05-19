@@ -7,8 +7,15 @@ pub enum SyncError {
     Database(String),
     Encoding(String),
     Migration(String),
-    Http { status: u16, body: String, kind: String },
-    SingleRowTooLarge { table: String, id: String },
+    Http {
+        status: u16,
+        body: String,
+        kind: String,
+    },
+    SingleRowTooLarge {
+        table: String,
+        id: String,
+    },
 }
 
 impl fmt::Display for SyncError {

@@ -41,13 +41,12 @@ pub async fn mark_outbox_synced_by_outbox_ids_tx(
 }
 
 pub async fn purge_synced_outbox(pool: &SqlitePool, older_than: &str) -> Result<u64, SyncError> {
-    let result = sqlx::query(
-        "DELETE FROM sync_outbox WHERE synced_at IS NOT NULL AND synced_at < ?",
-    )
-    .bind(older_than)
-    .execute(pool)
-    .await
-    .map_err(|e| SyncError::Database(format!("Failed to purge synced outbox: {}", e)))?;
+    let result =
+        sqlx::query("DELETE FROM sync_outbox WHERE synced_at IS NOT NULL AND synced_at < ?")
+            .bind(older_than)
+            .execute(pool)
+            .await
+            .map_err(|e| SyncError::Database(format!("Failed to purge synced outbox: {}", e)))?;
     Ok(result.rows_affected())
 }
 

@@ -1,10 +1,7 @@
 use crate::error::{classify_http_error, SyncError};
 use serde_json::Value;
 
-pub async fn send_push_request(
-    api_url: &str,
-    envelope: &Value,
-) -> Result<Value, SyncError> {
+pub async fn send_push_request(api_url: &str, envelope: &Value) -> Result<Value, SyncError> {
     let url = format!("{}/sync/push", api_url.trim_end_matches('/'));
     let client = reqwest::Client::new();
     let response = client

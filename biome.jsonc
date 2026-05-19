@@ -3,9 +3,11 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
     "includes": [
-      "packages/baresync/src/**",
+      "apps/**",
+      "packages/**",
       "*.json",
       "*.jsonc",
+      "!!apps/baresync-fixture/src-tauri/gen",
       "!!**/node_modules",
       "!!**/dist",
       "!!docs/external"

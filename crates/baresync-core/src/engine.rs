@@ -27,7 +27,11 @@ pub struct SyncNowResult {
 }
 
 impl SyncEngine {
-    pub async fn new(pool: SqlitePool, mut config: SyncEngineConfig, tables: SyncContractTables) -> Self {
+    pub async fn new(
+        pool: SqlitePool,
+        mut config: SyncEngineConfig,
+        tables: SyncContractTables,
+    ) -> Self {
         config.client_id = crate::db::get_or_create_client_id(&pool)
             .await
             .unwrap_or_default();
@@ -39,7 +43,12 @@ impl SyncEngine {
     }
 
     pub async fn push(&self) -> Result<PushResult, SyncError> {
-        let local_only: Vec<&str> = self.tables.local_only_columns.iter().map(|s| s.as_str()).collect();
+        let local_only: Vec<&str> = self
+            .tables
+            .local_only_columns
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         push::push(
             &self.pool,
             &self.config,
@@ -147,12 +156,8 @@ impl SyncEngine {
     }
 
     pub async fn run_garbage_collection(&self) -> Result<usize, SyncError> {
-        gc::run_garbage_collection(
-            &self.pool,
-            &self.tables.upsert_order,
-            &self.config.scope_id,
-        )
-        .await
+        gc::run_garbage_collection(&self.pool, &self.tables.upsert_order, &self.config.scope_id)
+            .await
     }
 
     pub fn pool(&self) -> &SqlitePool {

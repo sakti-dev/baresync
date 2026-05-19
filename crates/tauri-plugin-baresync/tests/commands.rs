@@ -90,7 +90,11 @@ fn temp_db_path() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("baresync-command-test-{}-{}.db", std::process::id(), nanos))
+    std::env::temp_dir().join(format!(
+        "baresync-command-test-{}-{}.db",
+        std::process::id(),
+        nanos
+    ))
 }
 
 #[tokio::test]
@@ -100,7 +104,8 @@ async fn db_proxy_commands_use_shared_test_state() {
     let create_rows = run_sql_with_state(
         &harness.state,
         SqlQuery {
-            sql: "CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)".to_string(),
+            sql: "CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)"
+                .to_string(),
             params: vec![],
             method: "run".to_string(),
         },
@@ -114,11 +119,17 @@ async fn db_proxy_commands_use_shared_test_state() {
         vec![
             SqlStatement {
                 sql: "INSERT INTO db_proxy_items (id, name) VALUES (?1, ?2)".to_string(),
-                params: vec![Value::String("item-1".to_string()), Value::String("Coffee".to_string())],
+                params: vec![
+                    Value::String("item-1".to_string()),
+                    Value::String("Coffee".to_string()),
+                ],
             },
             SqlStatement {
                 sql: "INSERT INTO db_proxy_items (id, name) VALUES (?1, ?2)".to_string(),
-                params: vec![Value::String("item-2".to_string()), Value::String("Tea".to_string())],
+                params: vec![
+                    Value::String("item-2".to_string()),
+                    Value::String("Tea".to_string()),
+                ],
             },
         ],
     )
@@ -139,8 +150,20 @@ async fn db_proxy_commands_use_shared_test_state() {
 
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].columns, vec!["id", "name"]);
-    assert_eq!(rows[0].values, vec![Value::String("item-1".to_string()), Value::String("Coffee".to_string())]);
-    assert_eq!(rows[1].values, vec![Value::String("item-2".to_string()), Value::String("Tea".to_string())]);
+    assert_eq!(
+        rows[0].values,
+        vec![
+            Value::String("item-1".to_string()),
+            Value::String("Coffee".to_string())
+        ]
+    );
+    assert_eq!(
+        rows[1].values,
+        vec![
+            Value::String("item-2".to_string()),
+            Value::String("Tea".to_string())
+        ]
+    );
 
     let info = get_db_info_with_state(&harness.state).await.unwrap();
     assert_eq!(info.db_path, harness.state.db_path.display().to_string());
@@ -153,7 +176,9 @@ async fn migration_commands_apply_embedded_migrations_and_report_status() {
 
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    let status = get_migration_status_with_state(&harness.state).await.unwrap();
+    let status = get_migration_status_with_state(&harness.state)
+        .await
+        .unwrap();
     assert_eq!(status.len(), 1);
     assert_eq!(status[0].hash, "0001_test_items");
 
@@ -223,9 +248,10 @@ async fn maintenance_commands_purge_synced_outbox_and_collect_deleted_rows() {
     .await
     .unwrap();
 
-    let purged = purge_synced_outbox_with_state(&harness.state, "2026-05-19T00:00:00.000Z".to_string())
-        .await
-        .unwrap();
+    let purged =
+        purge_synced_outbox_with_state(&harness.state, "2026-05-19T00:00:00.000Z".to_string())
+            .await
+            .unwrap();
     assert_eq!(purged, 1);
 
     sqlx::query(

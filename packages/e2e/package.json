@@ -4,9 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "fixture:backend": "bun run backend/fixture-server.ts",
+    "desktop:sync": "bun x wdio run desktop/webdriverio.conf.ts",
+    "android:sync": "maestro test android/sync-smoke.yaml",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@wdio/cli": "^9.19.2",
+    "@wdio/mocha-framework": "^9.19.2",
+    "@wdio/local-runner": "^9.19.2",
+    "@wdio/spec-reporter": "^9.19.2",
     "@types/node": "^22.15.0",
     "typescript": "5.9.2",
     "vitest": "^4.1.6"

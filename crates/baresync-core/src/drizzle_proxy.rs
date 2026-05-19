@@ -218,7 +218,8 @@ mod tests {
                     params: vec![],
                 },
                 SqlStatement {
-                    sql: "INSERT INTO items (id, name, count) VALUES ('b', 'second', 2)".to_string(),
+                    sql: "INSERT INTO items (id, name, count) VALUES ('b', 'second', 2)"
+                        .to_string(),
                     params: vec![],
                 },
             ],
@@ -268,7 +269,11 @@ mod tests {
             &pool,
             SqlQuery {
                 sql: "INSERT INTO items (id, name, count) VALUES (?1, ?2, ?3)".to_string(),
-                params: vec![Value::String("p1".to_string()), Value::String("param_item".to_string()), Value::Number(42.into())],
+                params: vec![
+                    Value::String("p1".to_string()),
+                    Value::String("param_item".to_string()),
+                    Value::Number(42.into()),
+                ],
                 method: "run".to_string(),
             },
         )

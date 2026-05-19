@@ -2,11 +2,13 @@
   "name": "baresync-workspace",
   "private": true,
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
     "typecheck": "bun x tsc -p packages/baresync/tsconfig.json --noEmit",
-    "typecheck:e2e": "bun x tsc -p packages/e2e/tsconfig.json --noEmit"
+    "typecheck:e2e": "bun x tsc -p packages/e2e/tsconfig.json --noEmit",
+    "typecheck:fixture": "bun x tsc -p apps/baresync-fixture/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",

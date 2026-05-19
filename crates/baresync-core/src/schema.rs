@@ -157,7 +157,9 @@ fn filter_local_columns(row: &Value, local_only_columns: &[&str]) -> Value {
         .iter()
         .filter(|(k, _)| {
             let snake_k = camel_to_snake(k);
-            !camel_local.iter().any(|l| l.as_str() == k.as_str() || l.as_str() == snake_k.as_str())
+            !camel_local
+                .iter()
+                .any(|l| l.as_str() == k.as_str() || l.as_str() == snake_k.as_str())
         })
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
@@ -182,9 +184,17 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
         .bind(scope_id)
         .fetch_all(&mut *conn)
         .await
-        .map_err(|e| format!("Failed to read unsynced outbox changes for {}: {}", table, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to read unsynced outbox changes for {}: {}",
+                table, e
+            )
+        })?;
 
-    let local_only_snake: Vec<String> = local_only_columns.iter().map(|c| camel_to_snake(c)).collect();
+    let local_only_snake: Vec<String> = local_only_columns
+        .iter()
+        .map(|c| camel_to_snake(c))
+        .collect();
     let mut result = Vec::new();
     let mut outbox_ids_by_row_id: HashMap<String, Vec<String>> = HashMap::new();
     for row in &rows {
@@ -250,7 +260,11 @@ pub async fn mark_rows_synced_by_id_tx(
          AND id IN ({})",
         table,
         table,
-        accepted_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",")
+        accepted_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",")
     );
     let mut q = sqlx::query(&query);
     q = q.bind(table);
@@ -258,7 +272,10 @@ pub async fn mark_rows_synced_by_id_tx(
         q = q.bind(id);
     }
     q.execute(&mut *conn).await.map_err(|e| {
-        format!("Failed to mark accepted rows for {} as synced: {}", table, e)
+        format!(
+            "Failed to mark accepted rows for {} as synced: {}",
+            table, e
+        )
     })?;
 
     Ok(())

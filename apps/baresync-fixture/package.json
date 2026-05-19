@@ -1,0 +1,22 @@
+{
+  "name": "@repo/baresync-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@repo/baresync": "workspace:*",
+    "@tauri-apps/api": "^2.0.0",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vite": "^7.0.0"
+  }
+}

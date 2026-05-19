@@ -1,7 +1,8 @@
 use sqlx::{SqliteConnection, SqlitePool};
 
 pub async fn get_last_cursor(pool: &SqlitePool, scope_id: &str) -> Result<String, String> {
-    let query = "SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1 ORDER BY updated_at DESC LIMIT 1";
+    let query =
+        "SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1 ORDER BY updated_at DESC LIMIT 1";
     let value = sqlx::query_scalar::<_, Option<String>>(query)
         .bind(scope_id)
         .fetch_optional(pool)

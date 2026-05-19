@@ -86,20 +86,6 @@ impl Builder {
         let embedded_migrations = self.embedded_migrations;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
-            .invoke_handler(tauri::generate_handler![
-                crate::commands::run_sql,
-                crate::commands::run_sql_batch,
-                crate::commands::get_db_info,
-                crate::commands::run_migrations,
-                crate::commands::get_migration_status,
-                crate::commands::sync_now,
-                crate::commands::sync_push,
-                crate::commands::sync_pull,
-                crate::commands::sync_full_resync,
-                crate::commands::get_sync_local_state,
-                crate::commands::purge_synced_outbox,
-                crate::commands::run_garbage_collection,
-            ])
             .setup(move |app, _api| {
                 let config = config.clone();
                 let pool = tauri::async_runtime::block_on(async {

@@ -94,7 +94,9 @@ pub async fn run_migrations(
     )
     .execute(pool)
     .await
-    .map_err(|e| SyncError::Migration(format!("Failed to create migration tracking table: {}", e)))?;
+    .map_err(|e| {
+        SyncError::Migration(format!("Failed to create migration tracking table: {}", e))
+    })?;
 
     for migration in migrations {
         let applied: bool = sqlx::query_scalar::<_, i64>(
@@ -110,17 +112,18 @@ pub async fn run_migrations(
             continue;
         }
 
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| SyncError::Migration(format!("Failed to begin migration transaction: {}", e)))?;
+        let mut tx = pool.begin().await.map_err(|e| {
+            SyncError::Migration(format!("Failed to begin migration transaction: {}", e))
+        })?;
 
         for statement in migration.sql.split("--> statement-breakpoint") {
             let stmt = statement.trim();
             if !stmt.is_empty() {
                 if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
                     let msg = e.to_string();
-                    if !config.strict && (msg.contains("already exists") || msg.contains("duplicate column")) {
+                    if !config.strict
+                        && (msg.contains("already exists") || msg.contains("duplicate column"))
+                    {
                         continue;
                     }
                     return Err(SyncError::Migration(format!(
@@ -136,11 +139,19 @@ pub async fn run_migrations(
             .bind(chrono_now_ms())
             .execute(&mut *tx)
             .await
-            .map_err(|e| SyncError::Migration(format!("Failed to record migration {}: {}", migration.name, e)))?;
+            .map_err(|e| {
+                SyncError::Migration(format!(
+                    "Failed to record migration {}: {}",
+                    migration.name, e
+                ))
+            })?;
 
-        tx.commit()
-            .await
-            .map_err(|e| SyncError::Migration(format!("Failed to commit migration {}: {}", migration.name, e)))?;
+        tx.commit().await.map_err(|e| {
+            SyncError::Migration(format!(
+                "Failed to commit migration {}: {}",
+                migration.name, e
+            ))
+        })?;
     }
 
     Ok(())
@@ -190,7 +201,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "baresync-migration-test-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("0002_second.sql"), "SELECT 2;").unwrap();
@@ -200,11 +214,17 @@ mod tests {
         let migrations = collect_migration_files(&dir).unwrap();
 
         assert_eq!(
-            migrations.iter().map(|m| m.file_name.as_str()).collect::<Vec<_>>(),
+            migrations
+                .iter()
+                .map(|m| m.file_name.as_str())
+                .collect::<Vec<_>>(),
             vec!["0001_first.sql", "0002_second.sql"]
         );
         assert_eq!(
-            migrations.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+            migrations
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["0001_first", "0002_second"]
         );
 
@@ -224,13 +244,14 @@ mod tests {
                 sql: "CREATE TABLE products (id TEXT PRIMARY KEY, name TEXT NOT NULL, category_id TEXT)",
             },
         ];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+            .await
+            .unwrap();
 
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(count, 2);
     }
 
@@ -262,14 +283,17 @@ mod tests {
             name: "0001_create_table",
             sql: "CREATE TABLE test_table (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations).await.unwrap();
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+            .await
+            .unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+            .await
+            .unwrap();
 
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(count, 1);
     }
 
@@ -280,8 +304,12 @@ mod tests {
             name: "0001_tolerant_exists",
             sql: "CREATE TABLE tolerant_t (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations).await.unwrap();
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+            .await
+            .unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+            .await
+            .unwrap();
 
         let exists: bool = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tolerant_t'",
@@ -305,9 +333,14 @@ mod tests {
             sql: "ALTER TABLE dup_col_t ADD COLUMN name TEXT",
         }];
 
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations_first).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations_first)
+            .await
+            .unwrap();
         let result = run_migrations(&pool, &MigrationConfig::tolerant(), &migrations_dup).await;
-        assert!(result.is_ok(), "Tolerant mode should skip duplicate column error");
+        assert!(
+            result.is_ok(),
+            "Tolerant mode should skip duplicate column error"
+        );
     }
 
     #[tokio::test]
@@ -327,7 +360,9 @@ mod tests {
                 sql: "CREATE TABLE gamma (id TEXT PRIMARY KEY)",
             },
         ];
-        run_migrations(&pool, &MigrationConfig::strict(), &migrations).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::strict(), &migrations)
+            .await
+            .unwrap();
 
         let status = get_migration_status(&pool).await.unwrap();
         assert_eq!(status.len(), 3);
@@ -343,19 +378,22 @@ mod tests {
             name: "0001_fixable",
             sql: "INVALID SQL",
         }];
-        assert!(run_migrations(&pool, &MigrationConfig::tolerant(), &bad).await.is_err());
+        assert!(run_migrations(&pool, &MigrationConfig::tolerant(), &bad)
+            .await
+            .is_err());
 
         let good = vec![EmbeddedMigration {
             name: "0001_fixable",
             sql: "CREATE TABLE fixed_table (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &good).await.unwrap();
+        run_migrations(&pool, &MigrationConfig::tolerant(), &good)
+            .await
+            .unwrap();
 
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(count, 1);
     }
 }

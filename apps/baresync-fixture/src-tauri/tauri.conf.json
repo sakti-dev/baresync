@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Baresync Fixture",
+  "version": "0.1.0",
+  "identifier": "com.baresync.fixture",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Baresync Fixture",
+        "width": 1280,
+        "height": 920,
+        "resizable": true
+      }
+    ]
+  },
+  "plugins": {
+    "baresync": {
+      "api_base_url": "http://127.0.0.1:18080",
+      "encoding": "json",
+      "max_push_bytes": 262144,
+      "max_push_rows": 2000,
+      "db_path": "/tmp/baresync-fixture-local.db",
+      "contract_tables": {
+        "upsert_order": ["categories", "products"],
+        "delete_order": ["products", "categories"],
+        "local_only_columns": ["is_synced"]
+      }
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

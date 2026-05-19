@@ -32,7 +32,9 @@ pub async fn apply_pull_batch_tables_tx(
         let ordered: Vec<&Value> = upsert_order
             .iter()
             .filter_map(|name| {
-                tables.iter().find(|t| t.get("table").and_then(|v| v.as_str()) == Some(name.as_str()))
+                tables
+                    .iter()
+                    .find(|t| t.get("table").and_then(|v| v.as_str()) == Some(name.as_str()))
             })
             .collect();
 
@@ -40,7 +42,9 @@ pub async fn apply_pull_batch_tables_tx(
             let table_name = table_entry
                 .get("table")
                 .and_then(|t| t.as_str())
-                .ok_or_else(|| SyncError::Encoding("Pull table entry missing 'table' field".to_string()))?;
+                .ok_or_else(|| {
+                    SyncError::Encoding("Pull table entry missing 'table' field".to_string())
+                })?;
 
             if let Some(changed_rows) = table_entry.get("changedRows").and_then(|r| r.as_array()) {
                 for row in changed_rows {
@@ -53,7 +57,9 @@ pub async fn apply_pull_batch_tables_tx(
         let delete_ordered: Vec<&Value> = delete_order
             .iter()
             .filter_map(|name| {
-                tables.iter().find(|t| t.get("table").and_then(|v| v.as_str()) == Some(name.as_str()))
+                tables
+                    .iter()
+                    .find(|t| t.get("table").and_then(|v| v.as_str()) == Some(name.as_str()))
             })
             .collect();
 
@@ -61,7 +67,16 @@ pub async fn apply_pull_batch_tables_tx(
             if let Some(deleted_ids) = table_entry.get("deletedIds").and_then(|d| d.as_array()) {
                 for id in deleted_ids {
                     if let Some(id_str) = id.as_str() {
-                        super::push::soft_delete_row(conn, table_entry.get("table").and_then(|t| t.as_str()).unwrap_or(""), id_str, server_time).await?;
+                        super::push::soft_delete_row(
+                            conn,
+                            table_entry
+                                .get("table")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or(""),
+                            id_str,
+                            server_time,
+                        )
+                        .await?;
                         applied += 1;
                     }
                 }
@@ -84,11 +99,9 @@ pub async fn pull(
 ) -> Result<PullResult, SyncError> {
     let cursor_value = match &start_cursor {
         PullStartCursor::Baseline => String::new(),
-        PullStartCursor::Stored => {
-            cursor::get_last_cursor(pool, &config.scope_id)
-                .await
-                .map_err(|e| SyncError::Database(e))?
-        }
+        PullStartCursor::Stored => cursor::get_last_cursor(pool, &config.scope_id)
+            .await
+            .map_err(|e| SyncError::Database(e))?,
     };
 
     let tables_to_pull: &[String] = match table_filter {
@@ -117,7 +130,10 @@ pub async fn pull(
         .unwrap_or("")
         .to_string();
 
-    let tables = response.get("tables").cloned().unwrap_or(Value::Array(Vec::new()));
+    let tables = response
+        .get("tables")
+        .cloned()
+        .unwrap_or(Value::Array(Vec::new()));
 
     let mut tx = pool
         .begin()
@@ -130,7 +146,10 @@ pub async fn pull(
         delete_order,
         &tables,
         &server_time,
-        &local_only_columns.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        &local_only_columns
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>(),
     )
     .await?;
 
