@@ -97,3 +97,48 @@ pub fn insert_category_sql() -> &'static str {
     VALUES (?1, ?2, ?3, 0, NULL, 0, ?4, ?5);
     "
 }
+
+pub fn baseline_pull_response() -> Value {
+    pull_response(true, true, None)
+}
+
+pub fn soft_delete_pull_response() -> Value {
+    pull_response(false, true, Some("prod-1"))
+}
+
+pub fn push_rejection_response() -> Value {
+    json!({
+        "pushResponse": {
+            "serverTime": "2026-05-19T12:00:02.000Z",
+            "tables": [{
+                "table": "categories",
+                "acceptedCreatedIds": [],
+                "acceptedUpdatedIds": [],
+                "acceptedDeletedIds": [],
+                "rejected": [{ "id": "cat-1", "reason": "server_newer" }]
+            }, {
+                "table": "products",
+                "acceptedCreatedIds": [],
+                "acceptedUpdatedIds": ["prod-1"],
+                "acceptedDeletedIds": [],
+                "rejected": []
+            }]
+        },
+        "reconciliationPull": {
+            "cursor": "sync:1716120002000:categories:cat-1",
+            "hasMore": false,
+            "serverTime": "2026-05-19T12:00:02.000Z",
+            "tables": [{
+                "table": "categories",
+                "changedRows": [{
+                    "id": "cat-1",
+                    "merchantId": "merchant-1",
+                    "name": "Drinks Server Version",
+                    "createdAt": "2026-05-17T00:00:00.000Z",
+                    "updatedAt": "2026-05-19T12:00:02.000Z"
+                }],
+                "deletedIds": []
+            }]
+        }
+    })
+}

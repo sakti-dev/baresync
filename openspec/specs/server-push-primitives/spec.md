@@ -23,6 +23,30 @@ The `packages/baresync/src/server/service.ts` module SHALL export `parseSyncCurs
 - **WHEN** a cursor is formatted and then parsed
 - **THEN** the original values SHALL be recovered
 
+### Requirement: Push change ordering helper
+
+The `packages/baresync/src/server/service.ts` module SHALL export `orderPushChanges(input)` that accepts `changes` and `order`, and returns per-table changes sorted in upsert order while preserving each table's `changedRows` and `deletedIds`.
+
+#### Scenario: Mixed changedRows and deletedIds remain attached to one table
+
+- **WHEN** `orderPushChanges` receives a table entry that contains both `changedRows` and `deletedIds`
+- **THEN** the table SHALL appear once in the ordered result
+- **AND** both `changedRows` and `deletedIds` SHALL be preserved
+
+### Requirement: Push envelope validation
+
+The `packages/baresync/src/server/service.ts` module SHALL export `validatePushEnvelope(input, limits)` that rejects push bodies exceeding the configured byte or row limits and accepts delete-only bodies that remain within limits.
+
+#### Scenario: Oversized push body is rejected
+
+- **WHEN** `validatePushEnvelope` is called with a body whose serialized size exceeds `maxBytes`
+- **THEN** an error SHALL be thrown indicating the payload is too large
+
+#### Scenario: Delete-only push passes validation
+
+- **WHEN** `validatePushEnvelope` is called with a body containing only `deletedIds` and the body remains within limits
+- **THEN** no error SHALL be thrown
+
 ### Requirement: Sync error mapping helper
 
 The `packages/baresync/src/server/service.ts` module SHALL export `mapSyncError(error)` that maps sync-related errors to stable error codes.

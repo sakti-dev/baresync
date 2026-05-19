@@ -12,12 +12,12 @@ describe("createTauriDrizzleDatabase", () => {
   test("routes queries through custom invoke", async () => {
     const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
 
-    const mockInvoke: InvokeFn = async (cmd, args) => {
+    const mockInvoke: InvokeFn = (cmd, args) => {
       calls.push({ cmd, args: args ?? {} });
       if (cmd === "run_sql") {
-        return [];
+        return Promise.resolve([]);
       }
-      return { last_insert_id: 0, rows_affected: 0 };
+      return Promise.resolve({ last_insert_id: 0, rows_affected: 0 });
     };
 
     const db = createTauriDrizzleDatabase({
@@ -35,12 +35,12 @@ describe("createTauriDrizzleDatabase", () => {
   test("routes batch through custom invoke", async () => {
     const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
 
-    const mockInvoke: InvokeFn = async (cmd, args) => {
+    const mockInvoke: InvokeFn = (cmd, args) => {
       calls.push({ cmd, args: args ?? {} });
       if (cmd === "run_sql") {
-        return [];
+        return Promise.resolve([]);
       }
-      return { last_insert_id: 1, rows_affected: 1 };
+      return Promise.resolve({ last_insert_id: 1, rows_affected: 1 });
     };
 
     const db = createTauriDrizzleDatabase({
@@ -58,9 +58,9 @@ describe("createTauriDrizzleDatabase", () => {
   test("uses custom command names", async () => {
     const calls: Array<{ cmd: string }> = [];
 
-    const mockInvoke: InvokeFn = async (cmd) => {
+    const mockInvoke: InvokeFn = (cmd) => {
       calls.push({ cmd });
-      return [];
+      return Promise.resolve([]);
     };
 
     const db = createTauriDrizzleDatabase({

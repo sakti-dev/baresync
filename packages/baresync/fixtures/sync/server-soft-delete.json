@@ -1,0 +1,17 @@
+{
+  "cursor": "sync:1716120001000:products:prod-1",
+  "hasMore": false,
+  "serverTime": "2026-05-19T12:00:01.000Z",
+  "tables": [
+    {
+      "table": "categories",
+      "changedRows": [],
+      "deletedIds": []
+    },
+    {
+      "table": "products",
+      "changedRows": [],
+      "deletedIds": ["prod-1"]
+    }
+  ]
+}

@@ -68,34 +68,38 @@ pub fn sqlx_value_to_json(row: &SqliteRow, idx: usize) -> Value {
 
     match type_name {
         "INTEGER" => {
-            if let Ok(v) = row.try_get::<i64, _>(idx) {
+            if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(idx) {
                 Value::from(v)
-            } else if let Ok(v) = row.try_get::<f64, _>(idx) {
+            } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(idx) {
                 Value::from(v)
-            } else if let Ok(v) = row.try_get::<String, _>(idx) {
+            } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(idx) {
                 Value::String(v)
             } else {
                 Value::Null
             }
         }
         "REAL" => row
-            .try_get::<f64, _>(idx)
-            .map(Value::from)
+            .try_get::<Option<f64>, _>(idx)
+            .map(|v| v.map(Value::from).unwrap_or(Value::Null))
             .unwrap_or(Value::Null),
         "TEXT" => row
-            .try_get::<String, _>(idx)
-            .map(Value::String)
+            .try_get::<Option<String>, _>(idx)
+            .map(|v| v.map(Value::String).unwrap_or(Value::Null))
             .unwrap_or(Value::Null),
         "BLOB" => row
-            .try_get::<Vec<u8>, _>(idx)
-            .map(|bytes| Value::String(format!("{}B", bytes.len())))
+            .try_get::<Option<Vec<u8>>, _>(idx)
+            .map(|bytes| {
+                bytes
+                    .map(|bytes| Value::String(format!("{}B", bytes.len())))
+                    .unwrap_or(Value::Null)
+            })
             .unwrap_or(Value::Null),
         _ => {
-            if let Ok(v) = row.try_get::<i64, _>(idx) {
+            if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(idx) {
                 Value::from(v)
-            } else if let Ok(v) = row.try_get::<f64, _>(idx) {
+            } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(idx) {
                 Value::from(v)
-            } else if let Ok(v) = row.try_get::<String, _>(idx) {
+            } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(idx) {
                 Value::String(v)
             } else {
                 Value::Null

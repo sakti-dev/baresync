@@ -1,0 +1,46 @@
+{
+  "pushResponse": {
+    "serverTime": "2026-05-19T12:00:02.000Z",
+    "tables": [
+      {
+        "table": "categories",
+        "acceptedCreatedIds": [],
+        "acceptedUpdatedIds": [],
+        "acceptedDeletedIds": [],
+        "rejected": [
+          {
+            "id": "cat-1",
+            "reason": "server_newer"
+          }
+        ]
+      },
+      {
+        "table": "products",
+        "acceptedCreatedIds": [],
+        "acceptedUpdatedIds": ["prod-1"],
+        "acceptedDeletedIds": [],
+        "rejected": []
+      }
+    ]
+  },
+  "reconciliationPull": {
+    "cursor": "sync:1716120002000:categories:cat-1",
+    "hasMore": false,
+    "serverTime": "2026-05-19T12:00:02.000Z",
+    "tables": [
+      {
+        "table": "categories",
+        "changedRows": [
+          {
+            "id": "cat-1",
+            "merchantId": "merchant-1",
+            "name": "Drinks Server Version",
+            "createdAt": "2026-05-17T00:00:00.000Z",
+            "updatedAt": "2026-05-19T12:00:02.000Z"
+          }
+        ],
+        "deletedIds": []
+      }
+    ]
+  }
+}

@@ -74,3 +74,8 @@ The `packages/baresync/src/server/service.ts` module SHALL export `countPushRows
 
 - **WHEN** `countPushRows` is called with a body containing two tables with 3 changedRows + 2 deletedIds and 5 changedRows + 1 deletedIds
 - **THEN** the result SHALL be 11
+
+#### Scenario: Delete-only body counts deletedIds
+
+- **WHEN** `countPushRows` is called with a body that has one table containing only `deletedIds`
+- **THEN** the result SHALL equal the number of deleted IDs

@@ -102,3 +102,9 @@ Row data SHALL be converted from camelCase to snake_case for local SQLite column
 
 - **WHEN** a row is upserted from a pull response
 - **THEN** the `is_synced` column is set to `1` regardless of whether it was in the response
+
+#### Scenario: Same table can include upserts and soft-deletes
+
+- **WHEN** a pull response includes both `changedRows` and `deletedIds` for the same table
+- **THEN** the changed rows SHALL be upserted
+- **AND** the deleted rows SHALL be soft-deleted

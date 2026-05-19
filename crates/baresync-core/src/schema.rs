@@ -1,3 +1,4 @@
+use crate::db::sqlx_value_to_json as db_sqlx_value_to_json;
 use serde_json::Value;
 use sqlx::{Column, Row, SqliteConnection};
 use std::collections::HashMap;
@@ -204,7 +205,7 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
                 continue;
             }
             let val = match row.try_get_raw(idx) {
-                Ok(_) => sqlx_value_to_json(row, idx),
+                Ok(_) => db_sqlx_value_to_json(row, idx),
                 Err(_) => Value::Null,
             };
             if name == "id" && !val.is_null() {
@@ -261,21 +262,6 @@ pub async fn mark_rows_synced_by_id_tx(
     })?;
 
     Ok(())
-}
-
-fn sqlx_value_to_json(row: &sqlx::sqlite::SqliteRow, idx: usize) -> Value {
-    use sqlx::Row;
-    if let Ok(val) = row.try_get::<String, _>(idx) {
-        Value::String(val)
-    } else if let Ok(val) = row.try_get::<i64, _>(idx) {
-        Value::Number(val.into())
-    } else if let Ok(val) = row.try_get::<f64, _>(idx) {
-        Value::from(val)
-    } else if let Ok(val) = row.try_get::<bool, _>(idx) {
-        Value::Bool(val)
-    } else {
-        Value::Null
-    }
 }
 
 #[cfg(test)]
