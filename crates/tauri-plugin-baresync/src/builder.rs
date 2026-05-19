@@ -1,5 +1,6 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::SyncContractTables;
+use baresync_core::migrations::EmbeddedMigration;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{
@@ -17,6 +18,7 @@ pub struct Builder {
     max_push_rows: Option<usize>,
     db_path: Option<String>,
     contract_tables: Option<SyncContractTables>,
+    embedded_migrations: Vec<EmbeddedMigration>,
 }
 
 impl Builder {
@@ -28,6 +30,7 @@ impl Builder {
             max_push_rows: None,
             db_path: None,
             contract_tables: None,
+            embedded_migrations: Vec::new(),
         }
     }
 
@@ -61,6 +64,11 @@ impl Builder {
         self
     }
 
+    pub fn migrations(mut self, migrations: Vec<EmbeddedMigration>) -> Self {
+        self.embedded_migrations = migrations;
+        self
+    }
+
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, PluginConfig> {
         let config = PluginConfig {
             api_base_url: self.api_base_url.unwrap_or_default(),
@@ -75,11 +83,15 @@ impl Builder {
             }),
         };
 
+        let embedded_migrations = self.embedded_migrations;
+
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
             .invoke_handler(tauri::generate_handler![
                 crate::commands::run_sql,
                 crate::commands::run_sql_batch,
                 crate::commands::get_db_info,
+                crate::commands::run_migrations,
+                crate::commands::get_migration_status,
                 crate::commands::sync_now,
                 crate::commands::sync_push,
                 crate::commands::sync_pull,
@@ -91,9 +103,8 @@ impl Builder {
             .setup(move |app, _api| {
                 let config = config.clone();
                 let pool = tauri::async_runtime::block_on(async {
-                    baresync_core::db::LocalDatabase::connect(&config.db_path)
+                    baresync_core::db::connect_db(&config.db_path)
                         .await
-                        .map(|db| db.pool().clone())
                         .map_err(|e| -> Box<dyn std::error::Error> {
                             format!("Failed to connect to database: {}", e).into()
                         })
@@ -112,6 +123,7 @@ impl Builder {
                     sync_config,
                     contract_tables: config.contract_tables.clone(),
                     db_path: PathBuf::from(&config.db_path),
+                    embedded_migrations: Arc::new(embedded_migrations),
                 });
 
                 Ok(())

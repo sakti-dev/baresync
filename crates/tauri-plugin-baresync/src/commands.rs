@@ -1,5 +1,6 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::{SyncContractTables, SyncEngine, SyncNowResult};
+use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig, MigrationRecord};
 use baresync_core::state::LocalSyncState;
 
 use baresync_core::drizzle_proxy::{self, BatchResult, SqlQuery, SqlStatement};
@@ -16,6 +17,7 @@ pub struct PluginState {
     pub sync_config: SyncEngineConfig,
     pub contract_tables: SyncContractTables,
     pub db_path: PathBuf,
+    pub embedded_migrations: Arc<Vec<EmbeddedMigration>>,
 }
 
 fn make_engine(
@@ -47,8 +49,23 @@ pub async fn run_sql_batch(
 }
 
 #[command]
-pub async fn get_db_info(state: State<'_, PluginState>) -> Result<drizzle_proxy::DbInfo, String> {
-    drizzle_proxy::get_db_info(&state.db_path).await.map_err(|e| e.to_string())
+pub async fn get_db_info(state: State<'_, PluginState>) -> Result<baresync_core::db::DbInfo, String> {
+    baresync_core::db::get_db_info(&state.db_path).await.map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String> {
+    let config = MigrationConfig::strict();
+    migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn get_migration_status(state: State<'_, PluginState>) -> Result<Vec<MigrationRecord>, String> {
+    migrations::get_migration_status(&state.pool)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[command]
@@ -128,5 +145,7 @@ mod tests {
         let _ = super::run_sql;
         let _ = super::run_sql_batch;
         let _ = super::get_db_info;
+        let _ = super::run_migrations;
+        let _ = super::get_migration_status;
     }
 }

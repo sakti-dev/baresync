@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{Column, Row, SqlitePool};
-use std::path::Path;
-use tokio::fs;
 
+use crate::db;
 use crate::error::SyncError;
 
 #[derive(Debug, Deserialize)]
@@ -29,13 +28,6 @@ pub struct SqlStatement {
 pub struct BatchResult {
     pub last_insert_id: i64,
     pub rows_affected: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DbInfo {
-    pub db_path: String,
-    pub size_bytes: u64,
-    pub size_formatted: String,
 }
 
 pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError> {
@@ -67,7 +59,7 @@ pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, 
 
             let values = (0..row.len())
                 .map(|i| match row.try_get_raw(i) {
-                    Ok(_) => sqlx_value_to_json(row, i),
+                    Ok(_) => db::sqlx_value_to_json(row, i),
                     Err(_) => Value::Null,
                 })
                 .collect::<Vec<_>>();
@@ -112,46 +104,6 @@ pub async fn run_sql_batch(
         last_insert_id,
         rows_affected: total_rows_affected,
     })
-}
-
-pub async fn get_db_info(path: impl AsRef<Path>) -> Result<DbInfo, SyncError> {
-    let path = path.as_ref();
-    let metadata = fs::metadata(path)
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to get DB file info: {}", e)))?;
-    let size = metadata.len();
-    Ok(DbInfo {
-        db_path: path.display().to_string(),
-        size_bytes: size,
-        size_formatted: format_file_size(size),
-    })
-}
-
-fn format_file_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
-fn sqlx_value_to_json(row: &sqlx::sqlite::SqliteRow, idx: usize) -> Value {
-    use sqlx::Row;
-    if let Ok(val) = row.try_get::<String, _>(idx) {
-        Value::String(val)
-    } else if let Ok(val) = row.try_get::<i64, _>(idx) {
-        Value::Number(val.into())
-    } else if let Ok(val) = row.try_get::<f64, _>(idx) {
-        Value::from(val)
-    } else if let Ok(val) = row.try_get::<bool, _>(idx) {
-        Value::Bool(val)
-    } else {
-        Value::Null
-    }
 }
 
 fn bind_value<'q>(
@@ -307,5 +259,36 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 0, "Valid insert should have been rolled back");
+    }
+
+    #[tokio::test]
+    async fn run_sql_parameterized_query_binds_values() {
+        let pool = test_pool_with_table().await;
+        run_sql(
+            &pool,
+            SqlQuery {
+                sql: "INSERT INTO items (id, name, count) VALUES (?1, ?2, ?3)".to_string(),
+                params: vec![Value::String("p1".to_string()), Value::String("param_item".to_string()), Value::Number(42.into())],
+                method: "run".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        let rows = run_sql(
+            &pool,
+            SqlQuery {
+                sql: "SELECT id, name, count FROM items WHERE id = ?1".to_string(),
+                params: vec![Value::String("p1".to_string())],
+                method: "all".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].values[0], Value::String("p1".to_string()));
+        assert_eq!(rows[0].values[1], Value::String("param_item".to_string()));
+        assert_eq!(rows[0].values[2], Value::Number(42.into()));
     }
 }
