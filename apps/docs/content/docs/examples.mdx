@@ -8,6 +8,11 @@ These examples mirror the public package surface.
 
 For a complete fullstack starter, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory).
 
+The inventory server example includes two repository paths for comparison:
+
+- `apps/server/src/db/primitive/sync-repository.ts` shows the lower-level sync plumbing.
+- `apps/server/src/db/drizzle-helper/sync-repository.ts` shows the Drizzle helper-backed version that the app runs by default.
+
 ## Local synced schema
 
 Use `localSyncColumns()` for local SQLite tables that the plugin will reconcile.
@@ -53,8 +58,12 @@ export const apiProducts = sqliteTable("products", {
 
 ## Generate from a config
 
+### JSON config
+
+Use `defineSyncConfig` when you want the standard JSON generation path.
+
 ```ts title="sync.config.ts"
-import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
+import { defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
@@ -68,6 +77,16 @@ export const syncGeneratorConfig = defineSyncConfig({
     products: { scope: "merchant_id" },
   },
 });
+```
+
+### Protobuf config
+
+Use `defineProtobufSyncConfig` when you want protobuf workspace artifacts in addition to the JSON outputs.
+
+```ts title="sync.config.ts"
+import { defineProtobufSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import * as localSyncedSchema from "./src/local-synced-schema";
 
 export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
   apiSyncedSchema,
@@ -88,14 +107,16 @@ export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
 });
 ```
 
+Export `protobufSyncGeneratorConfig` from the same `sync.config.ts` and let `baresync generate` pick it up automatically.
+
+Run these commands from the directory that contains `sync.config.ts`:
+
 ```bash
 bunx baresync doctor
 bunx baresync generate
 ```
 
-Run those commands from the directory that contains `sync.config.ts`.
-
-Generation emits table order and manifest files. For protobuf workspaces, export `protobufSyncGeneratorConfig` from the same `sync.config.ts` and let `baresync generate` pick it up automatically.
+Generation emits table order and manifest files in `./generated`. Protobuf workspaces also emit the protobuf runtime and mapping artifacts under `./generated/protobuf`.
 
 ## Drizzle through Tauri IPC
 

@@ -6,7 +6,7 @@ icon: DatabaseZap
 
 Baresync is an extracted sync runtime for Tauri apps that keep their working data in local SQLite. It connects four pieces that usually become app-specific glue: a Drizzle schema, a generated sync contract, a Rust sync engine behind a Tauri plugin, and server handlers owned by your backend.
 
-If you want the canonical copyable starter, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory).
+If you want the copyable starter with both implementation styles side by side, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory). It shows the primitive repository path and the Drizzle helper-backed path in the same app so you can compare the tradeoffs directly.
 
 The TypeScript package is published as `baresync`, with Rust crates published as `baresync-core` and `tauri-plugin-baresync`.
 

@@ -48,6 +48,10 @@
       "types": "./dist/server/index.d.ts",
       "default": "./dist/server/index.js"
     },
+    "./server/drizzle": {
+      "types": "./dist/server/drizzle.d.ts",
+      "default": "./dist/server/drizzle.js"
+    },
     "./tauri": {
       "types": "./dist/tauri/index.d.ts",
       "default": "./dist/tauri/index.js"

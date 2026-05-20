@@ -12,7 +12,7 @@ import {
   validateSyncTable,
 } from "baresync/server";
 import { eq } from "drizzle-orm";
-import { getSeedCursor } from "./seed";
+import { getSeedCursor } from "../seed";
 import {
   asRow,
   buildItemRow,
@@ -178,7 +178,7 @@ async function writePushChange(
   }
 }
 
-export function createInventoryRepository(db: InventoryDb) {
+export function createInventorySyncRepository(db: InventoryDb) {
   return {
     async applyPushChanges(input: {
       changes: readonly SyncPushChange[];

@@ -8,13 +8,13 @@ import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { Hono } from "hono";
 import { createInventoryDatabase } from "./db/client";
 import {
-  createInventoryRepository,
+  createInventorySyncRepository,
   type InventoryScope,
-} from "./db/repository";
+} from "./db/drizzle-helper/sync-repository";
 
 const app = new Hono();
 const { db, dbPath } = await createInventoryDatabase();
-const repository = createInventoryRepository(db);
+const repository = createInventorySyncRepository(db);
 const idempotencyDb = db as unknown as SqliteRemoteDatabase;
 
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
