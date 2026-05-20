@@ -1,4 +1,4 @@
-import { SYNC_UPSERT_ORDER } from "@example/inventory-sync-contract";
+import { SYNC_UPSERT_ORDER } from "@example/inventory-sync-contract/generated/sync-table-order";
 import {
   createSyncPullHandler,
   createSyncPushHandler,

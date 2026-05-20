@@ -1,11 +1,15 @@
 import {
+  items,
+  locations,
+  stockCounts,
+} from "@example/inventory-sync-contract/api-synced-schema";
+import {
   formatSyncCursor,
   parseSyncCursor,
   type SyncPushChange,
 } from "baresync/server";
 import { and, desc, eq, gt, type InferSelectModel } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { items, locations, stockCounts } from "./schema";
 import { getSeedCursor, seedInventoryDatabase } from "./seed";
 
 export interface InventoryScope {

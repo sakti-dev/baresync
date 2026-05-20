@@ -3,7 +3,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/schema.ts",
+    ".": "./src/constants.ts",
+    "./constants": "./src/constants.ts",
+    "./api-schema": "./src/api-schema.ts",
+    "./api-synced-schema": "./src/api-synced-schema.ts",
+    "./local-schema": "./src/local-schema.ts",
+    "./local-synced-schema": "./src/local-synced-schema.ts",
     "./generated/sync-table-order": "./generated/sync-table-order.ts",
     "./generated/sync-contract": "./generated/sync-contract.json",
     "./generated/manifest": "./generated/sync-contract.manifest.json"

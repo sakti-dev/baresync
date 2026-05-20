@@ -1,7 +1,4 @@
 import { generateSyncArtifacts } from "baresync/generator";
-import { syncContract } from "./src/schema";
+import { syncGeneratorConfig } from "./sync.config";
 
-generateSyncArtifacts({
-  contract: syncContract,
-  outputDir: "./generated",
-});
+generateSyncArtifacts(syncGeneratorConfig);

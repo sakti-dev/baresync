@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 import { defineConfig } from "drizzle-kit";
 
 const databasePath =
@@ -9,5 +11,5 @@ export default defineConfig({
   },
   dialect: "sqlite",
   out: "./drizzle",
-  schema: "./src/db/schema.ts",
+  schema: "../../packages/sync-contract/src/api-schema.ts",
 });

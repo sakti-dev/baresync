@@ -1,5 +1,9 @@
+import {
+  items,
+  locations,
+  stockCounts,
+} from "@example/inventory-sync-contract/api-synced-schema";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { items, locations, stockCounts } from "./schema";
 
 const SEED_TIME = "2026-05-20T00:00:00.000Z";
 const SEED_SYNC_UPDATED_AT = Date.parse(SEED_TIME);

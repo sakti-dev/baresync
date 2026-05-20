@@ -1,5 +1,5 @@
 import "./styles.css";
-import { INVENTORY_SCOPE_ID } from "@example/inventory-sync-contract";
+import { INVENTORY_SCOPE_ID } from "@example/inventory-sync-contract/constants";
 import { invoke } from "@tauri-apps/api/core";
 import { createSyncClient } from "baresync/tauri";
 
