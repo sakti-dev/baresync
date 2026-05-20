@@ -8,3 +8,4 @@ node_modules
 target
 *.lock
 !.flake.lock
+dist
