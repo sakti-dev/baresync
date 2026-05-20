@@ -4,7 +4,7 @@ SQLite-first sync infrastructure for Tauri apps.
 
 Baresync is an opinionated sync stack for applications that keep working data in local SQLite and reconcile it with an app-owned backend. It combines Drizzle schema helpers, a generated sync contract, a Rust sync engine, a Tauri plugin, and server helpers for push, pull, and status routes.
 
-The project is currently pre-release and private-package oriented inside this repository. The public package name is intended to be `baresync`; workspace examples currently use `@repo/baresync`.
+The project is currently pre-release and private-package oriented inside this repository. The public package name is `baresync`; the workspace still uses `@repo/baresync` internally during development.
 
 ## Why Baresync Exists
 
@@ -84,7 +84,7 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 
 ## Quick Start
 
-The public install path is not published yet. In this repository, use the workspace package. A typical consumer project can start as a Bun monorepo with a Tauri app and an Elysia server:
+The public install path is now the `baresync` npm package and the `tauri-plugin-baresync` Rust crate. In this repository, the workspace package still drives development, but a typical consumer project can start as a Bun monorepo with a Tauri app and an Elysia server:
 
 ```txt
 fieldkit/
@@ -111,11 +111,7 @@ Define synced tables in the shared contract package:
 
 ```ts title="packages/sync-contract/src/schema.ts"
 // packages/sync-contract/src/schema.ts
-import {
-  localSyncRowState,
-  syncedTable,
-  syncSchema,
-} from "@repo/baresync/schema";
+import { localSyncRowState, syncedTable, syncSchema } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const categories = sqliteTable("categories", {
@@ -164,8 +160,8 @@ Expose the schema and generated artifacts from the shared package:
 Run diagnostics and generation from the monorepo root. The generated files land in `packages/sync-contract/generated`.
 
 ```bash
-bun packages/baresync/src/cli.ts doctor ./packages/sync-contract/sync.config.ts
-bun packages/baresync/src/cli.ts generate ./packages/sync-contract/sync.config.ts --output ./packages/sync-contract/generated
+bunx baresync doctor ./packages/sync-contract/sync.config.ts
+bunx baresync generate ./packages/sync-contract/sync.config.ts --output ./packages/sync-contract/generated
 ```
 
 If you use protobuf, add a protobuf workspace config. This mirrors the fixture config in `tests/e2e/sync-proto.config.ts`.
@@ -174,7 +170,7 @@ If you use protobuf, add a protobuf workspace config. This mirrors the fixture c
 // packages/sync-contract/sync-proto.config.ts
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ProtobufWorkspaceConfig } from "@repo/baresync/generator";
+import type { ProtobufWorkspaceConfig } from "baresync/generator";
 import { syncContract } from "./src/schema";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
@@ -208,7 +204,7 @@ Then create a small runner so generation and drift checks use the same config.
 
 ```ts title="packages/sync-contract/generate-protobuf.ts"
 // packages/sync-contract/generate-protobuf.ts
-import { generateProtobufWorkspaceArtifacts } from "@repo/baresync/generator";
+import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
 import protobufWorkspaceConfig from "./sync-proto.config";
 
 generateProtobufWorkspaceArtifacts(protobufWorkspaceConfig);
@@ -224,7 +220,7 @@ Use the Tauri client from the app created with `bun create tauri-app`:
 
 ```ts title="apps/app/src/sync.ts"
 // apps/app/src/sync.ts
-import { createSyncClient } from "@repo/baresync/tauri";
+import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const sync = createSyncClient({
@@ -246,7 +242,7 @@ import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
-} from "@repo/baresync/server";
+} from "baresync/server";
 import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-order";
 import { serverDb } from "./server-db";
 
@@ -353,6 +349,8 @@ bun x ultracite check
 bun run typecheck
 cd apps/web && bun run types:check && bun run build
 ```
+
+Publishing to npm and crates.io remains a manual maintainer action after the build and package verification steps pass.
 
 Additional verification lives in the fixture and E2E workspaces. Before changing desktop, Android, Tauri, fixture app, fixture backend, or smoke automation, read `docs/knowledge/E2E-TESTING-RUNBOOK.md`.
 

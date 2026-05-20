@@ -1,4 +1,6 @@
+#!/usr/bin/env node
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { runDiagnostics } from "./generator/diagnostics";
 import { generateSyncArtifacts, SyncDiagnosticError } from "./generator/index";
 import type { SyncContract } from "./schema/contract";
@@ -146,6 +148,7 @@ export function runCli(args: string[]): void {
   printUsage();
 }
 
-if (process.argv[1]?.endsWith("cli.ts")) {
+const currentFile = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
   runCli(process.argv.slice(2));
 }

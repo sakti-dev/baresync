@@ -2,7 +2,7 @@ import {
   decodeProtobufBody,
   encodeProtobufBody,
   type SyncProtobufSchema,
-} from "../../../../tests/e2e/generated/protobuf/runtime.generated";
+} from "../generator/protobuf-runtime.js";
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(

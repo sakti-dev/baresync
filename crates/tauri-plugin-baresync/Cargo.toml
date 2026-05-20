@@ -2,10 +2,16 @@
 name = "tauri-plugin-baresync"
 version = "0.1.0"
 edition = "2021"
+description = "Tauri plugin wrapper for Baresync"
+license = "MIT"
+repository = "https://github.com/sakti-dev/baresync.git"
+readme = "README.md"
+keywords = ["tauri", "sqlite", "sync"]
+categories = ["api-bindings", "database"]
 
 [dependencies]
 tauri = { version = "2", features = [] }
-baresync-core = { path = "../baresync-core" }
+baresync-core = { version = "0.1.0", path = "../baresync-core" }
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
 serde = { version = "1", features = ["derive"] }
 

@@ -2,6 +2,12 @@
 name = "baresync-core"
 version = "0.1.0"
 edition = "2021"
+description = "SQLite-first sync runtime for Tauri apps"
+license = "MIT"
+repository = "https://github.com/sakti-dev/baresync.git"
+readme = "README.md"
+keywords = ["sqlite", "sync", "tauri", "offline-first"]
+categories = ["database", "asynchronous"]
 
 [dependencies]
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }

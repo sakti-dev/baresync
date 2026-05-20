@@ -1,4 +1,9 @@
-export type ProtobufScalarType = "bool" | "bytes" | "double" | "int64" | "string";
+export type ProtobufScalarType =
+  | "bool"
+  | "bytes"
+  | "double"
+  | "int64"
+  | "string";
 
 export interface ProtobufFieldDescriptor {
   fieldNumber: number;

@@ -28,18 +28,15 @@ export interface ProtobufWorkspaceConfig {
 }
 
 const NON_ALPHANUMERIC_RE = /[^a-zA-Z0-9]/;
-const REPO_ROOT = path.resolve(
+const PACKAGE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../"
+  "../.."
 );
 const RUNTIME_TEMPLATE_PATH = path.join(
-  REPO_ROOT,
-  "packages",
-  "baresync",
+  PACKAGE_ROOT,
   "src",
   "generator",
-  "templates",
-  "protobuf-runtime.template"
+  "protobuf-runtime.ts"
 );
 
 function toPascalCase(input: string): string {
@@ -111,16 +108,14 @@ function writeFile(filePath: string, content: string): void {
 }
 
 function formatWorkspaceFiles(pathsToFormat: string[]): void {
+  const biomeConfig = findBiomeConfig(process.cwd());
+  if (!biomeConfig) {
+    return;
+  }
+
   const result = spawnSync(
     "bun",
-    [
-      "x",
-      "ultracite",
-      "fix",
-      "--config-path",
-      path.join(REPO_ROOT, "biome.jsonc"),
-      ...pathsToFormat,
-    ],
+    ["x", "ultracite", "fix", "--config-path", biomeConfig, ...pathsToFormat],
     {
       stdio: "inherit",
     }
@@ -128,6 +123,26 @@ function formatWorkspaceFiles(pathsToFormat: string[]): void {
 
   if (result.status !== 0) {
     throw new Error("Failed to format generated protobuf workspace files");
+  }
+}
+
+function findBiomeConfig(startDir: string): string | null {
+  let currentDir = startDir;
+
+  while (true) {
+    for (const candidateName of ["biome.jsonc", "biome.json", "biome.json5"]) {
+      const candidatePath = path.join(currentDir, candidateName);
+      if (fs.existsSync(candidatePath)) {
+        return candidatePath;
+      }
+    }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null;
+    }
+
+    currentDir = parentDir;
   }
 }
 
