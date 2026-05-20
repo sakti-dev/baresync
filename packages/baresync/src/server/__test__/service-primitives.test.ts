@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { ConflictRequestError } from "../idempotency";
 import {
+  buildPullTables,
+  changedTableNames,
   countPushRows,
+  formatLatestSyncCursor,
   formatSyncCursor,
   mapSyncError,
   orderDeleteChanges,
   parseSyncCursor,
+  parseSyncCursorTimestamp,
+  pickLatestSyncCursorRow,
   SyncPayloadTooLargeError,
+  splitSyncRows,
+  validateSyncTable,
 } from "../service";
 
 describe("parseSyncCursor", () => {
@@ -44,6 +51,169 @@ describe("formatSyncCursor", () => {
       rowId: "abc-123",
     });
     expect(result).toBe("sync:1234567890:users:abc-123");
+  });
+});
+
+describe("parseSyncCursorTimestamp", () => {
+  it("returns zero for empty cursor", () => {
+    expect(parseSyncCursorTimestamp("")).toBe(0);
+  });
+
+  it("returns the timestamp from a valid cursor", () => {
+    expect(parseSyncCursorTimestamp("sync:1700000000:items:item-1")).toBe(
+      1_700_000_000
+    );
+  });
+
+  it("throws for invalid cursor format", () => {
+    expect(() => parseSyncCursorTimestamp("invalid")).toThrow(
+      "Invalid sync cursor format"
+    );
+  });
+});
+
+describe("splitSyncRows", () => {
+  it("splits changed and deleted rows", () => {
+    const result = splitSyncRows([
+      {
+        deletedAt: null,
+        id: "item-1",
+        name: "Widget",
+        syncUpdatedAt: 123,
+      },
+      {
+        deletedAt: "2026-05-21T00:00:00.000Z",
+        id: "item-2",
+        name: "Gadget",
+        syncUpdatedAt: 124,
+      },
+    ]);
+
+    expect(result.changedRows).toEqual([
+      {
+        deletedAt: null,
+        id: "item-1",
+        name: "Widget",
+      },
+    ]);
+    expect(result.deletedIds).toEqual(["item-2"]);
+  });
+});
+
+describe("buildPullTables", () => {
+  const allTables = ["locations", "items", "stock_counts"] as const;
+  const changes = {
+    items: {
+      changedRows: [{ id: "item-1" }],
+      deletedIds: ["item-2"],
+    },
+    locations: {
+      changedRows: [{ id: "location-1" }],
+      deletedIds: [],
+    },
+    stock_counts: {
+      changedRows: [],
+      deletedIds: [],
+    },
+  };
+
+  it("returns all known tables when requested list is empty", () => {
+    const result = buildPullTables({
+      allTables,
+      changes,
+      requestedTables: [],
+    });
+
+    expect(result.map((table) => table.table)).toEqual(allTables);
+  });
+
+  it("filters requested tables and ignores unknown names", () => {
+    const result = buildPullTables({
+      allTables,
+      changes,
+      requestedTables: ["items", "unknown", "locations"],
+    });
+
+    expect(result.map((table) => table.table)).toEqual(["items", "locations"]);
+  });
+});
+
+describe("changedTableNames", () => {
+  it("returns only tables with changed rows or deleted ids", () => {
+    const result = changedTableNames({
+      allTables: ["locations", "items", "stock_counts"] as const,
+      changes: {
+        items: {
+          changedRows: [{ id: "item-1" }],
+          deletedIds: [],
+        },
+        locations: {
+          changedRows: [],
+          deletedIds: [],
+        },
+        stock_counts: {
+          changedRows: [],
+          deletedIds: ["stock-1"],
+        },
+      },
+    });
+
+    expect(result).toEqual(["items", "stock_counts"]);
+  });
+});
+
+describe("validateSyncTable", () => {
+  it("returns a known table name", () => {
+    const result = validateSyncTable("items", ["locations", "items"] as const);
+    expect(result).toBe("items");
+  });
+
+  it("throws for unknown table names", () => {
+    expect(() =>
+      validateSyncTable("unknown", ["locations", "items"] as const)
+    ).toThrow('Unsupported sync table: "unknown"');
+  });
+});
+
+describe("formatLatestSyncCursor", () => {
+  it("formats the latest cursor row", () => {
+    expect(
+      formatLatestSyncCursor({
+        id: "item-1",
+        syncUpdatedAt: 1_700_000_000,
+        tableName: "items",
+      })
+    ).toBe("sync:1700000000:items:item-1");
+  });
+});
+
+describe("pickLatestSyncCursorRow", () => {
+  it("sorts by syncUpdatedAt then updatedAt then id", () => {
+    const older = {
+      id: "b",
+      syncUpdatedAt: 10,
+      updatedAt: "2026-05-20T00:00:00.000Z",
+    };
+    const newerBySync = {
+      id: "a",
+      syncUpdatedAt: 11,
+      updatedAt: "2026-05-19T00:00:00.000Z",
+    };
+    const newerByUpdatedAt = {
+      id: "c",
+      syncUpdatedAt: 10,
+      updatedAt: "2026-05-21T00:00:00.000Z",
+    };
+    const newerById = {
+      id: "d",
+      syncUpdatedAt: 10,
+      updatedAt: "2026-05-20T00:00:00.000Z",
+    };
+
+    expect(
+      pickLatestSyncCursorRow([older, newerBySync, newerByUpdatedAt, newerById])
+    ).toEqual(newerBySync);
+    expect(pickLatestSyncCursorRow([])).toBeNull();
   });
 });
 

@@ -1,0 +1,115 @@
+Implement option 2: a Drizzle-targeted server repository helper for Baresync.
+
+  Goal:
+  Add a `baresync/server/drizzle` helper that lets users define synced Drizzle tables once and get repository
+  methods for push, pull, and status. This should reduce the inventory server repository from custom sync
+  plumbing to table definitions plus row validation.
+
+  Target API shape:
+
+  import {
+    createDrizzleSyncRepository,
+    optionalString,
+    requiredNumber,
+    requiredString,
+  } from "baresync/server/drizzle";
+
+  const repository = createDrizzleSyncRepository({
+    db,
+    seedCursor: getSeedCursor(),
+    tables: {
+      locations: {
+        table: locations,
+        scopeColumn: locations.scopeId,
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          id: requiredString(row.id, "locations.id"),
+          scopeId,
+          name: requiredString(row.name, "locations.name"),
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          syncUpdatedAt,
+        }),
+      },
+      items: {
+        table: items,
+        scopeColumn: items.scopeId,
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          id: requiredString(row.id, "items.id"),
+          scopeId,
+          locationId: requiredString(row.locationId, "items.locationId"),
+          name: requiredString(row.name, "items.name"),
+          sku: optionalString(row.sku),
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          syncUpdatedAt,
+        }),
+      },
+      stock_counts: {
+        table: stockCounts,
+        scopeColumn: stockCounts.scopeId,
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          id: requiredString(row.id, "stock_counts.id"),
+          scopeId,
+          itemId: requiredString(row.itemId, "stock_counts.itemId"),
+          countedQuantity: requiredNumber(
+            row.countedQuantity,
+            "stock_counts.countedQuantity"
+          ),
+          recordedAt: optionalString(row.recordedAt) ?? updatedAt,
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          syncUpdatedAt,
+        }),
+      },
+    },
+  });
+
+  Expected returned API:
+  - `repository.tableNames`
+  - `repository.applyPushChanges({ changes, scopeId, syncUpdatedAt })`
+  - `repository.loadPullChanges({ cursor, scopeId, tables })`
+  - `repository.loadSyncStatus({ cursor, scopeId })`
+
+  Behavior:
+  - Validate incoming push table names against the table registry.
+  - Parse cursors using existing cursor primitives.
+  - Select rows by `scopeColumn = scopeId`.
+  - For incremental pull/status, select rows where `syncUpdatedAt > cursor.syncUpdatedAt`.
+  - Split rows into `{ changedRows, deletedIds }` using `deletedAt`.
+  - Strip internal `syncUpdatedAt` from returned `changedRows`.
+  - Use the latest row across all tables to format the next cursor.
+  - Use `seedCursor` when no row exists.
+  - Build pull responses with `{ cursor, hasMore: false, serverTime, tables }`.
+  - Build status responses with `{ changedTables, hasChanges, cursor, serverTime }`.
+  - On push, use each table config’s `buildRow` to validate/map changed rows.
+  - Upsert changed rows with Drizzle `insert(...).values(...).onConflictDoUpdate(...)`.
+  - Soft-delete `deletedIds` by setting `deletedAt`, `updatedAt`, and `syncUpdatedAt`.
+  - Keep app-specific scope authorization outside this helper.
+
+  Implementation requirements:
+  - Put the helper under `packages/baresync/src/server/drizzle.ts` or an equivalent path that exports as
+  `baresync/server/drizzle`.
+  - Add exports/package entry wiring as needed.
+  - Add focused unit tests for:
+    - table-name validation
+    - pull response table filtering
+    - changed/deleted row splitting
+    - status changed table detection
+    - push upsert and soft delete, if feasible with the existing test setup
+  - Update the inventory example repository to use the new helper.
+  - Keep the existing route handlers in `examples/inventory/apps/server/src/index.ts` mostly unchanged.
+  - Do not hide app row validation in magic mappers; keep `buildRow` explicit.
+  - Avoid unrelated refactors.
+
+  Before finishing:
+  - Run `bun x ultracite check`.
+  - Run `bun x ultracite fix` if safe formatting/lint fixes are reported.
+  - Re-run `bun x ultracite check`.
+  - Run the repo typecheck script.
+  - Run any relevant package/example tests.
+
+  That prompt should give enough context to build option 2 after option 1 settles, while preserving the key
+  boundary: Baresync owns sync mechanics, the app owns row validation.

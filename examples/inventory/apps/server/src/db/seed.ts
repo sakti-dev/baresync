@@ -4,6 +4,7 @@ import {
   stockCounts,
 } from "@example/inventory-sync-contract/api-synced-schema";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { createInventoryDatabase } from "./client";
 
 const SEED_TIME = "2026-05-20T00:00:00.000Z";
 const SEED_SYNC_UPDATED_AT = Date.parse(SEED_TIME);
@@ -48,6 +49,7 @@ const seedStockCounts = [
   },
 ];
 
+// Shared seed logic used by the app and the dev entrypoint.
 export async function seedInventoryDatabase(
   db: BunSQLiteDatabase<Record<string, never>>
 ): Promise<void> {
@@ -72,4 +74,15 @@ export function getSeedCursor() {
     syncUpdatedAt: SEED_SYNC_UPDATED_AT,
     tableName: "stock_counts",
   } as const;
+}
+
+// `bun run src/db/seed.ts` uses this path through `predev`.
+export async function seedInventoryDatabaseForDev(): Promise<void> {
+  const { db } = await createInventoryDatabase();
+  await seedInventoryDatabase(db);
+}
+
+if (import.meta.main) {
+  await seedInventoryDatabaseForDev();
+  console.log("inventory database seeded");
 }

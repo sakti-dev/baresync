@@ -225,12 +225,164 @@ export function parseSyncCursor(
   return { syncUpdatedAt, tableName: parts[2], rowId: parts[3] };
 }
 
+export function parseSyncCursorTimestamp(cursor: string): number {
+  return parseSyncCursor(cursor)?.syncUpdatedAt ?? 0;
+}
+
 export function formatSyncCursor(input: {
   syncUpdatedAt: number;
   tableName: string;
   rowId: string;
 }): string {
   return `sync:${input.syncUpdatedAt}:${input.tableName}:${input.rowId}`;
+}
+
+export function formatLatestSyncCursor(input: {
+  id: string;
+  syncUpdatedAt: number;
+  tableName: string;
+}): string {
+  return formatSyncCursor({
+    rowId: input.id,
+    syncUpdatedAt: input.syncUpdatedAt,
+    tableName: input.tableName,
+  });
+}
+
+function compareSyncCursorRows<
+  Row extends {
+    id: string;
+    syncUpdatedAt: number;
+    updatedAt: string;
+  },
+>(left: Row, right: Row): number {
+  if (left.syncUpdatedAt !== right.syncUpdatedAt) {
+    return left.syncUpdatedAt - right.syncUpdatedAt;
+  }
+
+  if (left.updatedAt !== right.updatedAt) {
+    return left.updatedAt.localeCompare(right.updatedAt);
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+export function pickLatestSyncCursorRow<
+  Row extends {
+    id: string;
+    syncUpdatedAt: number;
+    updatedAt: string;
+  },
+>(rows: readonly Row[]): Row | null {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return rows.reduce((best, row) =>
+    compareSyncCursorRows(row, best) > 0 ? row : best
+  );
+}
+
+export interface SyncRowChangeBucket<Row = unknown> {
+  changedRows: readonly Row[];
+  deletedIds: readonly string[];
+}
+
+export function splitSyncRows<
+  Row extends {
+    deletedAt: string | null;
+    id: string;
+    syncUpdatedAt: number;
+  },
+>(
+  rows: readonly Row[]
+): {
+  changedRows: Omit<Row, "syncUpdatedAt">[];
+  deletedIds: string[];
+} {
+  const changedRows: Omit<Row, "syncUpdatedAt">[] = [];
+  const deletedIds: string[] = [];
+
+  for (const row of rows) {
+    if (row.deletedAt === null) {
+      const { syncUpdatedAt: _syncUpdatedAt, ...publicRow } = row;
+      changedRows.push(publicRow);
+      continue;
+    }
+
+    deletedIds.push(row.id);
+  }
+
+  return { changedRows, deletedIds };
+}
+
+function isKnownSyncTable<TTable extends string>(
+  table: string,
+  allowedTables: readonly TTable[]
+): table is TTable {
+  return allowedTables.some((allowedTable) => allowedTable === table);
+}
+
+export function validateSyncTable<TTable extends string>(
+  table: string,
+  allowedTables: readonly TTable[]
+): TTable {
+  if (isKnownSyncTable(table, allowedTables)) {
+    return table;
+  }
+
+  throw new Error(
+    `Unsupported sync table: "${table}". Expected one of: ${allowedTables.join(", ")}`
+  );
+}
+
+export function buildPullTables<TTable extends string, TRow>(input: {
+  allTables: readonly TTable[];
+  changes: Record<TTable, SyncRowChangeBucket<TRow>>;
+  requestedTables: readonly string[];
+}): Array<{
+  changedRows: TRow[];
+  deletedIds: string[];
+  table: TTable;
+}> {
+  const requestedTables =
+    input.requestedTables.length > 0 ? input.requestedTables : input.allTables;
+  const tables: Array<{
+    changedRows: TRow[];
+    deletedIds: string[];
+    table: TTable;
+  }> = [];
+
+  for (const table of requestedTables) {
+    if (!isKnownSyncTable(table, input.allTables)) {
+      continue;
+    }
+
+    const bucket = input.changes[table];
+    tables.push({
+      changedRows: [...bucket.changedRows],
+      deletedIds: [...bucket.deletedIds],
+      table,
+    });
+  }
+
+  return tables;
+}
+
+export function changedTableNames<TTable extends string, TRow>(input: {
+  allTables: readonly TTable[];
+  changes: Record<TTable, SyncRowChangeBucket<TRow>>;
+}): TTable[] {
+  const changedTables: TTable[] = [];
+
+  for (const table of input.allTables) {
+    const bucket = input.changes[table];
+    if (bucket.changedRows.length > 0 || bucket.deletedIds.length > 0) {
+      changedTables.push(table);
+    }
+  }
+
+  return changedTables;
 }
 
 export function orderDeleteChanges(input: {

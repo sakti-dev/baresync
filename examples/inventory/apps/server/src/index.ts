@@ -17,8 +17,6 @@ const { db, dbPath } = await createInventoryDatabase();
 const repository = createInventoryRepository(db);
 const idempotencyDb = db as unknown as SqliteRemoteDatabase;
 
-await repository.seedIfNeeded();
-
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== "default") {
     return {

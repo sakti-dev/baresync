@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "bun run src/db/seed.ts",
     "dev": "bun --hot src/index.ts",
     "build": "bunx tsc -p tsconfig.json --noEmit",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit",

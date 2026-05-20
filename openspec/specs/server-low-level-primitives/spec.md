@@ -106,6 +106,26 @@ The `packages/baresync/src/server/service.ts` module SHALL export `formatSyncCur
 - **WHEN** `formatSyncCursor` is called with `{ syncUpdatedAt: 1700000000, tableName: "products", rowId: "abc-123" }`
 - **THEN** the result SHALL be `"sync:1700000000:products:abc-123"`
 
+### Requirement: Latest cursor row selection helper
+
+The `packages/baresync/src/server/service.ts` module SHALL export `pickLatestSyncCursorRow(rows)` that returns the row with the greatest `syncUpdatedAt`, then greatest `updatedAt`, then greatest `id`, or `null` for an empty list.
+
+#### Scenario: Latest row is selected by sync timestamp
+
+- **WHEN** `pickLatestSyncCursorRow` is called with rows that differ in `syncUpdatedAt`
+- **THEN** the row with the greatest `syncUpdatedAt` SHALL be returned
+
+#### Scenario: Latest row falls back to updatedAt and id
+
+- **WHEN** `pickLatestSyncCursorRow` is called with rows that share the same `syncUpdatedAt`
+- **THEN** the row with the greatest `updatedAt` SHALL be returned
+- **AND** when `updatedAt` is also equal, the row with the greatest `id` SHALL be returned
+
+#### Scenario: Empty list returns null
+
+- **WHEN** `pickLatestSyncCursorRow` is called with no rows
+- **THEN** the result SHALL be `null`
+
 ### Requirement: Delete table ordering helper
 
 The `packages/baresync/src/server/service.ts` module SHALL export `orderDeleteChanges(input)` that accepts `changes` and `order`, and returns changes sorted in **reverse** of the upsert order (child tables before parent tables).
