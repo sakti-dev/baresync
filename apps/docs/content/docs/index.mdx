@@ -12,7 +12,7 @@ The TypeScript package is published as `baresync`, with Rust crates published as
 
 ## What Baresync gives you
 
-- `defineSyncConfig` and sync column helpers for turning paired local/API Drizzle SQLite schemas into a sync contract.
+- `defineSyncConfig`, `defineProtobufSyncConfig`, and sync column helpers for turning paired local/API Drizzle SQLite schemas into sync configs.
 - Generator diagnostics for required row-state columns, primary keys, table order, foreign keys, and encoding support.
 - Generated artifacts such as `sync-contract.json`, `sync-table-order.ts`, protobuf metadata, and Rust protobuf mappers.
 - A Rust core engine that performs status, pull, push, full resync, outbox cleanup, and SQLite reconciliation.
@@ -50,7 +50,7 @@ The engine chooses a sync mode by comparing local state with the server status e
 ```mermaid
 flowchart TD
   schema["Drizzle SQLite schema"]
-  contract["defineSyncConfig contract"]
+  contract["defineSyncConfig / defineProtobufSyncConfig"]
   generated["Generator diagnostics and artifacts"]
   app["Tauri app code<br/>Drizzle proxy"]
   plugin["tauri-plugin-baresync<br/>Rust SyncEngine"]

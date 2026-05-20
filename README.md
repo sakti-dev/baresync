@@ -49,7 +49,7 @@ It is not a hosted sync service, generic ORM, generic SQLite plugin, or database
 ```mermaid
 flowchart TD
   schema["Drizzle SQLite schema"]
-  contract["defineSyncConfig contract"]
+  contract["defineSyncConfig / defineProtobufSyncConfig"]
   generator["Generator diagnostics and artifacts"]
   app["Tauri app<br/>Drizzle proxy + sync client"]
   plugin["tauri-plugin-baresync"]
@@ -87,13 +87,13 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 Start with [`examples/inventory`](./examples/inventory). It is the canonical fullstack starter in this repository and uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
 
 ```txt
-fieldkit/
+inventory/
   package.json
   apps/
     app/            # initialized with `bun create tauri-app`
       src/
       src-tauri/
-    server/         # Hono server
+    server/         # initialized with `bun create hono@latest`
       src/
   packages/
     sync-contract/
@@ -108,8 +108,8 @@ The shared contract package is where Drizzle tables, Baresync metadata, and gene
 
 Define local synced tables in the shared contract package:
 
-```ts title="packages/sync-contract/src/local-synced-schema.ts"
-// packages/sync-contract/src/local-synced-schema.ts
+```ts title="examples/inventory/packages/sync-contract/src/local-synced-schema.ts"
+// examples/inventory/packages/sync-contract/src/local-synced-schema.ts
 import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -124,8 +124,8 @@ export const categories = sqliteTable("categories", {
 
 Define the API-side synced table shape separately:
 
-```ts title="packages/sync-contract/src/api-synced-schema.ts"
-// packages/sync-contract/src/api-synced-schema.ts
+```ts title="examples/inventory/packages/sync-contract/src/api-synced-schema.ts"
+// examples/inventory/packages/sync-contract/src/api-synced-schema.ts
 import { apiSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -140,9 +140,9 @@ export const categories = sqliteTable("categories", {
 
 Create the generator config from both synced schema views:
 
-```ts title="packages/sync-contract/sync.config.ts"
-// packages/sync-contract/sync.config.ts
-import { defineSyncConfig } from "baresync/generator";
+```ts title="examples/inventory/packages/sync-contract/sync.config.ts"
+// examples/inventory/packages/sync-contract/sync.config.ts
+import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
@@ -155,14 +155,31 @@ export const syncGeneratorConfig = defineSyncConfig({
     categories: { scope: "workspace_id" },
   },
 });
+
+export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated/protobuf",
+  outputs: {
+    proto: "./generated/protobuf/sync.proto",
+    runtimeSourceTs: "./generated/protobuf/runtime.ts",
+    runtimeTs: "./generated/protobuf/runtime.generated.ts",
+    rustSyncMappers: "../../apps/app/src-tauri/src/protobuf_generated.rs",
+    syncTs: "./generated/protobuf/sync.generated.ts",
+  },
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "workspace_id" },
+  },
+});
 ```
 
 Expose the schema and generated artifacts from the shared package:
 
-```json title="packages/sync-contract/package.json"
+```json title="examples/inventory/packages/sync-contract/package.json"
 {
-  "//": "packages/sync-contract/package.json",
-  "name": "@repo/sync-contract",
+  "//": "examples/inventory/packages/sync-contract/package.json",
+  "name": "@example/inventory-sync-contract",
   "private": true,
   "type": "module",
   "exports": {
@@ -175,63 +192,28 @@ Expose the schema and generated artifacts from the shared package:
 }
 ```
 
-Run diagnostics and generation from the monorepo root. The generated files land in `packages/sync-contract/generated`.
+Run diagnostics and generation from the contract package directory. The CLI discovers `sync.config.ts` automatically when you are in the right folder.
 
 ```bash
-bunx baresync doctor ./packages/sync-contract/sync.config.ts
-bunx baresync generate ./packages/sync-contract/sync.config.ts
+cd examples/inventory/packages/sync-contract
+bunx baresync doctor
+bunx baresync generate
 ```
 
-If you use protobuf, add a protobuf workspace config. This mirrors the fixture config in `tests/e2e/sync-proto.config.ts`.
+If you need protobuf workspace files, export `protobufSyncGeneratorConfig` from the same `sync.config.ts`.
 
-```ts title="packages/sync-contract/sync-proto.config.ts"
-// packages/sync-contract/sync-proto.config.ts
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { ProtobufWorkspaceConfig } from "baresync/generator";
-import { syncGeneratorConfig } from "./sync.config";
-
-const packageRoot = dirname(fileURLToPath(import.meta.url));
-const outputDir = join(packageRoot, "generated", "protobuf");
-
-export const protobufWorkspaceConfig = {
-  contract: syncGeneratorConfig.contract,
-  outputDir,
-  outputs: {
-    proto: join(outputDir, "proto", "sync.proto"),
-    runtimeSourceTs: join(outputDir, "runtime.ts"),
-    runtimeTs: join(outputDir, "runtime.generated.ts"),
-    rustSyncMappers: join(
-      packageRoot,
-      "..",
-      "..",
-      "apps",
-      "app",
-      "src-tauri",
-      "src",
-      "protobuf_generated.rs",
-    ),
-    syncTs: join(outputDir, "sync.generated.ts"),
-  },
-} satisfies ProtobufWorkspaceConfig;
-
-export default protobufWorkspaceConfig;
-```
-
-Then create a small runner so generation and drift checks use the same config.
-
-```ts title="packages/sync-contract/generate-protobuf.ts"
-// packages/sync-contract/generate-protobuf.ts
+```ts title="examples/inventory/packages/sync-contract/generate-protobuf.ts"
+// examples/inventory/packages/sync-contract/generate-protobuf.ts
 import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
-import protobufWorkspaceConfig from "./sync-proto.config";
+import { protobufSyncGeneratorConfig } from "./sync.config";
 
-generateProtobufWorkspaceArtifacts(protobufWorkspaceConfig);
+generateProtobufWorkspaceArtifacts(protobufSyncGeneratorConfig);
 ```
 
 Run it when the sync schema changes:
 
 ```bash
-bun ./packages/sync-contract/generate-protobuf.ts
+bun ./examples/inventory/packages/sync-contract/generate-protobuf.ts
 ```
 
 Use the Tauri client from the app created with `bun create tauri-app`:
@@ -261,7 +243,7 @@ import {
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-order";
+import { SYNC_UPSERT_ORDER } from "@example/inventory-sync-contract/generated/sync-table-order";
 import { serverDb } from "./server-db";
 
 async function resolveScope({

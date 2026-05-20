@@ -1,12 +1,72 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GeneratorConfig } from "./generator/config";
-import { runDiagnostics } from "./generator/diagnostics";
+import { runDiagnostics, type SyncDiagnostic } from "./generator/diagnostics";
 import { generateSyncArtifacts, SyncDiagnosticError } from "./generator/index";
+import {
+  generateProtobufWorkspaceArtifacts,
+  type ProtobufWorkspaceConfig,
+} from "./generator/protobuf-workspace";
 import type { SyncContract } from "./schema/contract";
 
 type GenerateSource = GeneratorConfig | string | SyncContract;
+type LoadedConfig = Record<string, unknown>;
+
+const CONFIG_FILENAMES = [
+  "sync.config.ts",
+  "sync.config.mts",
+  "sync.config.js",
+  "sync.config.mjs",
+] as const;
+
+interface GenerateCliOptions {
+  check?: boolean;
+  configPath?: string;
+  outputDir?: string;
+  warningsAsErrors?: boolean;
+}
+
+interface LoadedConfigEntry {
+  contract: SyncContract;
+  key: string;
+  kind: "json" | "protobuf";
+  label: string;
+  outputDir?: string;
+  protobufConfig?: ProtobufWorkspaceConfig;
+  syncConfig?: GeneratorConfig;
+}
+
+async function resolveGenerateSource(
+  configPathOrContract: GenerateSource
+): Promise<GeneratorConfig | SyncContract> {
+  if (typeof configPathOrContract !== "string") {
+    return configPathOrContract;
+  }
+
+  const absPath = path.resolve(configPathOrContract);
+  const configModule = (await import(absPath)) as LoadedConfig;
+  return getLegacyGenerateExport(configModule, absPath);
+}
+
+function getLegacyGenerateExport(
+  configModule: LoadedConfig,
+  absPath: string
+): GeneratorConfig | SyncContract {
+  const config =
+    configModule.default ??
+    configModule.syncGeneratorConfig ??
+    configModule.contract;
+
+  if (!config || typeof config !== "object") {
+    throw new Error(
+      `No default export, "syncGeneratorConfig" export, or "contract" export found in ${absPath}`
+    );
+  }
+
+  return config as GeneratorConfig | SyncContract;
+}
 
 export async function runGenerate(
   configPathOrContract: GenerateSource,
@@ -38,117 +98,447 @@ export async function runGenerate(
   });
 }
 
+export async function runGenerateCommand(args: string[]): Promise<void> {
+  const options = parseGenerateCliArgs(args);
+  const resolved = await loadConfigModuleFromCliOptions(options);
+  const entries = resolveLoadedConfigEntries(resolved.module, resolved.path, {
+    outputDir: options.outputDir,
+  });
+
+  process.stdout.write(`Loaded config: ${resolved.path}\n`);
+
+  if (options.check) {
+    const diagnostics = entries.flatMap((entry) =>
+      runDiagnostics(entry.contract)
+    );
+    const errors = diagnostics.filter(
+      (diagnostic) => diagnostic.severity === "error"
+    );
+    const warnings = diagnostics.filter(
+      (diagnostic) => diagnostic.severity === "warning"
+    );
+
+    if (options.warningsAsErrors) {
+      errors.push(...warnings);
+    }
+
+    if (errors.length > 0) {
+      throw new SyncDiagnosticError(diagnostics);
+    }
+
+    process.stdout.write(
+      `Validated ${entries.length} config export(s) from ${resolved.path}\n`
+    );
+    return;
+  }
+
+  for (const entry of entries) {
+    process.stdout.write(`Running ${entry.label}\n`);
+    if (entry.kind === "protobuf") {
+      if (!entry.protobufConfig) {
+        throw new Error(
+          `Missing protobuf workspace config for ${entry.label} in ${resolved.path}`
+        );
+      }
+      generateProtobufWorkspaceArtifacts(entry.protobufConfig);
+      continue;
+    }
+
+    if (entry.syncConfig) {
+      generateSyncArtifacts(
+        entry.syncConfig.contract,
+        entry.syncConfig.outputDir,
+        {
+          warningsAsErrors: options.warningsAsErrors,
+        }
+      );
+      continue;
+    }
+
+    generateSyncArtifacts(entry.contract, entry.outputDir ?? "./generated", {
+      warningsAsErrors: options.warningsAsErrors,
+    });
+  }
+}
+
 export async function runDoctor(configPath: string): Promise<void> {
   const absPath = path.resolve(configPath);
-  const configModule = await import(absPath);
-  const source = getConfigExport(configModule, absPath);
-  const contract: SyncContract =
-    "contract" in source ? source.contract : source;
+  const configModule = (await import(absPath)) as LoadedConfig;
+  const entries = resolveLoadedConfigEntries(configModule, absPath);
 
-  const diagnostics = runDiagnostics(contract);
+  process.stdout.write(`Loaded config: ${absPath}\n`);
+  let hasErrors = false;
 
-  for (const d of diagnostics) {
-    let prefix = "INFO ";
-    if (d.severity === "error") {
-      prefix = "ERROR";
-    } else if (d.severity === "warning") {
-      prefix = "WARN ";
+  for (const entry of entries) {
+    hasErrors ||= printDiagnosticsReport(
+      `diagnostics for ${entry.label}`,
+      runDiagnostics(entry.contract)
+    );
+  }
+
+  if (hasErrors) {
+    process.exit(1);
+  }
+}
+
+export async function runDoctorCommand(args: string[]): Promise<void> {
+  const options = parseDoctorCliArgs(args);
+  const resolved = await loadConfigModuleFromCliOptions(options);
+  const entries = resolveLoadedConfigEntries(resolved.module, resolved.path);
+
+  process.stdout.write(`Loaded config: ${resolved.path}\n`);
+
+  for (const entry of entries) {
+    if (
+      printDiagnosticsReport(
+        `diagnostics for ${entry.label}`,
+        runDiagnostics(entry.contract)
+      )
+    ) {
+      process.exitCode = 1;
     }
+  }
+}
 
-    let location = "";
-    if (d.table && d.column) {
-      location = ` [${d.table}.${d.column}]`;
-    } else if (d.table) {
-      location = ` [${d.table}]`;
-    }
+function printDiagnosticsReport(
+  heading: string,
+  diagnostics: SyncDiagnostic[]
+): boolean {
+  process.stdout.write(`Running ${heading}\n`);
 
-    process.stdout.write(`${prefix} ${d.code}${location}: ${d.message}\n`);
-    process.stdout.write(`       Why: ${d.why}\n`);
-    process.stdout.write(`       Fix: ${d.fix}\n`);
-    if (d.docs) {
-      process.stdout.write(`       Docs: ${d.docs}\n`);
+  for (const diagnostic of diagnostics) {
+    process.stdout.write(`${formatDiagnosticPrefix(diagnostic)}\n`);
+    process.stdout.write(`       Why: ${diagnostic.why}\n`);
+    process.stdout.write(`       Fix: ${diagnostic.fix}\n`);
+    if (diagnostic.docs) {
+      process.stdout.write(`       Docs: ${diagnostic.docs}\n`);
     }
   }
 
-  const errors = diagnostics.filter((d) => d.severity === "error");
-  const warnings = diagnostics.filter((d) => d.severity === "warning");
-  const infos = diagnostics.filter((d) => d.severity === "info");
+  const errors = diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "error"
+  );
+  const warnings = diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "warning"
+  );
+  const infos = diagnostics.filter(
+    (diagnostic) => diagnostic.severity === "info"
+  );
 
   process.stdout.write(
     `\n${errors.length} error(s), ${warnings.length} warning(s), ${infos.length} info(s)\n`
   );
 
-  if (errors.length > 0) {
-    process.exit(1);
-  }
+  return errors.length > 0;
 }
 
-async function resolveGenerateSource(
-  configPathOrContract: GenerateSource
-): Promise<GeneratorConfig | SyncContract> {
-  if (typeof configPathOrContract !== "string") {
-    return configPathOrContract;
+function formatDiagnosticPrefix(diagnostic: SyncDiagnostic): string {
+  let prefix = "INFO ";
+  if (diagnostic.severity === "error") {
+    prefix = "ERROR";
+  } else if (diagnostic.severity === "warning") {
+    prefix = "WARN ";
   }
 
-  const absPath = path.resolve(configPathOrContract);
-  const configModule = await import(absPath);
-  return getConfigExport(configModule, absPath);
-}
-
-function getConfigExport(
-  configModule: Record<string, unknown>,
-  absPath: string
-): GeneratorConfig | SyncContract {
-  const config =
-    configModule.default ??
-    configModule.syncGeneratorConfig ??
-    configModule.contract;
-
-  if (!config || typeof config !== "object") {
-    throw new Error(
-      `No default export, "syncGeneratorConfig" export, or "contract" export found in ${absPath}`
-    );
+  let location = "";
+  if (diagnostic.table && diagnostic.column) {
+    location = ` [${diagnostic.table}.${diagnostic.column}]`;
+  } else if (diagnostic.table) {
+    location = ` [${diagnostic.table}]`;
   }
 
-  return config as GeneratorConfig | SyncContract;
+  return `${prefix} ${diagnostic.code}${location}: ${diagnostic.message}`;
 }
 
-function handleGenerate(args: string[]): void {
-  let configPath: string | undefined;
-  let outputDir: string | undefined;
-  let check = false;
-  let warningsAsErrors = false;
+function parseGenerateCliArgs(args: string[]): GenerateCliOptions {
+  const options: GenerateCliOptions = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+
     if (arg === "--check") {
-      check = true;
-    } else if (arg === "--warnings-as-errors") {
-      warningsAsErrors = true;
-    } else if (arg === "--output" || arg === "-o") {
-      outputDir = args[i + 1];
+      options.check = true;
+      continue;
+    }
+
+    if (arg === "--warnings-as-errors") {
+      options.warningsAsErrors = true;
+      continue;
+    }
+
+    if (arg === "--output" || arg === "-o") {
+      options.outputDir = args[i + 1];
       i++;
-    } else if (!configPath) {
-      configPath = arg;
+      continue;
+    }
+
+    if (arg === "--config") {
+      options.configPath = args[i + 1];
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+      continue;
+    }
+
+    if (!(options.configPath || arg.startsWith("-"))) {
+      options.configPath = arg;
     }
   }
 
-  if (!configPath) {
-    process.stderr.write(
-      "Usage: baresync generate <config-path> [--output <dir>] [--check] [--warnings-as-errors]\n"
-    );
-    process.exit(1);
+  return options;
+}
+
+function parseDoctorCliArgs(args: string[]): { configPath?: string } {
+  const options: { configPath?: string } = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--config") {
+      options.configPath = args[i + 1];
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+      continue;
+    }
+
+    if (!(options.configPath || arg.startsWith("-"))) {
+      options.configPath = arg;
+    }
   }
 
-  runGenerate(configPath, outputDir, {
-    check,
-    warningsAsErrors,
-  }).catch(console.error);
+  return options;
+}
+
+async function loadConfigModuleFromCliOptions(options: {
+  configPath?: string;
+}): Promise<{ module: LoadedConfig; path: string }> {
+  const resolvedPath = resolveConfigPath(options.configPath);
+
+  if (!resolvedPath) {
+    throw new Error(
+      `No sync config found in ${process.cwd()}. Searched: ${CONFIG_FILENAMES.join(
+        ", "
+      )}`
+    );
+  }
+
+  return {
+    module: (await import(resolvedPath)) as LoadedConfig,
+    path: resolvedPath,
+  };
+}
+
+function resolveConfigPath(configPath?: string): string | null {
+  if (configPath) {
+    return path.resolve(configPath);
+  }
+
+  const cwd = process.cwd();
+  for (const filename of CONFIG_FILENAMES) {
+    const candidate = path.join(cwd, filename);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveLoadedConfigEntries(
+  configModule: LoadedConfig,
+  absPath: string,
+  options?: { outputDir?: string }
+): LoadedConfigEntry[] {
+  const entries = new Map<string, LoadedConfigEntry>();
+  addLoadedConfigEntry(
+    entries,
+    buildNamedJsonEntry(configModule.syncGeneratorConfig, options?.outputDir)
+  );
+  addLoadedConfigEntry(
+    entries,
+    buildNamedProtobufEntry(configModule.protobufSyncGeneratorConfig)
+  );
+  addLoadedConfigEntry(
+    entries,
+    buildDefaultExportEntry(configModule.default, options?.outputDir)
+  );
+  addLoadedConfigEntry(
+    entries,
+    buildRawContractEntry(configModule.contract, options?.outputDir)
+  );
+
+  if (entries.size === 0) {
+    throw new Error(
+      `No default export, "syncGeneratorConfig" export, "protobufSyncGeneratorConfig" export, or "contract" export found in ${absPath}`
+    );
+  }
+
+  return [...entries.values()];
+}
+
+function addLoadedConfigEntry(
+  entries: Map<string, LoadedConfigEntry>,
+  entry: LoadedConfigEntry | null
+): void {
+  if (entry && !entries.has(entry.key)) {
+    entries.set(entry.key, entry);
+  }
+}
+
+function buildNamedJsonEntry(
+  config: unknown,
+  outputDirOverride?: string
+): LoadedConfigEntry | null {
+  if (!isGeneratorConfig(config)) {
+    return null;
+  }
+
+  const outputDir = outputDirOverride ?? config.outputDir;
+  const key = `json:${outputDir}:${config.contract.packageName}:${config.contract.encoding}`;
+  return {
+    contract: config.contract,
+    key,
+    kind: "json",
+    label: "syncGeneratorConfig",
+    outputDir,
+    syncConfig: {
+      ...config,
+      outputDir,
+    },
+  };
+}
+
+function buildNamedProtobufEntry(config: unknown): LoadedConfigEntry | null {
+  if (!isProtobufWorkspaceConfig(config)) {
+    return null;
+  }
+
+  const key = `protobuf:${config.outputDir}:${config.contract.packageName}`;
+  return {
+    contract: config.contract,
+    key,
+    kind: "protobuf",
+    label: "protobufSyncGeneratorConfig",
+    protobufConfig: config,
+  };
+}
+
+function buildDefaultExportEntry(
+  config: unknown,
+  outputDirOverride?: string
+): LoadedConfigEntry | null {
+  if (isProtobufWorkspaceConfig(config)) {
+    const key = `protobuf:${config.outputDir}:${config.contract.packageName}`;
+    return {
+      contract: config.contract,
+      key,
+      kind: "protobuf",
+      label: "default export",
+      protobufConfig: config,
+    };
+  }
+
+  if (isGeneratorConfig(config)) {
+    const outputDir = outputDirOverride ?? config.outputDir;
+    const key = `json:${outputDir}:${config.contract.packageName}:${config.contract.encoding}`;
+    return {
+      contract: config.contract,
+      key,
+      kind: "json",
+      label: "default export",
+      outputDir,
+      syncConfig: {
+        ...config,
+        outputDir,
+      },
+    };
+  }
+
+  if (isSyncContract(config)) {
+    const outputDir = outputDirOverride ?? "./generated";
+    const key = `json:${outputDir}:${config.packageName}:${config.encoding}`;
+    return {
+      contract: config,
+      key,
+      kind: "json",
+      label: "default export contract",
+      outputDir,
+    };
+  }
+
+  return null;
+}
+
+function buildRawContractEntry(
+  config: unknown,
+  outputDirOverride?: string
+): LoadedConfigEntry | null {
+  if (!isSyncContract(config)) {
+    return null;
+  }
+
+  const outputDir = outputDirOverride ?? "./generated";
+  const key = `json:${outputDir}:${config.packageName}:${config.encoding}`;
+  return {
+    contract: config,
+    key,
+    kind: "json",
+    label: "contract",
+    outputDir,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSyncContract(value: unknown): value is SyncContract {
+  return (
+    isRecord(value) &&
+    typeof value.encoding === "string" &&
+    typeof value.packageName === "string" &&
+    Array.isArray(value.tables) &&
+    Array.isArray(value.tablesMeta) &&
+    isRecord(value.limits)
+  );
+}
+
+function isGeneratorConfig(value: unknown): value is GeneratorConfig {
+  return (
+    isRecord(value) &&
+    typeof value.outputDir === "string" &&
+    isSyncContract(value.contract)
+  );
+}
+
+function isProtobufWorkspaceConfig(
+  value: unknown
+): value is ProtobufWorkspaceConfig {
+  return (
+    isRecord(value) &&
+    typeof value.outputDir === "string" &&
+    isSyncContract(value.contract) &&
+    isRecord(value.outputs)
+  );
+}
+
+function handleGenerate(args: string[]): void {
+  runGenerateCommand(args).catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
 
 function printUsage(): void {
   process.stderr.write(
-    "Usage: baresync <doctor|generate> [options]\n\nCommands:\n  doctor <config-path>              Run diagnostics\n  generate <config-path> [options]   Generate sync artifacts\n\nGenerate options:\n  --output <dir>                    Output directory\n  --check                           Dry-run check only\n  --warnings-as-errors              Treat warnings as errors\n"
+    "Usage: baresync <doctor|generate> [options]\n\nCommands:\n  doctor [config-path]              Run diagnostics\n  generate [config-path] [options]  Generate sync artifacts\n\nGenerate options:\n  --config <path>                   Explicit config file\n  --output <dir>                    Output directory\n  --check                           Dry-run check only\n  --warnings-as-errors              Treat warnings as errors\n"
   );
   process.exit(1);
 }
@@ -157,12 +547,10 @@ export function runCli(args: string[]): void {
   const command = args[0];
 
   if (command === "doctor") {
-    const configPath = args[1];
-    if (!configPath) {
-      process.stderr.write("Usage: baresync doctor <config-path>\n");
-      process.exit(1);
-    }
-    runDoctor(configPath).catch(console.error);
+    runDoctorCommand(args.slice(1)).catch((error: unknown) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
     return;
   }
 

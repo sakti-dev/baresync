@@ -11,7 +11,7 @@ Baresync has three runtime areas and one generation area: TypeScript contract/ge
 ```mermaid
 flowchart TD
   tables["Drizzle tables"]
-  schema["defineSyncConfig(...)"]
+  schema["defineSyncConfig(...) / defineProtobufSyncConfig(...)"]
   generator["runDiagnostics + generateSyncArtifacts"]
   contract["sync-contract.json"]
   order["sync-table-order.ts"]
@@ -49,7 +49,7 @@ The workspace package exports separate surfaces:
 
 ## Generator flow
 
-Generation starts from a `SyncContract` produced by `defineSyncConfig`. Diagnostics run before files are written.
+Generation starts from a `SyncContract` produced by `defineSyncConfig` or `defineProtobufSyncConfig`. Diagnostics run before files are written.
 
 ```mermaid
 flowchart TD

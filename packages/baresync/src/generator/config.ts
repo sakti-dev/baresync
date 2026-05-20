@@ -10,6 +10,10 @@ import {
   syncSchema,
 } from "../schema/contract";
 import { syncedTable } from "../schema/synced-table";
+import type {
+  ProtobufWorkspaceConfig,
+  ProtobufWorkspaceOutputs,
+} from "./protobuf-workspace";
 
 export interface GeneratorConfig {
   contract: SyncContract;
@@ -40,10 +44,23 @@ export interface PairedSyncGeneratorConfig extends GeneratorConfig {
   localSyncedSchema: SyncedSchemaModule;
 }
 
-export function defineSyncConfig<
+export interface ProtobufSyncGeneratorConfigInput<
   LocalSchema extends SyncedSchemaModule,
   ApiSchema extends SyncedSchemaModule,
->(input: {
+> {
+  apiSyncedSchema: ApiSchema;
+  limits?: Partial<SyncContractLimits>;
+  localSyncedSchema: LocalSchema;
+  outputDir: string;
+  outputs: ProtobufWorkspaceOutputs;
+  packageName: string;
+  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+}
+
+interface PairedSyncConfigInput<
+  LocalSchema extends SyncedSchemaModule,
+  ApiSchema extends SyncedSchemaModule,
+> {
   apiSyncedSchema: ApiSchema;
   encoding?: SyncEncoding;
   limits?: Partial<SyncContractLimits>;
@@ -51,7 +68,14 @@ export function defineSyncConfig<
   outputDir: string;
   packageName: string;
   tables: SyncConfigTables<LocalSchema, ApiSchema>;
-}): PairedSyncGeneratorConfig {
+}
+
+function buildPairedSyncConfig<
+  LocalSchema extends SyncedSchemaModule,
+  ApiSchema extends SyncedSchemaModule,
+>(
+  input: PairedSyncConfigInput<LocalSchema, ApiSchema>
+): PairedSyncGeneratorConfig {
   const tables = input.tables as Record<string, SyncConfigTableOptions>;
   const tableDefinitions = Object.entries(tables).map(
     ([exportName, options]) => {
@@ -104,6 +128,44 @@ export function defineSyncConfig<
     }),
     localSyncedSchema: input.localSyncedSchema,
     outputDir: input.outputDir,
+  };
+}
+
+export function defineSyncConfig<
+  LocalSchema extends SyncedSchemaModule,
+  ApiSchema extends SyncedSchemaModule,
+>(input: {
+  apiSyncedSchema: ApiSchema;
+  encoding?: SyncEncoding;
+  limits?: Partial<SyncContractLimits>;
+  localSyncedSchema: LocalSchema;
+  outputDir: string;
+  packageName: string;
+  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+}): PairedSyncGeneratorConfig {
+  return buildPairedSyncConfig(input);
+}
+
+export function defineProtobufSyncConfig<
+  LocalSchema extends SyncedSchemaModule,
+  ApiSchema extends SyncedSchemaModule,
+>(
+  input: ProtobufSyncGeneratorConfigInput<LocalSchema, ApiSchema>
+): ProtobufWorkspaceConfig {
+  const config = buildPairedSyncConfig({
+    apiSyncedSchema: input.apiSyncedSchema,
+    encoding: "protobuf",
+    limits: input.limits,
+    localSyncedSchema: input.localSyncedSchema,
+    outputDir: input.outputDir,
+    packageName: input.packageName,
+    tables: input.tables,
+  });
+
+  return {
+    contract: config.contract,
+    outputDir: input.outputDir,
+    outputs: input.outputs,
   };
 }
 

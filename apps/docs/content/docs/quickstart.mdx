@@ -71,7 +71,7 @@ export const products = sqliteTable("products", {
 Group both synced schema views in `sync.config.ts`:
 
 ```ts title="sync.config.ts"
-import { defineSyncConfig } from "baresync/generator";
+import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
@@ -79,6 +79,24 @@ export const syncGeneratorConfig = defineSyncConfig({
   apiSyncedSchema,
   localSyncedSchema,
   outputDir: "./generated",
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "merchant_id" },
+    products: { scope: "merchant_id" },
+  },
+});
+
+export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated/protobuf",
+  outputs: {
+    proto: "./generated/protobuf/sync.proto",
+    runtimeSourceTs: "./generated/protobuf/runtime.ts",
+    runtimeTs: "./generated/protobuf/runtime.generated.ts",
+    rustSyncMappers: "../../apps/app/src-tauri/src/protobuf_generated.rs",
+    syncTs: "./generated/protobuf/sync.generated.ts",
+  },
   packageName: "example.sync.v1",
   tables: {
     categories: { scope: "merchant_id" },
@@ -93,11 +111,11 @@ The generator checks this config before writing files. It reports errors for mis
 
 ## Generate runtime artifacts
 
-Run the generator from the config:
+Run the generator from the directory that contains `sync.config.ts`:
 
 ```bash
-bun packages/baresync/src/cli.ts doctor ./sync.config.ts
-bun packages/baresync/src/cli.ts generate ./sync.config.ts
+bunx baresync doctor
+bunx baresync generate
 ```
 
 By default, generation writes to `./generated`. The core outputs are `sync-contract.json`, `sync-table-order.ts`, and `sync-contract.manifest.json`.

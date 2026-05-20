@@ -8,7 +8,7 @@ Baresync is built around a few explicit contracts. The library does not hide syn
 
 ## Sync contract
 
-The sync contract starts from `defineSyncConfig`, which pairs local synced schema and API synced schema modules. It records package name, encoding, limits, synced tables, local-only columns, server-only columns, and table metadata extracted from Drizzle.
+The sync contract starts from `defineSyncConfig` or `defineProtobufSyncConfig`, which pair local synced schema and API synced schema modules. They record package name, encoding, limits, synced tables, local-only columns, server-only columns, and table metadata extracted from Drizzle.
 
 Generation turns that into files such as:
 

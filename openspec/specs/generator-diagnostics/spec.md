@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Diagnostics for Baresync sync contracts and the `baresync doctor` CLI behavior.
+
+## Requirements
 
 ### Requirement: Structured diagnostics model
 
@@ -58,7 +62,27 @@ The diagnostics system SHALL detect and report all of the following warning code
 
 ### Requirement: baresync doctor CLI command
 
-The CLI SHALL support `baresync doctor <config-path>` that runs diagnostics without generating files.
+The CLI SHALL support `baresync doctor` that runs diagnostics without generating files.
+
+The command SHALL support these config path sources, in precedence order:
+
+1. `--config <path>`
+2. Positional config path
+3. Auto-discovered config in the current working directory
+
+When auto-discovering config, the command SHALL search the current working directory for:
+
+- `sync.config.ts`
+- `sync.config.mts`
+- `sync.config.js`
+- `sync.config.mjs`
+
+The command SHALL run diagnostics for every recognized config export that contains a sync contract:
+
+- `syncGeneratorConfig`
+- `protobufSyncGeneratorConfig`
+- recognized default export
+- legacy `contract` export
 
 #### Scenario: Doctor reports errors
 
@@ -69,6 +93,18 @@ The CLI SHALL support `baresync doctor <config-path>` that runs diagnostics with
 
 - **WHEN** `baresync doctor` is run with a valid contract
 - **THEN** all diagnostics SHALL be printed with exit code 0
+
+#### Scenario: Doctor discovers sync config
+
+- **WHEN** `baresync doctor` is run without a config path from a directory containing `sync.config.ts`
+- **THEN** the CLI loads that config file
+- **AND** it prints diagnostics for each recognized config export with a contract
+
+#### Scenario: Doctor supports config flag
+
+- **WHEN** `baresync doctor --config ./custom-sync.config.ts` is run
+- **THEN** the CLI loads `./custom-sync.config.ts`
+- **AND** it does not attempt auto-discovery
 
 ### Requirement: baresync generate --check
 

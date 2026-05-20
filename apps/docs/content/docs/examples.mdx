@@ -54,7 +54,7 @@ export const apiProducts = sqliteTable("products", {
 ## Generate from a config
 
 ```ts title="sync.config.ts"
-import { defineSyncConfig } from "baresync/generator";
+import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
@@ -68,14 +68,34 @@ export const syncGeneratorConfig = defineSyncConfig({
     products: { scope: "merchant_id" },
   },
 });
+
+export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated/protobuf",
+  outputs: {
+    proto: "./generated/protobuf/sync.proto",
+    runtimeSourceTs: "./generated/protobuf/runtime.ts",
+    runtimeTs: "./generated/protobuf/runtime.generated.ts",
+    rustSyncMappers: "../../apps/app/src-tauri/src/protobuf_generated.rs",
+    syncTs: "./generated/protobuf/sync.generated.ts",
+  },
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "merchant_id" },
+    products: { scope: "merchant_id" },
+  },
+});
 ```
 
 ```bash
-bun packages/baresync/src/cli.ts doctor ./sync.config.ts
-bun packages/baresync/src/cli.ts generate ./sync.config.ts
+bunx baresync doctor
+bunx baresync generate
 ```
 
-Generation emits table order and manifest files. For protobuf workspaces, use `generateProtobufWorkspaceArtifacts` from `baresync/generator`.
+Run those commands from the directory that contains `sync.config.ts`.
+
+Generation emits table order and manifest files. For protobuf workspaces, export `protobufSyncGeneratorConfig` from the same `sync.config.ts` and let `baresync generate` pick it up automatically.
 
 ## Drizzle through Tauri IPC
 
@@ -271,19 +291,9 @@ Generate protobuf workspace artifacts when you need the protobuf transport path.
 
 ```ts
 import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
-import { syncGeneratorConfig } from "./sync.config";
+import { protobufSyncGeneratorConfig } from "./sync.config";
 
-generateProtobufWorkspaceArtifacts({
-  contract: syncGeneratorConfig.contract,
-  outputDir: "generated/protobuf",
-  outputs: {
-    proto: "generated/protobuf/proto/sync.proto",
-    runtimeSourceTs: "generated/protobuf/runtime.ts",
-    runtimeTs: "generated/protobuf/runtime.generated.ts",
-    rustSyncMappers: "src-tauri/src/protobuf_generated.rs",
-    syncTs: "generated/protobuf/sync.generated.ts",
-  },
-});
+generateProtobufWorkspaceArtifacts(protobufSyncGeneratorConfig);
 ```
 
 Start with JSON while integrating. Move to protobuf after the contract, handler behavior, and fixture smoke path are already stable.

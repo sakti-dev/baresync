@@ -8,9 +8,11 @@ import { writeManifest } from "./manifest";
 import { writeSyncContractJson, writeTableOrderConstants } from "./outputs";
 
 export {
+  defineProtobufSyncConfig,
   defineSyncConfig,
   type GeneratorConfig,
   type PairedSyncGeneratorConfig,
+  type ProtobufSyncGeneratorConfigInput,
   type SyncConfigTableOptions,
   type SyncConfigTables,
 } from "./config.js";
