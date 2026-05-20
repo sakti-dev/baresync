@@ -1,13 +1,128 @@
 mod fixtures;
 
 use baresync_core::gc;
+use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::pull;
 use baresync_core::push::{self, PendingTablePush};
 use baresync_core::schema;
 use sqlx::SqlitePool;
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone)]
+struct RecordingTransport {
+    calls: Arc<Mutex<Vec<(String, Value)>>>,
+    push_response: Value,
+    status_response: Value,
+    pull_response: Value,
+}
+
+impl RecordingTransport {
+    fn new(
+        push_response: Value,
+        status_response: Value,
+        pull_response: Value,
+    ) -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            push_response,
+            status_response,
+            pull_response,
+        }
+    }
+
+    fn calls(&self) -> Vec<(String, Value)> {
+        self.calls.lock().expect("recording transport poisoned").clone()
+    }
+}
+
+fn response_with_table_ack(
+    table: &str,
+    rejected: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "tables": [{
+            "table": table,
+            "acceptedCreatedIds": [],
+            "acceptedUpdatedIds": [],
+            "acceptedDeletedIds": [],
+            "rejected": rejected,
+        }],
+        "serverTime": "2026-05-19T12:00:00.000Z",
+    })
+}
+
+fn response_with_pull_tables(tables: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "cursor": "sync:1716120000000:products:prod-1",
+        "hasMore": false,
+        "serverTime": "2026-05-19T12:00:00.000Z",
+        "tables": tables,
+    })
+}
+
+impl SyncHttpTransport for RecordingTransport {
+    fn send_push_request(&self, _api_url: String, envelope: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.push_response.clone();
+        Box::pin(async move {
+            calls
+                .lock()
+                .expect("recording transport poisoned")
+                .push(("push".to_string(), envelope));
+            Ok(response)
+        })
+    }
+
+    fn send_status_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.status_response.clone();
+        Box::pin(async move {
+            calls
+                .lock()
+                .expect("recording transport poisoned")
+                .push(("status".to_string(), body));
+            Ok(response)
+        })
+    }
+
+    fn send_pull_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.pull_response.clone();
+        Box::pin(async move {
+            calls
+                .lock()
+                .expect("recording transport poisoned")
+                .push(("pull".to_string(), body));
+            Ok(response)
+        })
+    }
+}
+
+async fn test_engine_with_transport(
+    pool: SqlitePool,
+    transport: RecordingTransport,
+    scope_id: &str,
+) -> baresync_core::engine::SyncEngine {
+    let mut config = baresync_core::config::SyncEngineConfig::default();
+    config.api_url = "http://127.0.0.1:9".to_string();
+    config.scope_id = scope_id.to_string();
+    config.transport = Arc::new(transport);
+
+    baresync_core::engine::SyncEngine::new(
+        pool,
+        config,
+        baresync_core::engine::SyncContractTables {
+            upsert_order: vec!["categories".to_string(), "products".to_string()],
+            delete_order: vec!["products".to_string(), "categories".to_string()],
+            local_only_columns: vec!["is_synced".to_string()],
+        },
+    )
+    .await
+}
 
 async fn temp_db() -> SqlitePool {
     let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -23,6 +138,47 @@ async fn temp_db() -> SqlitePool {
         .await
         .unwrap();
     db.pool().clone()
+}
+
+async fn seed_cursor(pool: &SqlitePool, cursor: &str) {
+    sqlx::query(
+        "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, ?2, '2026-05-19T12:00:00.000Z')",
+    )
+    .bind("merchant-1")
+    .bind(cursor)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn seed_outbox_row(pool: &SqlitePool) {
+    sqlx::query(fixtures::insert_category_sql())
+        .bind("cat-local-1")
+        .bind("merchant-1")
+        .bind("Local Category")
+        .bind("2026-05-19T13:00:00.000Z")
+        .bind("2026-05-19T13:00:00.000Z")
+        .execute(pool)
+        .await
+        .unwrap();
+
+    sqlx::query(fixtures::insert_outbox_sql())
+        .bind("outbox-1")
+        .bind("categories")
+        .bind("cat-local-1")
+        .bind("insert")
+        .bind(serde_json::to_string(&serde_json::json!({
+            "id": "cat-local-1",
+            "merchantId": "merchant-1",
+            "name": "Local Category",
+            "createdAt": "2026-05-19T13:00:00.000Z",
+            "updatedAt": "2026-05-19T13:00:00.000Z"
+        })).unwrap())
+        .bind("merchant-1")
+        .bind("2026-05-19T13:00:00.000Z")
+        .execute(pool)
+        .await
+        .unwrap();
 }
 
 async fn seed_categories_and_products(pool: &SqlitePool) {
@@ -80,6 +236,223 @@ async fn pull_baseline_applies_rows_in_fk_order() {
         .await
         .unwrap();
     assert_eq!(prod_name, "Kopi Susu Updated");
+}
+
+#[tokio::test]
+async fn sync_now_skips_transfer_when_clean() {
+    let pool = temp_db().await;
+    seed_cursor(&pool, "sync:phase14").await;
+
+    let transport = RecordingTransport::new(
+        serde_json::json!({"tables": [], "serverTime": "2026-05-19T12:00:00.000Z"}),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::NoOp);
+    assert!(result.pull.is_none());
+    assert!(result.push.is_none());
+    assert_eq!(result.purged, 0);
+    assert_eq!(
+        result.status.as_ref().unwrap().changed_tables,
+        Vec::<String>::new()
+    );
+    assert_eq!(transport.calls().len(), 1);
+    assert_eq!(transport.calls()[0].0, "status");
+    assert_eq!(transport.calls()[0].1["scopeId"], "merchant-1");
+    assert_eq!(transport.calls()[0].1["cursor"], "sync:phase14");
+}
+
+#[tokio::test]
+async fn sync_now_pushes_without_initial_pull_when_server_is_clean() {
+    let pool = temp_db().await;
+    seed_cursor(&pool, "sync:phase14").await;
+    seed_outbox_row(&pool).await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::PushOnly);
+    assert!(result.pull.is_none());
+    assert!(result.push.is_some());
+    assert_eq!(transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(), vec!["status", "push"]);
+}
+
+#[tokio::test]
+async fn sync_now_pulls_changed_tables_without_push_when_local_is_clean() {
+    let pool = temp_db().await;
+    seed_cursor(&pool, "sync:phase14").await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": ["categories"],
+            "hasChanges": true,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [{
+                "id": "cat-1",
+                "merchantId": "merchant-1",
+                "name": "Drinks Updated",
+                "createdAt": "2026-05-17T00:00:00.000Z",
+                "updatedAt": "2026-05-19T12:00:00.000Z"
+            }],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::PullOnly);
+    assert!(result.pull.is_some());
+    assert!(result.push.is_none());
+    assert_eq!(
+        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        vec!["status", "pull"]
+    );
+    let pull_request = &transport.calls()[1].1;
+    assert_eq!(pull_request["tables"], serde_json::json!(["categories"]));
+    assert_eq!(pull_request["cursor"], "sync:phase14");
+}
+
+#[tokio::test]
+async fn sync_now_pulls_then_pushes_when_both_sides_changed() {
+    let pool = temp_db().await;
+    seed_cursor(&pool, "sync:phase14").await;
+    seed_outbox_row(&pool).await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": ["categories"],
+            "hasChanges": true,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [{
+                "id": "cat-1",
+                "merchantId": "merchant-1",
+                "name": "Drinks Updated",
+                "createdAt": "2026-05-17T00:00:00.000Z",
+                "updatedAt": "2026-05-19T12:00:00.000Z"
+            }],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullSync);
+    assert!(result.pull.is_some());
+    assert!(result.push.is_some());
+    assert_eq!(
+        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        vec!["status", "pull", "push"]
+    );
+}
+
+#[tokio::test]
+async fn sync_now_preserves_baseline_sync_when_local_cursor_missing() {
+    let pool = temp_db().await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [{
+                "id": "cat-1",
+                "merchantId": "merchant-1",
+                "name": "Drinks Updated",
+                "createdAt": "2026-05-17T00:00:00.000Z",
+                "updatedAt": "2026-05-19T12:00:00.000Z"
+            }],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullResync);
+    assert!(result.pull.is_some());
+    assert!(result.push.is_some());
+    let pull_request = &transport.calls()[1].1;
+    assert_eq!(pull_request["cursor"], "");
+}
+
+#[tokio::test]
+async fn sync_now_reconciles_rejected_tables_after_push() {
+    let pool = temp_db().await;
+    seed_cursor(&pool, "sync:phase14").await;
+    seed_outbox_row(&pool).await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack(
+            "categories",
+            vec![serde_json::json!({"id": "cat-local-1", "reason": "server_newer"})],
+        ),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [{
+                "id": "cat-local-1",
+                "merchantId": "merchant-1",
+                "name": "Server Category",
+                "createdAt": "2026-05-17T00:00:00.000Z",
+                "updatedAt": "2026-05-19T12:00:01.000Z"
+            }],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::PushOnly);
+    assert_eq!(
+        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        vec!["status", "push", "pull"]
+    );
+    let pull_request = &transport.calls()[2].1;
+    assert_eq!(pull_request["cursor"], "");
+    assert_eq!(pull_request["tables"], serde_json::json!(["categories"]));
 }
 
 #[tokio::test]

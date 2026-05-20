@@ -6,8 +6,8 @@ The `crates/baresync-core/src/pull.rs` module SHALL export a `pull` function tha
 
 The pull engine SHALL:
 1. Resolve the start cursor from `PullStartCursor`: `Baseline` uses empty string, `Stored` reads from `sync_cursors`
-2. Send a GET request to `{api_url}/sync/pull` with query parameters `scopeId`, `tables` (from contract `upsert_order` or the table filter), `limit`, and `cursor`
-3. Parse the JSON response
+2. Send a POST request to `{api_url}/sync/pull` with a body containing `scopeId`, `tables` (from contract `upsert_order` or the table filter), `limit`, and `cursor`
+3. Encode the request and decode the response according to `SyncEngineConfig.encoding`
 4. Apply upserts in `upsert_order` (parent before child)
 5. Apply soft deletes in `delete_order` (child before parent)
 6. If using `PullStartCursor::Stored`, advance the cursor in `sync_cursors`
@@ -49,6 +49,18 @@ The pull engine SHALL:
 - **WHEN** a table filter `["categories", "products"]` is provided
 - **THEN** only those tables SHALL be included in the pull request
 
+#### Scenario: JSON pull uses POST body
+
+- **WHEN** the engine is configured with `encoding: "json"` and pull is called
+- **THEN** the runtime SHALL send a POST request body containing `scopeId`, `tables`, `limit`, and `cursor`
+- **AND** the response SHALL be decoded as JSON
+
+#### Scenario: Protobuf pull uses POST body
+
+- **WHEN** the engine is configured with `encoding: "protobuf"` and pull is called
+- **THEN** the runtime SHALL send a POST request body encoded as protobuf
+- **AND** the response SHALL be decoded from protobuf bytes
+
 ### Requirement: Soft delete application
 
 The pull engine SHALL apply soft deletes by setting `deleted_at`, `updated_at`, and `is_synced = 1` on the local row.
@@ -71,6 +83,22 @@ The pull engine SHALL store the cursor in a `sync_cursors` table keyed by `scope
 
 - **WHEN** row application fails mid-way through a pull
 - **THEN** the cursor is not updated and remains at the previous value
+
+### Requirement: Runtime status request
+
+The runtime transport SHALL support a status request that sends `scopeId` and `cursor` to `{api_url}/sync/status` and decodes a response containing `changedTables`, `hasChanges`, `cursor`, and `serverTime`.
+
+#### Scenario: JSON status request
+
+- **WHEN** the engine is configured with `encoding: "json"` and status is requested
+- **THEN** the runtime SHALL send a POST JSON body containing `scopeId` and `cursor`
+- **AND** the response SHALL be decoded from JSON
+
+#### Scenario: Protobuf status request
+
+- **WHEN** the engine is configured with `encoding: "protobuf"` and status is requested
+- **THEN** the runtime SHALL send a POST protobuf body containing `scopeId` and `cursor`
+- **AND** the response SHALL be decoded from protobuf bytes
 
 ### Requirement: Pull response JSON shape
 

@@ -18,6 +18,11 @@ The client's `syncNow` method SHALL invoke the `sync_now` Tauri command with the
 - **WHEN** `client.syncNow()` is called
 - **THEN** the client SHALL call `invoke("sync_now", { scopeId: client.scopeId })` and return the result
 
+#### Scenario: syncNow API remains stable when runtime becomes status-aware
+- **WHEN** the runtime implementation adds status-aware orchestration
+- **THEN** existing consumers SHALL continue to call `client.syncNow()` with the same argument shape
+- **AND** no new JS orchestration method SHALL be required for cheap no-op sync behavior
+
 ### Requirement: push method
 The client's `push` method SHALL invoke the `sync_push` Tauri command.
 

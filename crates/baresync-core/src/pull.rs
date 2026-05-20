@@ -4,6 +4,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::config::SyncEngineConfig;
 use crate::cursor;
 use crate::error::SyncError;
+use serde_json::json;
 
 #[derive(Debug, Clone)]
 pub enum PullStartCursor {
@@ -112,10 +113,12 @@ pub async fn pull(
         .transport
         .send_pull_request(
             config.api_url.clone(),
-            config.scope_id.clone(),
-            tables_to_pull.to_vec(),
-            limit,
-            cursor_value.clone(),
+            json!({
+                "scopeId": config.scope_id.clone(),
+                "tables": tables_to_pull,
+                "limit": limit,
+                "cursor": cursor_value,
+            }),
         )
         .await?;
 

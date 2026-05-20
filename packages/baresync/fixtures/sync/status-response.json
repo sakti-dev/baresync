@@ -1,0 +1,6 @@
+{
+  "changedTables": ["categories", "products"],
+  "hasChanges": true,
+  "cursor": "sync:123:categories:row-1",
+  "serverTime": "2026-05-19T12:00:00.000Z"
+}

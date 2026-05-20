@@ -11,5 +11,6 @@ pub mod migrations;
 pub mod outbox;
 pub mod pull;
 pub mod push;
+pub mod status;
 pub mod schema;
 pub mod state;

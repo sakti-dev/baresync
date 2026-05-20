@@ -9,13 +9,12 @@ pub type SyncTransportFuture = Pin<Box<dyn Future<Output = Result<Value, SyncErr
 pub trait SyncHttpTransport: Send + Sync {
     fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture;
 
+    fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture;
+
     fn send_pull_request(
         &self,
         api_url: String,
-        scope_id: String,
-        tables: Vec<String>,
-        limit: i32,
-        cursor: String,
+        body: Value,
     ) -> SyncTransportFuture;
 }
 
@@ -55,25 +54,46 @@ impl SyncHttpTransport for JsonHttpTransport {
         })
     }
 
+    fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
+        Box::pin(async move {
+            let url = format!("{}/sync/status", api_url.trim_end_matches('/'));
+            let client = reqwest::Client::new();
+            let response = client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| SyncError::Network(format!("Status request failed: {}", e)))?;
+
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .map_err(|e| SyncError::Network(format!("Failed to read response body: {}", e)))?;
+
+            if !status.is_success() {
+                return Err(classify_http_error(status.as_u16(), &body));
+            }
+
+            serde_json::from_str(&body).map_err(|e| {
+                SyncError::Encoding(format!("Failed to parse status response: {}", e))
+            })
+        })
+    }
+
     fn send_pull_request(
         &self,
         api_url: String,
-        scope_id: String,
-        tables: Vec<String>,
-        limit: i32,
-        cursor: String,
+        body: Value,
     ) -> SyncTransportFuture {
         Box::pin(async move {
             let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
             let client = reqwest::Client::new();
             let response = client
-                .get(&url)
-                .query(&[
-                    ("scopeId", scope_id.as_str()),
-                    ("tables", tables.join(",").as_str()),
-                    ("limit", limit.to_string().as_str()),
-                    ("cursor", cursor.as_str()),
-                ])
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
                 .send()
                 .await
                 .map_err(|e| SyncError::Network(format!("Pull request failed: {}", e)))?;

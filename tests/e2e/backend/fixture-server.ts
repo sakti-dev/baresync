@@ -16,6 +16,13 @@ interface TablePayload {
   table: string;
 }
 
+interface StatusPayload {
+  changedTables: string[];
+  cursor: string;
+  hasChanges: boolean;
+  serverTime: string;
+}
+
 interface PushedState {
   categories: Row[];
   products: Row[];
@@ -100,6 +107,15 @@ function responseTables(): TablePayload[] {
   ];
 }
 
+function responseStatus(): StatusPayload {
+  return {
+    changedTables: ["categories", "products"],
+    cursor: `sync:${serverTime}:products:prod-1`,
+    hasChanges: true,
+    serverTime,
+  };
+}
+
 function parseTables(body: Record<string, unknown>): TablePayload[] {
   const tables = Array.isArray(body.tables) ? body.tables : [];
   return tables.map((entry) => {
@@ -139,80 +155,141 @@ function applyPush(body: Record<string, unknown>) {
   }
 }
 
+function handleResetRequest(): Response | Promise<Response> {
+  state = initialState();
+  return Response.json({ ok: true, scopeId });
+}
+
+function handleStateRequest(): Response | Promise<Response> {
+  return Response.json({
+    scopeId,
+    categories: state.categories,
+    products: state.products,
+    pushed: state.pushed,
+  });
+}
+
+async function handleStatusRequest(request: Request): Promise<Response> {
+  const decoded = await decodeSyncRequest({
+    encoding: transportMode,
+    kind: "status",
+    protobufSchema,
+    request,
+  });
+  const body = decoded.body;
+  if (String(body.scopeId ?? "") !== scopeId) {
+    return Response.json({ error: "invalid_scope" }, { status: 404 });
+  }
+
+  return encodeSyncResponse({
+    body: responseStatus(),
+    encoding: transportMode,
+    kind: "status",
+    protobufSchema,
+  });
+}
+
+async function handlePullRequest(request: Request): Promise<Response> {
+  if (request.method === "GET") {
+    const requestedScope = new URL(request.url).searchParams.get("scopeId");
+    if (requestedScope !== scopeId) {
+      return Response.json({ error: "invalid_scope" }, { status: 404 });
+    }
+
+    return encodeSyncResponse({
+      body: {
+        cursor: `sync:${serverTime}:products:prod-1`,
+        hasMore: false,
+        serverTime,
+        tables: responseTables(),
+      },
+      encoding: transportMode,
+      kind: "pull",
+      protobufSchema,
+    });
+  }
+
+  const decoded = await decodeSyncRequest({
+    encoding: transportMode,
+    kind: "pull",
+    protobufSchema,
+    request,
+  });
+  const body = decoded.body;
+  if (String(body.scopeId ?? "") !== scopeId) {
+    return Response.json({ error: "invalid_scope" }, { status: 404 });
+  }
+
+  return encodeSyncResponse({
+    body: {
+      cursor: `sync:${serverTime}:products:prod-1`,
+      hasMore: false,
+      serverTime,
+      tables: responseTables(),
+    },
+    encoding: transportMode,
+    kind: "pull",
+    protobufSchema,
+  });
+}
+
+async function handlePushRequest(request: Request): Promise<Response> {
+  const decoded = await decodeSyncRequest({
+    encoding: transportMode,
+    kind: "push",
+    protobufSchema,
+    request,
+  });
+  const body = decoded.body;
+  if (String(body.scopeId ?? "") !== scopeId) {
+    return Response.json({ error: "invalid_scope" }, { status: 404 });
+  }
+
+  applyPush(body);
+
+  return encodeSyncResponse({
+    body: {
+      serverTime,
+      tables: parseTables(body).map((entry) => ({
+        table: entry.table,
+        acceptedCreatedIds: entry.changedRows.map((row) =>
+          String((row as Row).id ?? "")
+        ),
+        acceptedUpdatedIds: [],
+        acceptedDeletedIds: entry.deletedIds,
+        rejected: [],
+      })),
+    },
+    encoding: transportMode,
+    kind: "push",
+    protobufSchema,
+  });
+}
+
 runtime.Bun.serve({
   port,
-  fetch: async (request: Request) => {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/__reset" && request.method === "POST") {
-      state = initialState();
-      return Response.json({ ok: true, scopeId });
-    }
-
-    if (url.pathname === "/__state" && request.method === "GET") {
-      return Response.json({
-        scopeId,
-        categories: state.categories,
-        products: state.products,
-        pushed: state.pushed,
-      });
-    }
-
-    if (url.pathname === "/sync/pull" && request.method === "GET") {
-      const requestedScope = url.searchParams.get("scopeId");
-      if (requestedScope !== scopeId) {
-        return Response.json({ error: "invalid_scope" }, { status: 404 });
-      }
-
-      return encodeSyncResponse({
-        body: {
-          cursor: `sync:${serverTime}:products:prod-1`,
-          hasMore: false,
-          serverTime,
-          tables: responseTables(),
-        },
-        encoding: transportMode,
-        kind: "pull",
-        protobufSchema,
-      });
-    }
-
-    if (url.pathname === "/sync/push" && request.method === "POST") {
-      const decoded = await decodeSyncRequest({
-        encoding: transportMode,
-        kind: "push",
-        protobufSchema,
-        request,
-      });
-      const body = decoded.body;
-      if (String(body.scopeId ?? "") !== scopeId) {
-        return Response.json({ error: "invalid_scope" }, { status: 404 });
-      }
-
-      applyPush(body);
-
-      return encodeSyncResponse({
-        body: {
-          serverTime,
-          tables: parseTables(body).map((entry) => ({
-            table: entry.table,
-            acceptedCreatedIds: entry.changedRows.map((row) =>
-              String((row as Row).id ?? "")
-            ),
-            acceptedUpdatedIds: [],
-            acceptedDeletedIds: entry.deletedIds,
-            rejected: [],
-          })),
-        },
-        encoding: transportMode,
-        kind: "push",
-        protobufSchema,
-      });
+  fetch: (request: Request) => {
+    const routeKey = `${request.method} ${new URL(request.url).pathname}`;
+    const handler = routeHandlers[routeKey];
+    if (handler) {
+      return handler(request);
     }
 
     return Response.json({ error: "not_found" }, { status: 404 });
   },
 });
+
+const routeHandlers: Record<
+  string,
+  (request: Request) => Response | Promise<Response>
+> = {
+  "POST /__reset": handleResetRequest,
+  "GET /__state": handleStateRequest,
+  "POST /sync/status": handleStatusRequest,
+  "POST /sync/pull": handlePullRequest,
+  "GET /sync/pull": handlePullRequest,
+  "POST /sync/push": handlePushRequest,
+};
 
 console.log(`[fixture-backend] listening on http://127.0.0.1:${port}`);
 console.log(`[fixture-backend] encoding=${transportMode}`);

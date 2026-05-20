@@ -16,7 +16,8 @@ pub mod protobuf_generated;
 
 use protobuf_generated::{
     CategoriesChanges, CategoriesRow, ProductsChanges, ProductsRow, SyncPullBatchResponse,
-    SyncPushBatchRequest, SyncPushBatchResponse, SyncTableAck,
+    SyncPullBatchRequest, SyncPushBatchRequest, SyncPushBatchResponse, SyncStatusRequest,
+    SyncStatusResponse, SyncTableAck,
 };
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
@@ -274,6 +275,43 @@ fn push_response_to_value(response: SyncPushBatchResponse) -> Value {
     })
 }
 
+fn status_request_from_value(body: &Value) -> SyncStatusRequest {
+    SyncStatusRequest {
+        scope_id: value_string(body, "scopeId"),
+        cursor: value_string(body, "cursor"),
+    }
+}
+
+fn status_response_to_value(response: SyncStatusResponse) -> Value {
+    json!({
+        "changedTables": response.changed_tables,
+        "hasChanges": response.has_changes,
+        "cursor": response.cursor,
+        "serverTime": response.server_time,
+    })
+}
+
+fn pull_request_from_value(body: &Value) -> SyncPullBatchRequest {
+    let tables = body
+        .get("tables")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(std::string::ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    SyncPullBatchRequest {
+        scope_id: value_string(body, "scopeId"),
+        tables,
+        cursor: value_string(body, "cursor"),
+        limit: value_i64(body, "limit"),
+    }
+}
+
 impl SyncHttpTransport for FixtureProtobufTransport {
     fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture {
         box_transport(async move {
@@ -303,25 +341,47 @@ impl SyncHttpTransport for FixtureProtobufTransport {
         })
     }
 
+    fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
+        box_transport(async move {
+            let url = format!("{}/sync/status", api_url.trim_end_matches('/'));
+            let request = status_request_from_value(&body);
+            let body = request.encode_to_vec();
+            let response = reqwest::Client::new()
+                .post(url)
+                .header("Content-Type", "application/x-protobuf")
+                .body(body)
+                .send()
+                .await
+                .map_err(|e| SyncError::Network(format!("Status request failed: {e}")))?;
+            let status = response.status();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|e| SyncError::Network(format!("Failed to read response body: {e}")))?;
+            if !status.is_success() {
+                let body = String::from_utf8_lossy(&bytes);
+                return Err(classify_http_error(status.as_u16(), &body));
+            }
+            let decoded = SyncStatusResponse::decode(bytes.as_ref()).map_err(|e| {
+                SyncError::Encoding(format!("Failed to decode protobuf status response: {e}"))
+            })?;
+            Ok(status_response_to_value(decoded))
+        })
+    }
+
     fn send_pull_request(
         &self,
         api_url: String,
-        scope_id: String,
-        tables: Vec<String>,
-        limit: i32,
-        cursor: String,
+        body: Value,
     ) -> SyncTransportFuture {
         box_transport(async move {
             let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
+            let request = pull_request_from_value(&body);
+            let body = request.encode_to_vec();
             let response = reqwest::Client::new()
-                .get(url)
-                .header("Accept", "application/x-protobuf")
-                .query(&[
-                    ("scopeId", scope_id.as_str()),
-                    ("tables", tables.join(",").as_str()),
-                    ("limit", limit.to_string().as_str()),
-                    ("cursor", cursor.as_str()),
-                ])
+                .post(url)
+                .header("Content-Type", "application/x-protobuf")
+                .body(body)
                 .send()
                 .await
                 .map_err(|e| SyncError::Network(format!("Pull request failed: {e}")))?;
@@ -510,4 +570,68 @@ pub fn run() {
         ])
         .run(generate_context!())
         .expect("failed to run fixture app");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use prost::Message;
+
+    #[test]
+    fn protobuf_status_helper_builds_post_request_and_round_trips() {
+        let body = serde_json::json!({
+            "scopeId": "merchant-1",
+            "cursor": "sync:123:categories:row-1",
+        });
+
+        let request = status_request_from_value(&body);
+        assert_eq!(request.scope_id, "merchant-1");
+        assert_eq!(request.cursor, "sync:123:categories:row-1");
+
+        let encoded = request.encode_to_vec();
+        let decoded = SyncStatusRequest::decode(encoded.as_ref()).unwrap();
+        assert_eq!(decoded.scope_id, "merchant-1");
+        assert_eq!(decoded.cursor, "sync:123:categories:row-1");
+
+        let built = reqwest::Client::new()
+            .post("http://localhost/sync/status")
+            .body(encoded)
+            .build()
+            .unwrap();
+
+        assert_eq!(built.method(), reqwest::Method::POST);
+        assert_eq!(built.url().path(), "/sync/status");
+    }
+
+    #[test]
+    fn protobuf_pull_helper_builds_post_request_and_round_trips() {
+        let body = serde_json::json!({
+            "scopeId": "merchant-1",
+            "tables": ["categories", "products"],
+            "limit": 1000,
+            "cursor": "sync:123:categories:row-1",
+        });
+
+        let request = pull_request_from_value(&body);
+        assert_eq!(request.scope_id, "merchant-1");
+        assert_eq!(request.tables, vec!["categories", "products"]);
+        assert_eq!(request.limit, 1000);
+        assert_eq!(request.cursor, "sync:123:categories:row-1");
+
+        let encoded = request.encode_to_vec();
+        let decoded = SyncPullBatchRequest::decode(encoded.as_ref()).unwrap();
+        assert_eq!(decoded.scope_id, "merchant-1");
+        assert_eq!(decoded.tables, vec!["categories", "products"]);
+        assert_eq!(decoded.limit, 1000);
+        assert_eq!(decoded.cursor, "sync:123:categories:row-1");
+
+        let built = reqwest::Client::new()
+            .post("http://localhost/sync/pull")
+            .body(encoded)
+            .build()
+            .unwrap();
+
+        assert_eq!(built.method(), reqwest::Method::POST);
+        assert_eq!(built.url().path(), "/sync/pull");
+    }
 }

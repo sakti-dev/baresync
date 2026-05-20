@@ -4,6 +4,8 @@ import idempotentReplayFixture from "../../../fixtures/sync/idempotent-replay.js
 import payloadTooLargeFixture from "../../../fixtures/sync/payload-too-large.json";
 import serverSoftDeleteFixture from "../../../fixtures/sync/server-soft-delete.json";
 import serverWinsRejectionFixture from "../../../fixtures/sync/server-wins-rejection.json";
+import statusRequestFixture from "../../../fixtures/sync/status-request.json";
+import statusResponseFixture from "../../../fixtures/sync/status-response.json";
 
 export const baselinePull =
   baselinePullFixture as typeof baselinePullFixture & {
@@ -51,6 +53,10 @@ export const serverWinsRejection =
       }>;
     };
   };
+export const statusRequest =
+  statusRequestFixture as typeof statusRequestFixture;
+export const statusResponse =
+  statusResponseFixture as typeof statusResponseFixture;
 export const idempotentReplay =
   idempotentReplayFixture as typeof idempotentReplayFixture & {
     firstRequest: {
