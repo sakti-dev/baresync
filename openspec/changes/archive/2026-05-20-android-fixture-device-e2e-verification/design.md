@@ -2,7 +2,7 @@
 
 The public fixture device E2E change produced a real desktop smoke and an Android automation path, but Android was not proven on a connected adb target. A connected device or emulator is now available, so this change narrows the remaining risk: prove Android install, launch, host networking, SQLite lifecycle, migrations, sync, and reset behavior with the public fixture app.
 
-The existing fixture app and backend remain the target. This change should not introduce a second fixture app or depend on `docs/external/sakti-pos`.
+The existing fixture app and backend remain the target. This change should not introduce a second fixture app or depend on `openspec/external/sakti-pos`.
 
 ## Goals / Non-Goals
 

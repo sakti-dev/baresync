@@ -6,7 +6,7 @@ Baresync has a working thin vertical: JSON push/pull, adaptive chunking, Tauri p
 - **Stream B**: Local DB runtime extraction (P4) — make the plugin actually usable for DB operations
 - **Stream C**: Server primitives completion (P6) — fill remaining gaps in low-level server helpers
 
-All three streams touch different packages/crates/languages and can run in parallel. Source material lives in `docs/external/sakti-pos/` — we extract by copying, not moving. Batteries-included server (`createSyncServer`) is explicitly deferred.
+All three streams touch different packages/crates/languages and can run in parallel. Source material lives in `openspec/external/sakti-pos/` — we extract by copying, not moving. Batteries-included server (`createSyncServer`) is explicitly deferred.
 
 ## Goals / Non-Goals
 

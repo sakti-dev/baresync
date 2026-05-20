@@ -1,7 +1,7 @@
 ## Context
 
 The baresync project extracts Sakti POS's sync layer into a public, reusable
-Tauri plugin. The source code lives in `docs/external/sakti-pos/` as a frozen
+Tauri plugin. The source code lives in `openspec/external/sakti-pos/` as a frozen
 reference copy of the Sakti monorepo. The baresync workspace itself currently
 contains only `docs/`, `openspec/`, and config directories — no packages, no
 crates, no source code.
@@ -124,4 +124,4 @@ fill these stubs immediately, limiting the stale window.
 **Dependency version drift between baresync and Sakti source** → If the Sakti
 monorepo upgrades `sqlx` or `tauri` after the source snapshot was taken, the
 baresync crate versions may diverge. Mitigation: Wave 2 extraction references
-the frozen source in `docs/external/sakti-pos/`, not a live dependency.
+the frozen source in `openspec/external/sakti-pos/`, not a live dependency.

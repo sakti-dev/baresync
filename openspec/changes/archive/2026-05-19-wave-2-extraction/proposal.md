@@ -47,7 +47,7 @@ Wave 1 (shells) and the thin-vertical spike delivered a working sync engine with
 
 - **Rust crates**: `baresync-core` gains real DB/proxy/migration modules (currently stubs); `tauri-plugin-baresync` gains 5 new Tauri commands
 - **JS package**: `baresync/server` gains 8+ new exported functions; `baresync/db` gains `createTauriDrizzleDatabase`; `baresync/generator` gains diagnostics/doctor/manifest
-- **Source extraction**: Copies from `docs/external/sakti-pos/apps/pos-app/src-tauri/src/db/` and `docs/external/sakti-pos/apps/api/src/sync/` — Sakti source is NOT modified
+- **Source extraction**: Copies from `openspec/external/sakti-pos/apps/pos-app/src-tauri/src/db/` and `openspec/external/sakti-pos/apps/api/src/sync/` — Sakti source is NOT modified
 - **Dependencies**: `baresync-core` may gain `sqlx` usage for real pool setup (currently uses it minimally); JS may gain no new dependencies (server primitives are pure logic + drizzle-orm already present)
 - **Tests**: Significant new test surface — migration DDL tests, proxy batch tests, server primitive tests, generator diagnostic tests
 - **Not affected**: Sakti POS app code stays untouched; batteries-included server deferred; protobuf encoding support unchanged

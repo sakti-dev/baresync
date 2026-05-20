@@ -55,4 +55,4 @@ The Android fixture smoke SHALL provide enough public, synthetic failure evidenc
 
 #### Scenario: Failure artifacts remain public-safe
 - **WHEN** Android fixture artifacts are collected
-- **THEN** they SHALL contain only synthetic fixture data or redacted operational metadata and SHALL NOT require `docs/external/sakti-pos` or any private consumer app data
+- **THEN** they SHALL contain only synthetic fixture data or redacted operational metadata and SHALL NOT require `openspec/external/sakti-pos` or any private consumer app data

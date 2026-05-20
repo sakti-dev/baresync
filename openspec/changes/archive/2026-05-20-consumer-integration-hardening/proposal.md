@@ -25,7 +25,7 @@ Private consumer apps need a clear, stable path for adopting Baresync without de
 
 ## Impact
 
-- New documentation under `docs/knowledge/` and possibly package-level README sections.
+- New documentation under `openspec/knowledge/` and possibly package-level README sections.
 - Possible small API additions for integration diagnostics or preflight checks.
 - Possible additional tests for JS client config, Drizzle proxy config, plugin builder config, and migration/DB info integration checks.
 - No public fixture E2E dependency on private apps.

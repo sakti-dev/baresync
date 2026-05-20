@@ -53,5 +53,5 @@ The system SHALL keep public device E2E independent from private consumer applic
 
 #### Scenario: Sakti source is not required
 - **WHEN** maintainers run or inspect the public fixture device E2E
-- **THEN** the E2E implementation SHALL NOT require `docs/external/sakti-pos`, Sakti app routes, Sakti auth, Sakti schema, or Sakti-specific commands
+- **THEN** the E2E implementation SHALL NOT require `openspec/external/sakti-pos`, Sakti app routes, Sakti auth, Sakti schema, or Sakti-specific commands
 

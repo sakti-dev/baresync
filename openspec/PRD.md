@@ -1,6 +1,6 @@
 # Baresync Public Tauri Sync Plugin Implementation Plan
 
-**Sakti POS Source Code**: its in `docs/external/sakti-pos`, extract code from there by copying, not moving.
+**Sakti POS Source Code**: its in `openspec/external/sakti-pos`, extract code from there by copying, not moving.
 
 **Goal:** Extract the hardened Sakti POS sync layer into a public, reusable, Tauri-only, SQLite/libSQL-first sync platform with one JS package, a Rust Tauri plugin runtime, Drizzle schema helpers, and a consumer-run sync contract generator with JSON and protobuf encodings.
 
@@ -561,7 +561,7 @@ Table: products
 Column: merchant_id
 Why: batteries-included sync needs a trusted server-side scope column for pull filters and scoped deletes.
 Fix: Add merchantId: text("merchant_id").notNull() to products, or update defineSyncedTable({ scope: ... }) to point at the correct column.
-Docs: docs/knowledge/PUBLIC-SYNC-PLUGIN.md#scope-mapping
+Docs: openspec/knowledge/PUBLIC-SYNC-PLUGIN.md#scope-mapping
 ```
 
 Required error diagnostics:
@@ -1276,10 +1276,10 @@ Android smoke rules:
 
 **Files:**
 
-- Read: `docs/knowledge/SYNC-TYPED-PROTOBUF-GENERATOR.md`
-- Read: `docs/knowledge/SYNC-LIMITS.md`
-- Read: `docs/knowledge/SYNC-ROW-STATE-OPERATIONS.md`
-- Read: `docs/adr/0009-use-row-state-sync-watermarks.md`
+- Read: `openspec/knowledge/SYNC-TYPED-PROTOBUF-GENERATOR.md`
+- Read: `openspec/knowledge/SYNC-LIMITS.md`
+- Read: `openspec/knowledge/SYNC-ROW-STATE-OPERATIONS.md`
+- Read: `openspec/adr/0009-use-row-state-sync-watermarks.md`
 - Read: `apps/pos-app/src-tauri/src/sync/*`
 - Read: `apps/api/src/sync/*`
 - Read: `packages/sync-proto-generator/src/*`
@@ -2001,7 +2001,7 @@ cargo test --workspace
 - Create: `tests/e2e/README.md`
 - Modify: `apps/pos-app/src/store/__test__/sync.test.ts`
 - Modify: `apps/pos-app/src/components/__test__/sync-status.test.tsx`
-- Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md`
+- Create: `openspec/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md`
 - Modify: `logs/capture-adb-logcat.sh` only if new app log prefixes are added during implementation.
 
 **Tasks:**
@@ -2097,13 +2097,13 @@ bun x ultracite check
 **Files:**
 
 - Create: `packages/baresync/README.md`
-- Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN.md`
-- Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-GENERATOR.md`
-- Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-LOCAL-DB.md`
-- Create: `docs/knowledge/PUBLIC-SYNC-PLUGIN-SERVER.md`
-- Create: `docs/adr/0010-public-tauri-sync-plugin.md`
-- Modify: `docs/knowledge/SYNC-LIMITS.md`
-- Modify: `docs/knowledge/SYNC-TYPED-PROTOBUF-GENERATOR.md`
+- Create: `openspec/knowledge/PUBLIC-SYNC-PLUGIN.md`
+- Create: `openspec/knowledge/PUBLIC-SYNC-PLUGIN-GENERATOR.md`
+- Create: `openspec/knowledge/PUBLIC-SYNC-PLUGIN-LOCAL-DB.md`
+- Create: `openspec/knowledge/PUBLIC-SYNC-PLUGIN-SERVER.md`
+- Create: `openspec/adr/0010-public-tauri-sync-plugin.md`
+- Modify: `openspec/knowledge/SYNC-LIMITS.md`
+- Modify: `openspec/knowledge/SYNC-TYPED-PROTOBUF-GENERATOR.md`
 
 **Tasks:**
 

@@ -26,5 +26,5 @@ The public fixture E2E work proved the desktop path, but Android remains an impl
 - `packages/e2e/package.json`
 - `packages/e2e/README.md`
 - `apps/baresync-fixture/src-tauri/`
-- `docs/knowledge/E2E-TESTING-RUNBOOK.md`
+- `openspec/knowledge/E2E-TESTING-RUNBOOK.md`
 - `openspec/specs/public-fixture-device-e2e/spec.md`

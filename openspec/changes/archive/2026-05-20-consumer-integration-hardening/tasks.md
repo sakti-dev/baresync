@@ -1,12 +1,12 @@
 ## 1. Integration Contract Documentation
 
-- [x] 1.1 Create consumer integration guidance under `docs/knowledge/`.
+- [x] 1.1 Create consumer integration guidance under `openspec/knowledge/`.
 - [x] 1.2 Document the ordered integration checklist from generated artifacts through private app device smoke validation.
 - [x] 1.3 Document Rust plugin builder inputs: API URL, encoding, limits, DB path, contract table metadata, and embedded migrations.
 - [x] 1.4 Document JS sync client setup, command names, command argument shape, custom `invoke`, and consumer-owned UI/error policy.
 - [x] 1.5 Document Drizzle proxy setup with `createTauriDrizzleDatabase`, command mapping, migration status, DB info, and a basic read check.
 - [x] 1.6 Document auth/session and scope boundaries as consumer-owned integration concerns.
-- [x] 1.7 Document that public integration guidance does not depend on `docs/external/sakti-pos` or any private consumer app.
+- [x] 1.7 Document that public integration guidance does not depend on `openspec/external/sakti-pos` or any private consumer app.
 
 ## 2. Compatibility And Preflight
 

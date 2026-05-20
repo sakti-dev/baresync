@@ -54,5 +54,5 @@ Sakti POS app's `Cargo.toml`:
 #### Scenario: No version mismatch with source
 
 - **WHEN** comparing `crates/baresync-core/Cargo.toml` dependency versions
-  against `docs/external/sakti-pos/apps/pos-app/src-tauri/Cargo.toml`
+  against `openspec/external/sakti-pos/apps/pos-app/src-tauri/Cargo.toml`
 - **THEN** the shared dependency versions are identical

@@ -11,7 +11,7 @@ The `baresync-thin-vertical` change built a working sync engine with push, pull,
 - No client identity — `client_id` in config is a placeholder; no device-level persistence.
 - No `sync_now` orchestration — the engine exposes `push()` and `pull()` separately but not the standard pull→push→reconcile→GC cycle.
 
-The Sakti POS source at `docs/external/sakti-pos/` contains production-proven implementations of all these patterns. This change adapts them for the public baresync API.
+The Sakti POS source at `openspec/external/sakti-pos/` contains production-proven implementations of all these patterns. This change adapts them for the public baresync API.
 
 ## Goals / Non-Goals
 

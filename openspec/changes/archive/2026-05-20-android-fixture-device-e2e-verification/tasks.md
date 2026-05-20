@@ -25,8 +25,8 @@
 
 - [x] 4.1 Collect or document Maestro output, adb logcat, fixture backend state, app id, device id, backend URL, reset method, and generated fixture build metadata on failure.
 - [x] 4.2 Update `packages/e2e/README.md` with Android prerequisites, backend URL rules, app install/launch assumptions, and the verified command.
-- [x] 4.3 Update `docs/knowledge/E2E-TESTING-RUNBOOK.md` so future agents know Android E2E is only verified after a connected adb run passes.
-- [x] 4.4 Keep Android guidance and artifacts independent from `docs/external/sakti-pos` and private consumer app data.
+- [x] 4.3 Update `openspec/knowledge/E2E-TESTING-RUNBOOK.md` so future agents know Android E2E is only verified after a connected adb run passes.
+- [x] 4.4 Keep Android guidance and artifacts independent from `openspec/external/sakti-pos` and private consumer app data.
 
 ## 5. Verification
 

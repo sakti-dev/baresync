@@ -4,7 +4,7 @@ The host command and JS invoke simulation tests are the normal Phase 14 verifica
 
 Desktop and Android smoke files in this package are opt-in. They are not required by `cargo test --workspace`, `bun test`, or `bun x ultracite check`.
 
-The public fixture app lives under `tests/fixture-app` and is the only supported target for these smoke flows. `docs/external/sakti-pos` is not part of public fixture E2E.
+The public fixture app lives under `tests/fixture-app` and is the only supported target for these smoke flows. `openspec/external/sakti-pos` is not part of public fixture E2E.
 
 ## Fixture Backend
 

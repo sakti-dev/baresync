@@ -34,7 +34,7 @@ The public fixture app is the only supported E2E target in this repo.
 - Desktop smoke: `tests/e2e/desktop/sync-smoke.test.ts`
 - Android smoke: `tests/e2e/android/sync-smoke.yaml`
 
-Do not wire `docs/external/sakti-pos` into public E2E. Private downstream apps should copy the fixture integration pattern and keep their own E2E outside this public repo.
+Do not wire `openspec/external/sakti-pos` into public E2E. Private downstream apps should copy the fixture integration pattern and keep their own E2E outside this public repo.
 
 The fixture app must use the public surfaces that a real consumer uses:
 

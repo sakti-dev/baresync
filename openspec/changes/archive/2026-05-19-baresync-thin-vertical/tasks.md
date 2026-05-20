@@ -35,7 +35,7 @@
 
 ## 4. JSON Sync Generator (`packages/baresync/src/generator/`)
 
-- [x] 4.1 Extract `fk-order.ts` from `docs/external/sakti-pos/packages/sync-proto-generator/src/fk-order.ts` into `packages/baresync/src/generator/`
+- [x] 4.1 Extract `fk-order.ts` from `openspec/external/sakti-pos/packages/sync-proto-generator/src/fk-order.ts` into `packages/baresync/src/generator/`
 - [x] 4.2 Extract `drizzle-reflection.ts` helper from Sakti generator
 - [x] 4.3 Create `outputs.ts` that writes `sync-contract.json` with version, encoding, packageName, upsertOrder, deleteOrder, tables (columns, scope, localOnlyColumns, serverOnlyColumns), and limits
 - [x] 4.4 Create `outputs.ts` that writes TypeScript file exporting `SYNC_UPSERT_ORDER` and `SYNC_DELETE_ORDER` as const arrays

@@ -27,8 +27,8 @@
 
 ## 4. Device Simulation Documentation
 
-- [x] 4.1 Add `docs/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md` documenting host CI scope, optional smoke scope, prerequisites, and expected use
-- [x] 4.2 Update `docs/MILESTONES.md` to mark Phase 14 complete only after command tests, JS tests, smoke skeletons, and documentation pass review
+- [x] 4.1 Add `openspec/knowledge/PUBLIC-SYNC-PLUGIN-DEVICE-SIMULATION.md` documenting host CI scope, optional smoke scope, prerequisites, and expected use
+- [x] 4.2 Update `openspec/MILESTONES.md` to mark Phase 14 complete only after command tests, JS tests, smoke skeletons, and documentation pass review
 
 ## 5. Verification
 

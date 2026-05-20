@@ -9,7 +9,7 @@ The system SHALL provide public guidance for integrating Baresync into a consume
 
 #### Scenario: Private app independence
 - **WHEN** a maintainer reads the integration guidance
-- **THEN** it SHALL NOT require `docs/external/sakti-pos`, Sakti app routes, Sakti auth, Sakti schema, or Sakti-specific commands
+- **THEN** it SHALL NOT require `openspec/external/sakti-pos`, Sakti app routes, Sakti auth, Sakti schema, or Sakti-specific commands
 
 ### Requirement: Compatibility checklist
 The system SHALL define compatibility checks that private consumer apps can apply before running full device automation.

@@ -2,7 +2,7 @@
 
 Phase 14 established host-runnable plugin command tests, mocked JS `invoke` tests, and opt-in desktop/Android smoke skeletons. Those checks prove most sync behavior without a device, but they do not prove that a public consumer can register the plugin, initialize SQLite, run embedded migrations, use the JS client, use the Drizzle proxy, and survive real Tauri desktop or Android lifecycle boundaries.
 
-The Sakti POS app exists in `docs/external/sakti-pos`, but it is not an acceptable public E2E target because it will become private and would confuse maintainers. This change introduces a repo-owned fixture app whose only job is to demonstrate the public Baresync integration pattern.
+The Sakti POS app exists in `openspec/external/sakti-pos`, but it is not an acceptable public E2E target because it will become private and would confuse maintainers. This change introduces a repo-owned fixture app whose only job is to demonstrate the public Baresync integration pattern.
 
 ## Goals / Non-Goals
 
@@ -16,7 +16,7 @@ The Sakti POS app exists in `docs/external/sakti-pos`, but it is not an acceptab
 
 **Non-Goals:**
 
-- Do not wire `docs/external/sakti-pos` into public E2E.
+- Do not wire `openspec/external/sakti-pos` into public E2E.
 - Do not migrate Sakti POS in this change.
 - Do not encode conflict/idempotency/adaptive-chunking edge cases in desktop or Android UI scripts.
 - Do not make device automation mandatory in normal CI.
@@ -28,7 +28,7 @@ The Sakti POS app exists in `docs/external/sakti-pos`, but it is not an acceptab
 
 The fixture app will live in a public workspace path and use a deliberately small schema such as categories/products. This keeps maintainers focused on Baresync integration rather than private app behavior.
 
-Alternative considered: drive `docs/external/sakti-pos/apps/pos-app` directly. That gives higher downstream confidence but couples public repo automation to private app code, auth, routes, assets, and future removal. It is rejected for this change.
+Alternative considered: drive `openspec/external/sakti-pos/apps/pos-app` directly. That gives higher downstream confidence but couples public repo automation to private app code, auth, routes, assets, and future removal. It is rejected for this change.
 
 ### Keep the fixture app intentionally narrow
 

@@ -26,5 +26,5 @@ The host-only simulation harness covers sync protocol behavior, but it does not 
 - Affected Rust tests: `crates/tauri-plugin-baresync/tests/commands.rs`.
 - Affected JS tests: `packages/baresync/src/tauri/__test__/client.test.ts`.
 - New opt-in smoke files under `packages/e2e/desktop/` and `packages/e2e/android/`.
-- New documentation under `docs/knowledge/`.
+- New documentation under `openspec/knowledge/`.
 - No production protocol changes and no protobuf implementation work in this change.

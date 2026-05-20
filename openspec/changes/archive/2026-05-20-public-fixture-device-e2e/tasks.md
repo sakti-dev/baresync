@@ -42,7 +42,7 @@
 
 - [x] 6.1 Add opt-in root or package scripts for desktop and Android fixture smoke runs.
 - [x] 6.2 Update `packages/e2e/README.md` with prerequisites, env vars, commands, fixture backend setup, and normal-CI exclusions.
-- [x] 6.3 Document that `docs/external/sakti-pos` is not part of public fixture E2E and private apps should follow the fixture integration pattern separately.
+- [x] 6.3 Document that `openspec/external/sakti-pos` is not part of public fixture E2E and private apps should follow the fixture integration pattern separately.
 - [x] 6.4 Update milestone or knowledge docs if needed to reflect that Phase 14 is complete and Phase 15 is fixture-based.
 
 ## 7. Verification

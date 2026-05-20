@@ -1,6 +1,6 @@
 # Consumer Integration Hardening
 
-This guide is the public checklist for wiring Baresync into a consumer Tauri app. It must stay independent of private downstream apps and must not require anything under `docs/external/sakti-pos`.
+This guide is the public checklist for wiring Baresync into a consumer Tauri app. It must stay independent of private downstream apps and must not require anything under `openspec/external/sakti-pos`.
 
 Use it after generated artifacts compile locally and before investing time in desktop or Android device automation. The goal is to catch command, database, migration, and contract mismatches while the failure is still cheap to inspect.
 

@@ -10,7 +10,7 @@ The current device-like coverage proves command handlers and mocked Tauri invoca
 - Replace the Android smoke skeleton with a real opt-in Maestro flow against the fixture app.
 - Add deterministic test data and state reset behavior for fresh install, baseline pull, local create, restart persistence, push, and clean app-data reset checks.
 - Keep device E2E opt-in and focused on public integration boundaries; sync edge-case correctness remains in deterministic JS, Rust, fixture, plugin-command, and mocked-invoke suites.
-- Do not depend on `docs/external/sakti-pos` or any private consumer app source in the public E2E implementation.
+- Do not depend on `openspec/external/sakti-pos` or any private consumer app source in the public E2E implementation.
 
 ## Capabilities
 

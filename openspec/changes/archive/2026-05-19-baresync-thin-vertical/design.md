@@ -1,6 +1,6 @@
 ## Context
 
-Wave 1 created empty `packages/baresync` and `crates/baresync-core` / `crates/tauri-plugin-baresync` shells with `limits.ts` constants and empty Rust files. The Sakti POS source at `docs/external/sakti-pos/` contains ~8,000 lines of working sync code across four areas:
+Wave 1 created empty `packages/baresync` and `crates/baresync-core` / `crates/tauri-plugin-baresync` shells with `limits.ts` constants and empty Rust files. The Sakti POS source at `openspec/external/sakti-pos/` contains ~8,000 lines of working sync code across four areas:
 
 - **Generator** (`packages/sync-proto-generator/src/`, ~1,600 LOC): Reads Drizzle schemas, computes FK-derived table order, writes protobuf artifacts and Rust/TS mappers.
 - **Rust sync engine** (`apps/pos-app/src-tauri/src/sync/`, ~4,300 LOC): Outbox, push, pull, reconciliation, all tightly coupled to protobuf-generated per-table builders and hardcoded Sakti table names (`SYNC_TABLES`).

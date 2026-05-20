@@ -36,5 +36,5 @@ This is a thin vertical slice through Wave 2 of the PRD. It targets JSON-only, s
 - `packages/baresync/src/` — all subpath exports gain real implementations
 - `crates/baresync-core/src/` — gains ~1500 LOC of extracted and generalized sync engine code
 - `crates/tauri-plugin-baresync/src/` — gains DB command wrappers
-- No changes to any existing Sakti POS app code (source is read-only reference at `docs/external/sakti-pos/`)
+- No changes to any existing Sakti POS app code (source is read-only reference at `openspec/external/sakti-pos/`)
 - Shared JSON fixtures at `packages/baresync/fixtures/sync/` become the canonical protocol contract for both Rust and JS tests
