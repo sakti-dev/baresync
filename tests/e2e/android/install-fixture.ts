@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_FIXTURE_TRANSPORT_MODE,
+  FIXTURE_TRANSPORT_ENV,
+} from "../fixture-transport";
 
 const DEVICE_STATE_SPLIT_RE = /\s+/;
 const IPV4_HOST_RE = /^(\d{1,3}(?:\.\d{1,3}){3})/;
@@ -73,7 +77,7 @@ function runSync(
 
 function fail(message: string): never {
   console.error(`[android:install-fixture] ${message}`);
-  runtime.process.exit(1);
+  throw new Error(message);
 }
 
 function pickUsableDevice(devicesOutput: string): DeviceTarget | null {
@@ -133,7 +137,7 @@ function inferHostAddress(serial: string) {
   return ROUTE_SRC_RE.exec(route.stdout)?.[1] ?? null;
 }
 
-function resolveFixtureApiUrl(device: DeviceTarget) {
+function resolveFixtureApiUrl(device: DeviceTarget): string {
   if (runtime.process.env.BARESYNC_FIXTURE_API_URL) {
     return runtime.process.env.BARESYNC_FIXTURE_API_URL;
   }
@@ -147,7 +151,7 @@ function resolveFixtureApiUrl(device: DeviceTarget) {
     return `http://${hostAddress}:18080`;
   }
 
-  fail(
+  return fail(
     "BARESYNC_FIXTURE_API_URL is required for this device because the host address could not be inferred."
   );
 }
@@ -201,15 +205,20 @@ if (abi.code !== 0 || abi.stdout.length === 0) {
 
 const tauriTarget = mapAbiToTauriTarget(abi.stdout);
 const fixtureApiUrl = resolveFixtureApiUrl(device);
+const fixtureEncoding =
+  runtime.process.env[FIXTURE_TRANSPORT_ENV] ?? DEFAULT_FIXTURE_TRANSPORT_MODE;
+runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
 const buildEnv = {
   ...runtime.process.env,
   BARESYNC_FIXTURE_API_URL: fixtureApiUrl,
+  [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
 };
 
 console.log(`[android:install-fixture] target=${device.serial}`);
 console.log(`[android:install-fixture] abi=${abi.stdout}`);
 console.log(`[android:install-fixture] tauriTarget=${tauriTarget}`);
 console.log(`[android:install-fixture] fixtureApiUrl=${fixtureApiUrl}`);
+console.log(`[android:install-fixture] encoding=${fixtureEncoding}`);
 
 if (!existsSync(androidProjectDir)) {
   const init = runSync(

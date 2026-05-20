@@ -1,3 +1,13 @@
+import {
+  decodeSyncRequest,
+  encodeSyncResponse,
+} from "../../../packages/baresync/src/server/index";
+import { resolveFixtureTransportMode } from "../fixture-transport";
+import {
+  SYNC_PROTOBUF_SCHEMA,
+  type SyncProtobufSchema,
+} from "../generated/protobuf/runtime.generated";
+
 interface Row extends Record<string, unknown> {}
 
 interface TablePayload {
@@ -20,6 +30,11 @@ interface FixtureState {
 const port = Number(process.env.BARESYNC_FIXTURE_BACKEND_PORT ?? "18080");
 const scopeId = process.env.BARESYNC_FIXTURE_SCOPE_ID ?? "merchant-1";
 const serverTime = "2026-05-20T00:00:00.000Z";
+const transportMode = resolveFixtureTransportMode();
+const protobufSchema: SyncProtobufSchema | undefined =
+  transportMode === "protobuf"
+    ? (SYNC_PROTOBUF_SCHEMA as unknown as SyncProtobufSchema)
+    : undefined;
 const runtime = globalThis as typeof globalThis & {
   Bun: {
     serve(options: {
@@ -83,14 +98,6 @@ function responseTables(): TablePayload[] {
       deletedIds: [],
     },
   ];
-}
-
-async function readJson(request: Request): Promise<Record<string, unknown>> {
-  const body = await request.json();
-  if (!body || typeof body !== "object") {
-    throw new Error("Request body must be a JSON object");
-  }
-  return body as Record<string, unknown>;
 }
 
 function parseTables(body: Record<string, unknown>): TablePayload[] {
@@ -157,33 +164,49 @@ runtime.Bun.serve({
         return Response.json({ error: "invalid_scope" }, { status: 404 });
       }
 
-      return Response.json({
-        cursor: `sync:${serverTime}:products:prod-1`,
-        hasMore: false,
-        serverTime,
-        tables: responseTables(),
+      return encodeSyncResponse({
+        body: {
+          cursor: `sync:${serverTime}:products:prod-1`,
+          hasMore: false,
+          serverTime,
+          tables: responseTables(),
+        },
+        encoding: transportMode,
+        kind: "pull",
+        protobufSchema,
       });
     }
 
     if (url.pathname === "/sync/push" && request.method === "POST") {
-      const body = await readJson(request);
+      const decoded = await decodeSyncRequest({
+        encoding: transportMode,
+        kind: "push",
+        protobufSchema,
+        request,
+      });
+      const body = decoded.body;
       if (String(body.scopeId ?? "") !== scopeId) {
         return Response.json({ error: "invalid_scope" }, { status: 404 });
       }
 
       applyPush(body);
 
-      return Response.json({
-        serverTime,
-        tables: parseTables(body).map((entry) => ({
-          table: entry.table,
-          acceptedCreatedIds: entry.changedRows.map((row) =>
-            String((row as Row).id ?? "")
-          ),
-          acceptedUpdatedIds: [],
-          acceptedDeletedIds: entry.deletedIds,
-          rejected: [],
-        })),
+      return encodeSyncResponse({
+        body: {
+          serverTime,
+          tables: parseTables(body).map((entry) => ({
+            table: entry.table,
+            acceptedCreatedIds: entry.changedRows.map((row) =>
+              String((row as Row).id ?? "")
+            ),
+            acceptedUpdatedIds: [],
+            acceptedDeletedIds: entry.deletedIds,
+            rejected: [],
+          })),
+        },
+        encoding: transportMode,
+        kind: "push",
+        protobufSchema,
       });
     }
 
@@ -192,3 +215,4 @@ runtime.Bun.serve({
 });
 
 console.log(`[fixture-backend] listening on http://127.0.0.1:${port}`);
+console.log(`[fixture-backend] encoding=${transportMode}`);

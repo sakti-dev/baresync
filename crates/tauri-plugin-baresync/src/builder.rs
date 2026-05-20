@@ -1,5 +1,6 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::SyncContractTables;
+use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::EmbeddedMigration;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub struct Builder {
     db_path: Option<String>,
     contract_tables: Option<SyncContractTables>,
     embedded_migrations: Vec<EmbeddedMigration>,
+    transport: Option<Arc<dyn SyncHttpTransport>>,
 }
 
 impl Builder {
@@ -31,6 +33,7 @@ impl Builder {
             db_path: None,
             contract_tables: None,
             embedded_migrations: Vec::new(),
+            transport: None,
         }
     }
 
@@ -69,6 +72,11 @@ impl Builder {
         self
     }
 
+    pub fn transport(mut self, transport: Arc<dyn SyncHttpTransport>) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, PluginConfig> {
         let config = PluginConfig {
             api_base_url: self.api_base_url.unwrap_or_default(),
@@ -84,6 +92,7 @@ impl Builder {
         };
 
         let embedded_migrations = self.embedded_migrations;
+        let transport = self.transport;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
             .setup(move |app, _api| {
@@ -101,6 +110,9 @@ impl Builder {
                     encoding: config.encoding.clone(),
                     max_push_bytes: config.max_push_bytes,
                     max_push_rows: config.max_push_rows,
+                    transport: transport
+                        .clone()
+                        .unwrap_or_else(baresync_core::http::default_transport),
                     ..Default::default()
                 };
 

@@ -16,10 +16,13 @@ Start it in a separate terminal:
 bun --cwd tests/e2e run fixture:backend
 ```
 
+Use `fixture:backend:json` or `fixture:backend:protobuf` when you want to pin the backend transport mode explicitly.
+
 Useful env vars:
 
 - `BARESYNC_FIXTURE_API_URL`: fixture app sync URL, default `http://127.0.0.1:18080`
 - `BARESYNC_FIXTURE_SCOPE_ID`: sync scope to use, default `merchant-1`
+- `BARESYNC_FIXTURE_ENCODING`: sync transport mode, default `json`
 - `BARESYNC_FIXTURE_RUN_ID`: run identifier used to derive a stable local DB path
 - `BARESYNC_FIXTURE_BACKEND_PORT`: backend listen port, default `18080`
 
@@ -34,10 +37,13 @@ Prerequisites:
 Example command:
 
 ```sh
+BARESYNC_FIXTURE_ENCODING=protobuf \
 BARESYNC_DESKTOP_APP_PATH=/path/to/fixture-app \
 BARESYNC_FIXTURE_API_URL=http://127.0.0.1:18080 \
 bun --cwd tests/e2e run desktop:sync
 ```
+
+The smoke harness also exposes `desktop:sync:json` and `desktop:sync:protobuf` for explicit transport runs.
 
 The desktop smoke should validate plugin registration, command names, WebView-to-Rust IPC, local SQLite file behavior, baseline pull, local create, manual sync, and restart persistence.
 When a desktop smoke fails, collect the app logs and inspect `GET /__state` from the fixture backend to confirm whether the push path recorded the local rows.
@@ -53,10 +59,13 @@ Prerequisites:
 Example command:
 
 ```sh
+BARESYNC_FIXTURE_ENCODING=protobuf \
 BARESYNC_ANDROID_APP_ID=com.example.app \
 BARESYNC_ANDROID_READY_TEXT=Baresync \
 bun --cwd tests/e2e run android:sync
 ```
+
+The Android smoke harness also exposes `android:sync:json` and `android:sync:protobuf` for explicit transport runs.
 
 `android:sync` now performs an adb preflight and refuses to run if no usable device is attached or if the fixture package is not installed on the selected target.
 

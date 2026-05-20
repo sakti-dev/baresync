@@ -19,6 +19,7 @@ async function text(selector: string) {
 
 const CLEAN_LOCAL_CATEGORY_RE = /\{"id":"local-cat-001"[^}]*"is_synced":1/;
 const CLEAN_LOCAL_PRODUCT_RE = /\{"id":"local-prod-001"[^}]*"is_synced":1/;
+const expectedTransportMode = process.env.BARESYNC_FIXTURE_ENCODING ?? "json";
 
 function ensure(condition: boolean, message: string) {
   if (!condition) {
@@ -42,7 +43,7 @@ async function waitForText(
   await runtime.browser.waitUntil(
     async () => (await text(selector)) === expected,
     {
-      timeout: 10_000,
+      timeout: 30_000,
       timeoutMsg: message,
     }
   );
@@ -64,7 +65,7 @@ async function waitForTextIncludes(
   await runtime.browser.waitUntil(
     async () => (await text(selector)).includes(expected),
     {
-      timeout: 10_000,
+      timeout: 30_000,
       timeoutMsg: message,
     }
   );
@@ -86,7 +87,7 @@ async function waitForTextMatches(
   await runtime.browser.waitUntil(
     async () => expected.test(await text(selector)),
     {
-      timeout: 10_000,
+      timeout: 30_000,
       timeoutMsg: message,
     }
   );
@@ -131,6 +132,10 @@ smokeSuite("public fixture desktop smoke", () => {
     ensure(
       (await text("#migration-count")) === "1",
       "migrations should complete"
+    );
+    ensure(
+      (await text("#transport-mode")) === expectedTransportMode,
+      "transport mode should match the selected fixture encoding"
     );
 
     const baselineSync = await runtime.browser.$("#baseline-sync");

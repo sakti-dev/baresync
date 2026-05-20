@@ -1,6 +1,8 @@
+use crate::http::{default_transport, SyncHttpTransport};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct SyncEngineConfig {
     pub scope_id: String,
     pub api_url: String,
@@ -9,6 +11,8 @@ pub struct SyncEngineConfig {
     pub target_push_bytes: usize,
     pub max_push_bytes: usize,
     pub max_push_rows: usize,
+    #[serde(skip, default = "default_transport")]
+    pub transport: Arc<dyn SyncHttpTransport>,
 }
 
 impl Default for SyncEngineConfig {
@@ -21,6 +25,7 @@ impl Default for SyncEngineConfig {
             target_push_bytes: 256 * 1024,
             max_push_bytes: 2 * 1024 * 1024,
             max_push_rows: 2000,
+            transport: default_transport(),
         }
     }
 }

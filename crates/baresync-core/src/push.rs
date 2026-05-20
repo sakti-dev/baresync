@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 
 use super::config::SyncEngineConfig;
 use super::error::SyncError;
-use super::http::send_push_request;
 use super::outbox;
 use super::schema::{self, TableOutboxChanges};
 
@@ -447,7 +446,11 @@ pub async fn push(
         let envelope =
             build_json_push_envelope(&config.scope_id, &config.client_id, &idem_key, &merged);
 
-        let response = match send_push_request(&config.api_url, &envelope).await {
+        let response = match config
+            .transport
+            .send_push_request(config.api_url.clone(), envelope)
+            .await
+        {
             Ok(r) => r,
             Err(SyncError::Http { status: 413, .. }) => {
                 if chunk.len() == 1 {

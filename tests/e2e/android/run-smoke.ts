@@ -1,13 +1,19 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import {
+  DEFAULT_FIXTURE_TRANSPORT_MODE,
+  FIXTURE_TRANSPORT_ENV,
+} from "../fixture-transport";
 
 const DEVICE_STATE_SPLIT_RE = /\s+/;
 const APP_ID_PLACEHOLDER = ["$", "{BARESYNC_ANDROID_APP_ID}"].join("");
+const TRANSPORT_PLACEHOLDER = ["$", "{BARESYNC_FIXTURE_ENCODING}"].join("");
 
 const runtime = globalThis as typeof globalThis & {
   process: {
     env: Record<string, string | undefined>;
+    cwd(): string;
     exit(code?: number): void;
     stderr: NodeJS.WriteStream;
     stdout: NodeJS.WriteStream;
@@ -82,7 +88,7 @@ function pickUsableDevice(devicesOutput: string) {
 
 function fail(message: string): never {
   console.error(`[android:sync] ${message}`);
-  runtime.process.exit(1);
+  throw new Error(message);
 }
 
 const fixtureAppId =
@@ -92,6 +98,9 @@ const readyText =
   runtime.process.env.BARESYNC_ANDROID_READY_TEXT ?? "Baresync Fixture";
 const fixtureBackendUrl =
   runtime.process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:18080";
+const fixtureEncoding =
+  runtime.process.env[FIXTURE_TRANSPORT_ENV] ?? DEFAULT_FIXTURE_TRANSPORT_MODE;
+runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
 const maestroConfig = resolve("android/sync-smoke.yaml");
 if (!existsSync(maestroConfig)) {
   fail(`Missing Maestro config: ${maestroConfig}`);
@@ -157,10 +166,13 @@ console.log(
 console.log(`[android:sync] appId=${fixtureAppId}`);
 console.log(`[android:sync] readyText=${readyText}`);
 console.log(`[android:sync] backendUrl=${fixtureBackendUrl}`);
+console.log(`[android:sync] encoding=${fixtureEncoding}`);
 
 writeFileSync(
   resolvedMaestroConfig,
-  readFileSync(maestroConfig, "utf8").replace(APP_ID_PLACEHOLDER, fixtureAppId)
+  readFileSync(maestroConfig, "utf8")
+    .replace(APP_ID_PLACEHOLDER, fixtureAppId)
+    .replace(TRANSPORT_PLACEHOLDER, fixtureEncoding)
 );
 
 const maestro = bunRuntime.Bun.spawn(

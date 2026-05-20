@@ -5,6 +5,7 @@ appId: ${BARESYNC_ANDROID_APP_ID}
 - waitForAnimationToEnd
 - assertVisible: "Baresync Fixture"
 - assertVisible: "ready"
+- assertVisible: "${BARESYNC_FIXTURE_ENCODING}"
 - assertVisible: "DB Path"
 - assertVisible: "Dirty Rows"
 - assertVisible: "Migration Count"

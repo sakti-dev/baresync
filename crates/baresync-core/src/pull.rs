@@ -4,7 +4,6 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::config::SyncEngineConfig;
 use crate::cursor;
 use crate::error::SyncError;
-use crate::http::send_pull_request;
 
 #[derive(Debug, Clone)]
 pub enum PullStartCursor {
@@ -109,14 +108,16 @@ pub async fn pull(
         None => upsert_order,
     };
 
-    let response = send_pull_request(
-        &config.api_url,
-        &config.scope_id,
-        tables_to_pull,
-        limit,
-        &cursor_value,
-    )
-    .await?;
+    let response = config
+        .transport
+        .send_pull_request(
+            config.api_url.clone(),
+            config.scope_id.clone(),
+            tables_to_pull.to_vec(),
+            limit,
+            cursor_value.clone(),
+        )
+        .await?;
 
     let server_time = response
         .get("serverTime")

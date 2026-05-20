@@ -62,6 +62,9 @@ The current backend exposes:
 - `GET /sync/pull?scopeId=merchant-1`
 - `POST /sync/push`
 
+The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`. Use `protobuf` when you want the same smoke flow to exercise protobuf request/response bodies.
+The E2E package also exposes `fixture:backend:json`, `fixture:backend:protobuf`, `desktop:sync:json`, `desktop:sync:protobuf`, `android:sync:json`, and `android:sync:protobuf` for explicit transport selection.
+
 Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:18080`. That leads to stale state, port conflicts, and false passes.
 
 The desktop WDIO config should:
@@ -115,6 +118,7 @@ Typical command:
 ```sh
 nix develop .#default --command bash -lc '
   cd tests/e2e
+  BARESYNC_FIXTURE_ENCODING=protobuf \
   BARESYNC_DESKTOP_APP_PATH=/home/eekrain/CODE/baresync/target/debug/baresync-fixture \
     bun run desktop:sync
 '
@@ -178,6 +182,7 @@ Run:
 ```sh
 nix develop .#default --command bash -lc '
   cd tests/e2e
+  BARESYNC_FIXTURE_ENCODING=protobuf \
   BARESYNC_ANDROID_APP_ID=com.example.app \
   BARESYNC_ANDROID_READY_TEXT=Baresync \
     bun run android:sync

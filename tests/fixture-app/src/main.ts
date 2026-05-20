@@ -15,7 +15,10 @@ const state = {
   ready: false,
 };
 
-let syncClient = createFixtureSyncClient("http://127.0.0.1:18080");
+let syncClient = createFixtureSyncClient({
+  api_url: "http://127.0.0.1:18080",
+  encoding: "json",
+});
 
 const el = <T extends HTMLElement>(selector: string) =>
   document.querySelector(selector) as T;
@@ -24,6 +27,7 @@ const appStatus = el<HTMLElement>("#app-status");
 const dbPath = el<HTMLElement>("#db-path");
 const dbSize = el<HTMLElement>("#db-size");
 const migrationCount = el<HTMLElement>("#migration-count");
+const transportMode = el<HTMLElement>("#transport-mode");
 const dirtyCount = el<HTMLElement>("#dirty-count");
 const watermark = el<HTMLElement>("#watermark");
 const needsBaseline = el<HTMLElement>("#needs-baseline");
@@ -235,7 +239,8 @@ async function bootstrap() {
   setBusy(true);
   try {
     const runtimeConfig = await getFixtureRuntimeConfig();
-    syncClient = createFixtureSyncClient(runtimeConfig.api_url);
+    syncClient = createFixtureSyncClient(runtimeConfig);
+    transportMode.textContent = runtimeConfig.encoding;
     await ensureMigrations();
     await refreshStatus();
     state.ready = true;

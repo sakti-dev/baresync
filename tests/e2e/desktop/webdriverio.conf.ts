@@ -3,6 +3,10 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_FIXTURE_TRANSPORT_MODE,
+  FIXTURE_TRANSPORT_ENV,
+} from "../fixture-transport";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const runtime = globalThis as typeof globalThis & {
@@ -110,11 +114,15 @@ export const config = {
     const backendPort =
       runtime.process.env.BARESYNC_FIXTURE_BACKEND_PORT ??
       String(await findAvailablePort());
+    const fixtureEncoding =
+      runtime.process.env[FIXTURE_TRANSPORT_ENV] ??
+      DEFAULT_FIXTURE_TRANSPORT_MODE;
     const fixtureApiUrl =
       runtime.process.env.BARESYNC_FIXTURE_API_URL ??
       `http://127.0.0.1:${backendPort}`;
     runtime.process.env.BARESYNC_FIXTURE_BACKEND_PORT = backendPort;
     runtime.process.env.BARESYNC_FIXTURE_API_URL = fixtureApiUrl;
+    runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
     runtime.process.env.BARESYNC_FIXTURE_RUN_ID ??= `desktop-${Date.now()}`;
 
     fixtureBackend = spawn("bun", ["run", "backend/fixture-server.ts"], {
@@ -122,6 +130,7 @@ export const config = {
       env: {
         ...runtime.process.env,
         BARESYNC_FIXTURE_BACKEND_PORT: backendPort,
+        [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
       },
       shell: true,
       stdio: ["ignore", runtime.process.stdout, runtime.process.stderr],
@@ -160,6 +169,10 @@ export const config = {
       ],
       {
         cwd: path.resolve(__dirname, "../../../"),
+        env: {
+          ...runtime.process.env,
+          [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
+        },
         shell: true,
         stdio: "inherit",
       }

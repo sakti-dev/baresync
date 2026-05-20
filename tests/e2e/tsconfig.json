@@ -12,6 +12,8 @@
   "include": [
     "desktop/**/*.ts",
     "backend/**/*.ts",
+    "android/**/*.ts",
+    "fixture-transport.ts",
     "generate-protobuf.ts",
     "sync-proto.config.ts",
     "**/*.d.ts",
