@@ -1,30 +1,32 @@
 ## ADDED Requirements
 
-### Requirement: Local sync row-state column helpers
+### Requirement: Supported sync column helper functions
 
-The `packages/baresync/src/schema/row-state.ts` module SHALL export two column helper objects that return standard Drizzle column definitions:
+The `packages/baresync/src/schema/row-state.ts` module SHALL export `localSyncColumns()` and `apiSyncColumns()` helper functions for the supported Drizzle table shape.
 
-**`localSyncRowState`** for local SQLite tables:
-- `deletedAt`: `text("deleted_at")` (nullable)
-- `isSynced`: `integer("is_synced", { mode: "boolean" }).notNull().default(false)`
+`localSyncColumns()` SHALL return column definitions for:
+
+- `deletedAt`: `text("deleted_at")`
 - `createdAt`: `text("created_at").notNull().$defaultFn(() => new Date().toISOString())`
 - `updatedAt`: `text("updated_at").notNull().$defaultFn(() => new Date().toISOString())`
+- `isSynced`: `integer("is_synced", { mode: "boolean" }).notNull().default(false)`
 
-**`apiSyncRowState`** for server-side tables:
-- `deletedAt`: `text("deleted_at")` (nullable)
-- `syncUpdatedAt`: `integer("sync_updated_at", { mode: "number" }).notNull()`
+`apiSyncColumns()` SHALL return column definitions for:
+
+- `deletedAt`: `text("deleted_at")`
 - `createdAt`: `text("created_at").notNull()`
 - `updatedAt`: `text("updated_at").notNull()`
+- `syncUpdatedAt`: `integer("sync_updated_at", { mode: "number" }).notNull()`
 
-#### Scenario: Local row-state columns integrate into a Drizzle table
+#### Scenario: Local sync columns integrate into a Drizzle table
 
-- **WHEN** a consumer spreads `localSyncRowState` into an `sqliteTable` definition
-- **THEN** the resulting table has `deleted_at`, `is_synced`, `created_at`, and `updated_at` columns with the correct types and defaults
+- **WHEN** a consumer spreads `localSyncColumns()` into an `sqliteTable` definition
+- **THEN** the resulting table has `deleted_at`, `created_at`, `updated_at`, and `is_synced` columns with the supported local sync shape
 
-#### Scenario: API row-state columns integrate into a Drizzle table
+#### Scenario: API sync columns integrate into a Drizzle table
 
-- **WHEN** a consumer spreads `apiSyncRowState` into an `sqliteTable` definition
-- **THEN** the resulting table has `deleted_at`, `sync_updated_at`, `created_at`, and `updated_at` columns with the correct types
+- **WHEN** a consumer spreads `apiSyncColumns()` into an `sqliteTable` definition
+- **THEN** the resulting table has `deleted_at`, `created_at`, `updated_at`, and `sync_updated_at` columns with the supported API sync shape
 
 ### Requirement: defineSyncedTable for explicit metadata
 

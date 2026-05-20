@@ -5,8 +5,12 @@ import {
 } from "./db/index.js";
 import {
   computeSyncTableOrder,
+  defineSyncConfig,
   generateSyncArtifacts,
+  type PairedSyncGeneratorConfig,
   runDiagnostics,
+  type SyncConfigTableOptions,
+  type SyncConfigTables,
   type SyncDiagnostic,
   type SyncDiagnosticError,
   type SyncManifest,
@@ -19,11 +23,11 @@ import {
   DEFAULT_POS_TARGET_PUSH_BYTES,
 } from "./limits.js";
 import {
-  apiSyncRowState,
+  apiSyncColumns,
   DEFAULT_SYNC_ENCODING,
   defineSyncContract,
   defineSyncedTable,
-  localSyncRowState,
+  localSyncColumns,
   type ScopeMapping,
   type SyncContract,
   type SyncContractLimits,
@@ -41,7 +45,7 @@ import {
 } from "./tauri/index.js";
 
 export {
-  apiSyncRowState,
+  apiSyncColumns,
   computeSyncTableOrder,
   createSyncClient,
   createTauriDrizzleDatabase,
@@ -50,16 +54,20 @@ export {
   DEFAULT_MAX_PUSH_ROWS,
   DEFAULT_POS_TARGET_PUSH_BYTES,
   DEFAULT_SYNC_ENCODING,
+  defineSyncConfig,
   defineSyncContract,
   defineSyncedTable,
   generateSyncArtifacts,
-  localSyncRowState,
+  localSyncColumns,
   type MigrationEntry,
   type MigrationStatus,
+  type PairedSyncGeneratorConfig,
   runDiagnostics,
   type ScopeMapping,
   type SyncClient,
   type SyncClientConfig,
+  type SyncConfigTableOptions,
+  type SyncConfigTables,
   type SyncContract,
   type SyncContractLimits,
   type SyncDiagnostic,

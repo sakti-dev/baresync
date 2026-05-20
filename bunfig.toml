@@ -1,2 +1,2 @@
 [test]
-pathIgnorePatterns = ["openspec/external/**"]
+pathIgnorePatterns = ["docs/external/**"]

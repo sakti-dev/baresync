@@ -4,11 +4,9 @@ description: Define synced tables, generate the contract, and run the first sync
 icon: Rocket
 ---
 
-This guide follows the same shape as the fixture app in this repository: define synced tables, create a contract, generate artifacts, register the Tauri plugin, access SQLite through the plugin, and call sync commands from the frontend.
+This guide follows the same shape as the inventory example in this repository: define local and API synced schemas, create a generator config, generate artifacts, register the Tauri plugin, access SQLite through the plugin, and call sync commands from the frontend.
 
 For a full runnable starter, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory). It is the canonical fullstack example for new users.
-
-The package is currently private as `@repo/baresync`. Replace that with `baresync` once the public package is published.
 
 ## Install
 
@@ -20,10 +18,10 @@ bun add baresync
 
 ## Define synced tables
 
-Baresync expects synced tables to use a single text `id` primary key and row-state columns. Local tables need `deleted_at`, `is_synced`, `created_at`, and `updated_at`.
+Baresync expects synced tables to use a single text `id` primary key and sync columns. Local tables use `localSyncColumns()`.
 
 ```ts
-import { localSyncRowState, syncedTable, syncSchema } from "@repo/baresync/schema";
+import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const categories = sqliteTable("categories", {
@@ -31,7 +29,7 @@ export const categories = sqliteTable("categories", {
   merchantId: text("merchant_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-  ...localSyncRowState,
+  ...localSyncColumns(),
 });
 
 export const products = sqliteTable("products", {
@@ -40,43 +38,62 @@ export const products = sqliteTable("products", {
   categoryId: text("category_id").notNull().references(() => categories.id),
   name: text("name").notNull(),
   priceMinorUnits: integer("price_minor_units").notNull(),
-  ...localSyncRowState,
+  ...localSyncColumns(),
 });
 ```
 
-The scope column decides which tenant, merchant, outlet, workspace, or user-owned sandbox a row belongs to. `syncedTable` can infer the field from either `merchant_id` or `merchantId`.
-
-## Create the sync schema
-
-Mark the Drizzle tables as synced and group them into a contract:
+The API schema uses the same replicated tables plus server-side sync columns.
 
 ```ts
-export const syncedCategories = syncedTable(categories, {
-  scope: "merchant_id",
+import { apiSyncColumns } from "baresync/schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...apiSyncColumns(),
 });
 
-export const syncedProducts = syncedTable(products, {
-  scope: "merchant_id",
-  localOnlyColumns: ["isSynced"],
-});
-
-export const syncContract = syncSchema({
-  packageName: "example.sync.v1",
-  tables: [syncedCategories, syncedProducts],
+export const products = sqliteTable("products", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  categoryId: text("category_id").notNull().references(() => categories.id),
+  name: text("name").notNull(),
+  priceMinorUnits: integer("price_minor_units").notNull(),
+  ...apiSyncColumns(),
 });
 ```
 
-The generator checks this contract before writing files. It reports errors for missing primary keys, missing row-state columns, duplicate table names, unsupported primary keys, required foreign keys to non-synced tables, and FK cycles. It reports warnings for nullable scope columns, missing `sync_updated_at`, missing conflict/delete metadata, and useful sync indexes.
+## Create the sync config
+
+Group both synced schema views in `sync.config.ts`:
+
+```ts title="sync.config.ts"
+import { defineSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import * as localSyncedSchema from "./src/local-synced-schema";
+
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "merchant_id" },
+    products: { scope: "merchant_id" },
+  },
+});
+```
+
+The scope column decides which merchant, outlet, workspace, user sandbox, or other app-owned boundary a row belongs to.
+
+The generator checks this config before writing files. It reports errors for missing primary keys, missing sync columns, duplicate table names, unsupported primary keys, required foreign keys to non-synced tables, FK cycles, and unexpected drift between local/API schema views.
 
 ## Generate runtime artifacts
 
-Export the contract from a config file, then run the generator:
-
-```ts title="sync.config.ts"
-import { syncContract } from "./src/schema";
-
-export default syncContract;
-```
+Run the generator from the config:
 
 ```bash
 bun packages/baresync/src/cli.ts doctor ./sync.config.ts
@@ -118,7 +135,7 @@ The fixture app uses explicit contract table metadata today. Generated Rust tabl
 Use the Drizzle proxy helper so the frontend and sync engine talk to the same plugin-owned SQLite database.
 
 ```ts
-import { createTauriDrizzleDatabase } from "@repo/baresync/db";
+import { createTauriDrizzleDatabase } from "baresync/db";
 import { invoke } from "@tauri-apps/api/core";
 import { categories, products } from "./schema";
 
@@ -135,7 +152,7 @@ The helper maps Drizzle proxy calls to the plugin commands `run_sql` and `run_sq
 Create a client with a stable `scopeId` and call the sync commands. The current JS client passes `scopeId` to the Tauri commands; the plugin registration owns API URL and encoding.
 
 ```ts
-import { createSyncClient } from "@repo/baresync/tauri";
+import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const sync = createSyncClient({

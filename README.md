@@ -4,7 +4,7 @@ SQLite-first sync infrastructure for Tauri apps.
 
 Baresync is an opinionated sync stack for applications that keep working data in local SQLite and reconcile it with an app-owned backend. It combines Drizzle schema helpers, a generated sync contract, a Rust sync engine, a Tauri plugin, and server helpers for push, pull, and status routes.
 
-The project is currently pre-release and private-package oriented inside this repository. The public package name is `baresync`; the workspace still uses `@repo/baresync` internally during development.
+The TypeScript package is published as `baresync`, with Rust crates published as `baresync-core` and `tauri-plugin-baresync`.
 
 ## Why Baresync Exists
 
@@ -49,7 +49,7 @@ It is not a hosted sync service, generic ORM, generic SQLite plugin, or database
 ```mermaid
 flowchart TD
   schema["Drizzle SQLite schema"]
-  contract["syncSchema contract"]
+  contract["defineSyncConfig contract"]
   generator["Generator diagnostics and artifacts"]
   app["Tauri app<br/>Drizzle proxy + sync client"]
   plugin["tauri-plugin-baresync"]
@@ -93,25 +93,24 @@ fieldkit/
     app/            # initialized with `bun create tauri-app`
       src/
       src-tauri/
-    server/         # initialized with `bun create elysia`
+    server/         # Hono server
       src/
   packages/
     sync-contract/
       package.json
-      src/schema.ts
+      src/local-synced-schema.ts
+      src/api-synced-schema.ts
       sync.config.ts
-      sync-proto.config.ts
-      generate-protobuf.ts
       generated/
 ```
 
-The shared contract package is where Drizzle tables, Baresync metadata, and generated artifacts live. The Tauri app consumes it for local SQLite access and plugin configuration. The Elysia server consumes it for table order and request/response handling.
+The shared contract package is where Drizzle tables, Baresync metadata, and generated artifacts live. The Tauri app consumes the local schema for SQLite access and plugin configuration. The Hono server consumes the API schema for persistence plus generated table order for request handling.
 
-Define synced tables in the shared contract package:
+Define local synced tables in the shared contract package:
 
-```ts title="packages/sync-contract/src/schema.ts"
-// packages/sync-contract/src/schema.ts
-import { localSyncRowState, syncedTable, syncSchema } from "baresync/schema";
+```ts title="packages/sync-contract/src/local-synced-schema.ts"
+// packages/sync-contract/src/local-synced-schema.ts
+import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const categories = sqliteTable("categories", {
@@ -119,25 +118,43 @@ export const categories = sqliteTable("categories", {
   workspaceId: text("workspace_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-  ...localSyncRowState,
-});
-
-export const syncedCategories = syncedTable(categories, {
-  scope: "workspace_id",
-  localOnlyColumns: ["isSynced"],
-});
-
-export const syncContract = syncSchema({
-  packageName: "example.sync.v1",
-  tables: [syncedCategories],
+  ...localSyncColumns(),
 });
 ```
 
-Export the contract from a generator config. The CLI loads either a default export or a named `contract` export:
+Define the API-side synced table shape separately:
+
+```ts title="packages/sync-contract/src/api-synced-schema.ts"
+// packages/sync-contract/src/api-synced-schema.ts
+import { apiSyncColumns } from "baresync/schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  workspaceId: text("workspace_id").notNull(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...apiSyncColumns(),
+});
+```
+
+Create the generator config from both synced schema views:
 
 ```ts title="packages/sync-contract/sync.config.ts"
 // packages/sync-contract/sync.config.ts
-export { syncContract as default } from "./src/schema";
+import { defineSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import * as localSyncedSchema from "./src/local-synced-schema";
+
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "workspace_id" },
+  },
+});
 ```
 
 Expose the schema and generated artifacts from the shared package:
@@ -149,7 +166,8 @@ Expose the schema and generated artifacts from the shared package:
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/schema.ts",
+    "./api-synced-schema": "./src/api-synced-schema.ts",
+    "./local-synced-schema": "./src/local-synced-schema.ts",
     "./generated/sync-table-order": "./generated/sync-table-order.ts",
     "./generated/sync-contract": "./generated/sync-contract.json",
     "./generated/manifest": "./generated/sync-contract.manifest.json"
@@ -161,7 +179,7 @@ Run diagnostics and generation from the monorepo root. The generated files land 
 
 ```bash
 bunx baresync doctor ./packages/sync-contract/sync.config.ts
-bunx baresync generate ./packages/sync-contract/sync.config.ts --output ./packages/sync-contract/generated
+bunx baresync generate ./packages/sync-contract/sync.config.ts
 ```
 
 If you use protobuf, add a protobuf workspace config. This mirrors the fixture config in `tests/e2e/sync-proto.config.ts`.
@@ -171,13 +189,13 @@ If you use protobuf, add a protobuf workspace config. This mirrors the fixture c
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProtobufWorkspaceConfig } from "baresync/generator";
-import { syncContract } from "./src/schema";
+import { syncGeneratorConfig } from "./sync.config";
 
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 const outputDir = join(packageRoot, "generated", "protobuf");
 
 export const protobufWorkspaceConfig = {
-  contract: syncContract,
+  contract: syncGeneratorConfig.contract,
   outputDir,
   outputs: {
     proto: join(outputDir, "proto", "sync.proto"),

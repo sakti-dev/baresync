@@ -1,3 +1,4 @@
+import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 function createId() {
@@ -10,14 +11,7 @@ export const locations = sqliteTable("locations", {
     .$defaultFn(() => createId()),
   scopeId: text("scope_id").notNull(),
   name: text("name").notNull(),
-  deletedAt: text("deleted_at"),
-  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
-  updatedAt: text("updated_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
+  ...localSyncColumns(),
 });
 
 export const items = sqliteTable("items", {
@@ -28,14 +22,7 @@ export const items = sqliteTable("items", {
   locationId: text("location_id").notNull(),
   name: text("name").notNull(),
   sku: text("sku"),
-  deletedAt: text("deleted_at"),
-  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
-  updatedAt: text("updated_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
+  ...localSyncColumns(),
 });
 
 export const stockCounts = sqliteTable("stock_counts", {
@@ -46,12 +33,5 @@ export const stockCounts = sqliteTable("stock_counts", {
   itemId: text("item_id").notNull(),
   countedQuantity: integer("counted_quantity").notNull(),
   recordedAt: text("recorded_at").notNull(),
-  deletedAt: text("deleted_at"),
-  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
-  createdAt: text("created_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
-  updatedAt: text("updated_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
+  ...localSyncColumns(),
 });

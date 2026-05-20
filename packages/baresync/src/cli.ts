@@ -1,29 +1,27 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { GeneratorConfig } from "./generator/config";
 import { runDiagnostics } from "./generator/diagnostics";
 import { generateSyncArtifacts, SyncDiagnosticError } from "./generator/index";
 import type { SyncContract } from "./schema/contract";
 
+type GenerateSource = GeneratorConfig | string | SyncContract;
+
 export async function runGenerate(
-  configPathOrContract: string | SyncContract,
-  outputDir: string,
+  configPathOrContract: GenerateSource,
+  outputDir?: string,
   options?: { check?: boolean; warningsAsErrors?: boolean }
 ): Promise<void> {
-  let contract: SyncContract;
+  const source = await resolveGenerateSource(configPathOrContract);
+  const contract = "contract" in source ? source.contract : source;
+  const resolvedOutputDir =
+    outputDir ?? ("contract" in source ? source.outputDir : "./generated");
 
-  if (typeof configPathOrContract === "string") {
-    const absPath = path.resolve(configPathOrContract);
-    const configModule = await import(absPath);
-    contract = configModule.default ?? configModule.contract;
-
-    if (!contract) {
-      throw new Error(
-        `No default export or "contract" export found in ${absPath}`
-      );
-    }
-  } else {
-    contract = configPathOrContract;
+  if (!(resolvedOutputDir || options?.check)) {
+    throw new Error(
+      "No output directory provided for sync artifact generation"
+    );
   }
 
   if (options?.check) {
@@ -35,7 +33,7 @@ export async function runGenerate(
     return;
   }
 
-  generateSyncArtifacts(contract, outputDir, {
+  generateSyncArtifacts(contract, resolvedOutputDir!, {
     warningsAsErrors: options?.warningsAsErrors,
   });
 }
@@ -43,13 +41,9 @@ export async function runGenerate(
 export async function runDoctor(configPath: string): Promise<void> {
   const absPath = path.resolve(configPath);
   const configModule = await import(absPath);
-  const contract: SyncContract = configModule.default ?? configModule.contract;
-
-  if (!contract) {
-    throw new Error(
-      `No default export or "contract" export found in ${absPath}`
-    );
-  }
+  const source = getConfigExport(configModule, absPath);
+  const contract: SyncContract =
+    "contract" in source ? source.contract : source;
 
   const diagnostics = runDiagnostics(contract);
 
@@ -89,19 +83,51 @@ export async function runDoctor(configPath: string): Promise<void> {
   }
 }
 
+async function resolveGenerateSource(
+  configPathOrContract: GenerateSource
+): Promise<GeneratorConfig | SyncContract> {
+  if (typeof configPathOrContract !== "string") {
+    return configPathOrContract;
+  }
+
+  const absPath = path.resolve(configPathOrContract);
+  const configModule = await import(absPath);
+  return getConfigExport(configModule, absPath);
+}
+
+function getConfigExport(
+  configModule: Record<string, unknown>,
+  absPath: string
+): GeneratorConfig | SyncContract {
+  const config =
+    configModule.default ??
+    configModule.syncGeneratorConfig ??
+    configModule.contract;
+
+  if (!config || typeof config !== "object") {
+    throw new Error(
+      `No default export, "syncGeneratorConfig" export, or "contract" export found in ${absPath}`
+    );
+  }
+
+  return config as GeneratorConfig | SyncContract;
+}
+
 function handleGenerate(args: string[]): void {
   let configPath: string | undefined;
   let outputDir: string | undefined;
   let check = false;
   let warningsAsErrors = false;
 
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === "--check") {
       check = true;
     } else if (arg === "--warnings-as-errors") {
       warningsAsErrors = true;
     } else if (arg === "--output" || arg === "-o") {
-      outputDir = arg;
+      outputDir = args[i + 1];
+      i++;
     } else if (!configPath) {
       configPath = arg;
     }
@@ -114,7 +140,7 @@ function handleGenerate(args: string[]): void {
     process.exit(1);
   }
 
-  runGenerate(configPath, outputDir ?? "./generated", {
+  runGenerate(configPath, outputDir, {
     check,
     warningsAsErrors,
   }).catch(console.error);

@@ -28,7 +28,7 @@ export const syncOutbox = sqliteTable(
     uniqueIndex("sync_outbox_pending_row_unique")
       .on(table.tableName, table.rowId)
       .where(sql`${table.syncedAt} IS NULL`),
-  ],
+  ]
 );
 
 export const syncCursors = sqliteTable("sync_cursors", {

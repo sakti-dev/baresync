@@ -1,3 +1,4 @@
+import { apiSyncColumns } from "baresync/schema";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const locations = sqliteTable(
@@ -6,12 +7,7 @@ export const locations = sqliteTable(
     id: text("id").primaryKey(),
     scopeId: text("scope_id").notNull(),
     name: text("name").notNull(),
-    deletedAt: text("deleted_at"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-    syncUpdatedAt: integer("sync_updated_at", { mode: "number" })
-      .notNull()
-      .default(0),
+    ...apiSyncColumns(),
   },
   (table) => [
     index("locations_scope_sync_idx").on(table.scopeId, table.syncUpdatedAt),
@@ -28,12 +24,7 @@ export const items = sqliteTable(
       .references(() => locations.id),
     name: text("name").notNull(),
     sku: text("sku"),
-    deletedAt: text("deleted_at"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-    syncUpdatedAt: integer("sync_updated_at", { mode: "number" })
-      .notNull()
-      .default(0),
+    ...apiSyncColumns(),
   },
   (table) => [
     index("items_scope_sync_idx").on(table.scopeId, table.syncUpdatedAt),
@@ -51,12 +42,7 @@ export const stockCounts = sqliteTable(
       .references(() => items.id),
     countedQuantity: integer("counted_quantity").notNull(),
     recordedAt: text("recorded_at").notNull(),
-    deletedAt: text("deleted_at"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-    syncUpdatedAt: integer("sync_updated_at", { mode: "number" })
-      .notNull()
-      .default(0),
+    ...apiSyncColumns(),
   },
   (table) => [
     index("stock_counts_scope_sync_idx").on(table.scopeId, table.syncUpdatedAt),

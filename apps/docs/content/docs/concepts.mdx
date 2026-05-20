@@ -8,7 +8,7 @@ Baresync is built around a few explicit contracts. The library does not hide syn
 
 ## Sync contract
 
-The sync contract starts as a TypeScript object created by `syncSchema`. It records package name, encoding, limits, synced tables, local-only columns, server-only columns, and table metadata extracted from Drizzle.
+The sync contract starts from `defineSyncConfig`, which pairs local synced schema and API synced schema modules. It records package name, encoding, limits, synced tables, local-only columns, server-only columns, and table metadata extracted from Drizzle.
 
 Generation turns that into files such as:
 
@@ -42,7 +42,7 @@ Server/API row state:
 - `sync_updated_at` for cursor ordering.
 - `created_at` and `updated_at` for row history.
 
-The exported helpers are `localSyncRowState` and `apiSyncRowState`. Diagnostics require local dirty tracking and warn when server-side `sync_updated_at` is missing.
+The supported helpers are `localSyncColumns()` and `apiSyncColumns()`. Diagnostics require local dirty tracking, API-side sync watermarks, and matching local/API schema views after declared local-only and server-only columns are excluded.
 
 ## Local database responsibilities
 

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+import type { GeneratorConfig } from "../generator";
 import { runDiagnostics } from "../generator/diagnostics";
 import type { SyncContract } from "../schema/contract";
 import { defineSyncContract } from "../schema/contract";
@@ -79,6 +80,32 @@ describe("CLI runGenerate", () => {
       "CategoriesRow"
     );
     expect(parsed.protobuf.tables.categories.requestFieldNumber).toBe(4);
+
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  });
+
+  it("produces artifacts from a generator config object", async () => {
+    const outputDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "baresync-cli-config-test-")
+    );
+
+    const contract = defineSyncContract({
+      encoding: "json",
+      packageName: "cli.config.sync.v1",
+      tables: [categoriesSynced],
+    });
+    const config = {
+      contract,
+      outputDir,
+    } satisfies GeneratorConfig;
+
+    const { runGenerate } = await import("../cli");
+    await runGenerate(config);
+
+    const parsed = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
+    );
+    expect(parsed.packageName).toBe("cli.config.sync.v1");
 
     fs.rmSync(outputDir, { recursive: true, force: true });
   });

@@ -212,10 +212,18 @@ function checkMissingRowStateColumns(
 }
 
 function checkMissingSyncUpdatedAt(
+  def: SyncedTableDefinition,
   tableName: string,
   columns: string[]
 ): SyncDiagnostic[] {
-  if (!columns.includes("sync_updated_at")) {
+  const serverOnly = def.serverOnlyColumns ?? [];
+  if (
+    !(
+      columns.includes("sync_updated_at") ||
+      serverOnly.includes("sync_updated_at") ||
+      serverOnly.includes("syncUpdatedAt")
+    )
+  ) {
     return [
       {
         code: "SYNC_SCHEMA_MISSING_SYNC_UPDATED_AT",
@@ -224,7 +232,7 @@ function checkMissingSyncUpdatedAt(
         table: tableName,
         column: "sync_updated_at",
         why: 'Server-side sync tracking requires "sync_updated_at" for watermark-based incremental sync',
-        fix: 'Add an integer "sync_updated_at" column to the table using apiSyncRowState',
+        fix: 'Add an integer "sync_updated_at" column to the table using apiSyncColumns()',
       },
     ];
   }
@@ -252,7 +260,7 @@ function checkMissingLocalIsSynced(
         table: tableName,
         column: "is_synced",
         why: 'Client-side dirty tracking requires "is_synced" to identify pending changes',
-        fix: 'Add an integer "is_synced" column to the table using localSyncRowState',
+        fix: 'Add an integer "is_synced" column to the table using localSyncColumns()',
       },
     ];
   }
@@ -611,29 +619,6 @@ function checkMissingLocalDirty(
   return [];
 }
 
-function checkBatteriesIncludedNotOneToOne(meta: {
-  columns: string[];
-  localOnlyColumns: string[];
-  serverOnlyColumns: string[];
-  tableName: string;
-}): SyncDiagnostic[] {
-  const hasLocalOnly = (meta.localOnlyColumns ?? []).length > 0;
-  const hasServerOnly = (meta.serverOnlyColumns ?? []).length > 0;
-  if (hasLocalOnly && hasServerOnly) {
-    return [
-      {
-        code: "SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1",
-        severity: "error",
-        message: `Table "${meta.tableName}" has both local-only and server-only columns, making it incompatible with batteries-included mode`,
-        table: meta.tableName,
-        why: "Batteries-included mode requires a 1:1 logical mapping between local and server schemas. Mixed local-only and server-only columns indicate a non-1:1 relationship.",
-        fix: "Use low-level server primitives for this table, or restructure so the table uses only local-only or only server-only columns",
-      },
-    ];
-  }
-  return [];
-}
-
 function checkBatteriesIncludedComplexMapping(
   def: SyncedTableDefinition,
   tableName: string
@@ -711,7 +696,7 @@ export function runDiagnostics(
     diagnostics.push(...checkMissingScopeColumn(def, tableName, columns));
     diagnostics.push(...checkMissingDeletedAt(tableName, columns));
     diagnostics.push(...checkMissingRowStateColumns(def, tableName, columns));
-    diagnostics.push(...checkMissingSyncUpdatedAt(tableName, columns));
+    diagnostics.push(...checkMissingSyncUpdatedAt(def, tableName, columns));
     diagnostics.push(...checkMissingLocalIsSynced(def, tableName, columns));
     diagnostics.push(...checkUnsupportedColumnType(def, tableName));
     diagnostics.push(...checkDuplicateFieldName(def, tableName, columns));
@@ -725,7 +710,6 @@ export function runDiagnostics(
     diagnostics.push(...checkMissingScopeWatermark(tableName));
     diagnostics.push(...checkMissingLocalDirty(def, tableName, columns));
     diagnostics.push(...checkBatteriesIncludedComplexMapping(def, tableName));
-    diagnostics.push(...checkBatteriesIncludedNotOneToOne(meta));
   }
 
   return diagnostics;

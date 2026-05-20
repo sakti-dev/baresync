@@ -8,11 +8,11 @@ Baresync is an extracted sync runtime for Tauri apps that keep their working dat
 
 If you want the canonical copyable starter, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory).
 
-The current package is still private in this repo as `@repo/baresync`. These docs describe the library as it exists now, with public-package naming called out where it is still intended rather than published.
+The TypeScript package is published as `baresync`, with Rust crates published as `baresync-core` and `tauri-plugin-baresync`.
 
 ## What Baresync gives you
 
-- `syncedTable` and `syncSchema` helpers for turning Drizzle SQLite tables into a sync contract.
+- `defineSyncConfig` and sync column helpers for turning paired local/API Drizzle SQLite schemas into a sync contract.
 - Generator diagnostics for required row-state columns, primary keys, table order, foreign keys, and encoding support.
 - Generated artifacts such as `sync-contract.json`, `sync-table-order.ts`, protobuf metadata, and Rust protobuf mappers.
 - A Rust core engine that performs status, pull, push, full resync, outbox cleanup, and SQLite reconciliation.
@@ -50,7 +50,7 @@ The engine chooses a sync mode by comparing local state with the server status e
 ```mermaid
 flowchart TD
   schema["Drizzle SQLite schema"]
-  contract["syncSchema contract"]
+  contract["defineSyncConfig contract"]
   generated["Generator diagnostics and artifacts"]
   app["Tauri app code<br/>Drizzle proxy"]
   plugin["tauri-plugin-baresync<br/>Rust SyncEngine"]

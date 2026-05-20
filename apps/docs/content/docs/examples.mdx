@@ -4,16 +4,16 @@ description: Copyable shapes for the common Baresync integration paths.
 icon: Blocks
 ---
 
-These examples mirror the surfaces that exist in the repository today. They use `@repo/baresync`; change that import path to `baresync` after publishing.
+These examples mirror the public package surface.
 
 For a complete fullstack starter, use [`examples/inventory`](https://github.com/sakti-dev/baresync/tree/main/examples/inventory).
 
 ## Local synced schema
 
-Use `localSyncRowState` for local SQLite tables that the plugin will reconcile.
+Use `localSyncColumns()` for local SQLite tables that the plugin will reconcile.
 
 ```ts
-import { localSyncRowState, syncedTable, syncSchema } from "@repo/baresync/schema";
+import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const categories = sqliteTable("categories", {
@@ -21,7 +21,7 @@ export const categories = sqliteTable("categories", {
   merchantId: text("merchant_id").notNull(),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
-  ...localSyncRowState,
+  ...localSyncColumns(),
 });
 
 export const products = sqliteTable("products", {
@@ -30,31 +30,16 @@ export const products = sqliteTable("products", {
   categoryId: text("category_id").notNull().references(() => categories.id),
   name: text("name").notNull(),
   priceMinorUnits: integer("price_minor_units").notNull(),
-  ...localSyncRowState,
-});
-
-export const syncedCategories = syncedTable(categories, {
-  scope: "merchant_id",
-  localOnlyColumns: ["isSynced"],
-});
-
-export const syncedProducts = syncedTable(products, {
-  scope: "merchant_id",
-  localOnlyColumns: ["isSynced"],
-});
-
-export const syncContract = syncSchema({
-  packageName: "example.sync.v1",
-  tables: [syncedCategories, syncedProducts],
+  ...localSyncColumns(),
 });
 ```
 
 ## Server row-state schema
 
-Server tables usually need `sync_updated_at` for incremental pull cursors. Use `apiSyncRowState` on the API side.
+Server tables use `apiSyncColumns()` for incremental pull cursors.
 
 ```ts
-import { apiSyncRowState } from "@repo/baresync/schema";
+import { apiSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const apiProducts = sqliteTable("products", {
@@ -62,16 +47,27 @@ export const apiProducts = sqliteTable("products", {
   merchantId: text("merchant_id").notNull(),
   name: text("name").notNull(),
   priceMinorUnits: integer("price_minor_units").notNull(),
-  ...apiSyncRowState,
+  ...apiSyncColumns(),
 });
 ```
 
 ## Generate from a config
 
 ```ts title="sync.config.ts"
-import { syncContract } from "./src/schema";
+import { defineSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import * as localSyncedSchema from "./src/local-synced-schema";
 
-export default syncContract;
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  packageName: "example.sync.v1",
+  tables: {
+    categories: { scope: "merchant_id" },
+    products: { scope: "merchant_id" },
+  },
+});
 ```
 
 ```bash
@@ -79,14 +75,14 @@ bun packages/baresync/src/cli.ts doctor ./sync.config.ts
 bun packages/baresync/src/cli.ts generate ./sync.config.ts
 ```
 
-Generation emits table order and manifest files. For protobuf workspaces, use `generateProtobufWorkspaceArtifacts` from `@repo/baresync/generator`.
+Generation emits table order and manifest files. For protobuf workspaces, use `generateProtobufWorkspaceArtifacts` from `baresync/generator`.
 
 ## Drizzle through Tauri IPC
 
 Use the local plugin bridge for app reads and writes.
 
 ```ts
-import { createTauriDrizzleDatabase, type InvokeFn } from "@repo/baresync/db";
+import { createTauriDrizzleDatabase, type InvokeFn } from "baresync/db";
 import { invoke } from "@tauri-apps/api/core";
 import { categories, products } from "./schema";
 
@@ -103,7 +99,7 @@ export const latestProducts = db.select().from(products);
 The frontend sync client is a small wrapper over plugin command names.
 
 ```ts
-import { createSyncClient } from "@repo/baresync/tauri";
+import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const sync = createSyncClient({
@@ -160,7 +156,7 @@ import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
-} from "@repo/baresync/server";
+} from "baresync/server";
 import { SYNC_UPSERT_ORDER } from "./generated/sync-table-order";
 import { serverDb } from "./server-db";
 
@@ -217,7 +213,7 @@ import {
   encodeSyncResponse,
   orderPushChanges,
   validatePushEnvelope,
-} from "@repo/baresync/server";
+} from "baresync/server";
 
 export async function pushRoute(request: Request, context: Context) {
   const idempotency = createIdempotencyGuard({ db: context.db });
@@ -274,11 +270,11 @@ export async function pushRoute(request: Request, context: Context) {
 Generate protobuf workspace artifacts when you need the protobuf transport path.
 
 ```ts
-import { generateProtobufWorkspaceArtifacts } from "@repo/baresync/generator";
-import { syncContract } from "./schema";
+import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
+import { syncGeneratorConfig } from "./sync.config";
 
 generateProtobufWorkspaceArtifacts({
-  contract: syncContract,
+  contract: syncGeneratorConfig.contract,
   outputDir: "generated/protobuf",
   outputs: {
     proto: "generated/protobuf/proto/sync.proto",

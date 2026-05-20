@@ -11,7 +11,7 @@ Baresync has three runtime areas and one generation area: TypeScript contract/ge
 ```mermaid
 flowchart TD
   tables["Drizzle tables"]
-  schema["syncedTable(...) + syncSchema(...)"]
+  schema["defineSyncConfig(...)"]
   generator["runDiagnostics + generateSyncArtifacts"]
   contract["sync-contract.json"]
   order["sync-table-order.ts"]
@@ -40,16 +40,16 @@ flowchart TD
 
 The workspace package exports separate surfaces:
 
-- `@repo/baresync/schema` for schema helpers and server-side idempotency schema.
-- `@repo/baresync/generator` for diagnostics, table-order computation, manifests, and protobuf workspace generation.
-- `@repo/baresync/db` for Drizzle-over-Tauri SQLite proxy access.
-- `@repo/baresync/server` for sync route primitives and handler factories.
-- `@repo/baresync/tauri` for the frontend sync client.
-- `@repo/baresync/limits` for shared default limits.
+- `baresync/schema` for schema helpers and server-side idempotency schema.
+- `baresync/generator` for diagnostics, table-order computation, manifests, and protobuf workspace generation.
+- `baresync/db` for Drizzle-over-Tauri SQLite proxy access.
+- `baresync/server` for sync route primitives and handler factories.
+- `baresync/tauri` for the frontend sync client.
+- `baresync/limits` for shared default limits.
 
 ## Generator flow
 
-Generation starts from a `SyncContract`. Diagnostics run before files are written.
+Generation starts from a `SyncContract` produced by `defineSyncConfig`. Diagnostics run before files are written.
 
 ```mermaid
 flowchart TD

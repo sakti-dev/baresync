@@ -7,7 +7,7 @@ import {
   type SyncEncoding,
   syncSchema,
 } from "./contract.js";
-import { apiSyncRowState, localSyncRowState } from "./row-state.js";
+import { apiSyncColumns, localSyncColumns } from "./row-state.js";
 import { syncBatchRequests, syncServerSchema } from "./server-schema.js";
 import {
   defineSyncedTable,
@@ -17,11 +17,11 @@ import {
 } from "./synced-table.js";
 
 export {
-  apiSyncRowState,
+  apiSyncColumns,
   DEFAULT_SYNC_ENCODING,
   defineSyncContract,
   defineSyncedTable,
-  localSyncRowState,
+  localSyncColumns,
   type ScopeMapping,
   type SyncContract,
   type SyncContractLimits,

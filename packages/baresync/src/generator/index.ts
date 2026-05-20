@@ -7,7 +7,13 @@ import { computeSyncTableOrder } from "./fk-order";
 import { writeManifest } from "./manifest";
 import { writeSyncContractJson, writeTableOrderConstants } from "./outputs";
 
-export type { GeneratorConfig } from "./config";
+export {
+  defineSyncConfig,
+  type GeneratorConfig,
+  type PairedSyncGeneratorConfig,
+  type SyncConfigTableOptions,
+  type SyncConfigTables,
+} from "./config.js";
 export { runDiagnostics, type SyncDiagnostic } from "./diagnostics.js";
 export { computeSyncTableOrder, type SyncTableOrder } from "./fk-order.js";
 export { type SyncManifest, writeManifest } from "./manifest.js";

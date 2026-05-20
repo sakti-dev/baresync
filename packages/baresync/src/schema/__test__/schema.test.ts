@@ -1,6 +1,12 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  getTableConfig,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { defineSyncContract, syncSchema } from "../contract";
+import { apiSyncColumns, localSyncColumns } from "../row-state";
 import { defineSyncedTable, syncedTable } from "../synced-table";
 
 const categories = sqliteTable("categories", {
@@ -21,6 +27,38 @@ const categoriesSynced = defineSyncedTable({
     column: categories.merchantId,
   },
   localOnlyColumns: ["isSynced"],
+});
+
+describe("sync column helpers", () => {
+  it("adds supported local sync columns to a Drizzle table", () => {
+    const localItems = sqliteTable("local_items", {
+      id: text("id").primaryKey(),
+      scopeId: text("scope_id").notNull(),
+      ...localSyncColumns(),
+    });
+
+    const columns = getTableConfig(localItems).columns.map((c) => c.name);
+
+    expect(columns).toContain("deleted_at");
+    expect(columns).toContain("created_at");
+    expect(columns).toContain("updated_at");
+    expect(columns).toContain("is_synced");
+  });
+
+  it("adds supported API sync columns to a Drizzle table", () => {
+    const apiItems = sqliteTable("api_items", {
+      id: text("id").primaryKey(),
+      scopeId: text("scope_id").notNull(),
+      ...apiSyncColumns(),
+    });
+
+    const columns = getTableConfig(apiItems).columns.map((c) => c.name);
+
+    expect(columns).toContain("deleted_at");
+    expect(columns).toContain("created_at");
+    expect(columns).toContain("updated_at");
+    expect(columns).toContain("sync_updated_at");
+  });
 });
 
 describe("defineSyncedTable", () => {

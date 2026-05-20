@@ -39,7 +39,9 @@
       "localOnlyColumns": [
         "isSynced"
       ],
-      "serverOnlyColumns": []
+      "serverOnlyColumns": [
+        "syncUpdatedAt"
+      ]
     },
     "items": {
       "columns": [
@@ -70,7 +72,9 @@
       "localOnlyColumns": [
         "isSynced"
       ],
-      "serverOnlyColumns": []
+      "serverOnlyColumns": [
+        "syncUpdatedAt"
+      ]
     },
     "stock_counts": {
       "columns": [
@@ -101,7 +105,9 @@
       "localOnlyColumns": [
         "isSynced"
       ],
-      "serverOnlyColumns": []
+      "serverOnlyColumns": [
+        "syncUpdatedAt"
+      ]
     }
   },
   "limits": {
