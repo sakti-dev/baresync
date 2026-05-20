@@ -1,13 +1,27 @@
-# web
+# Baresync Docs
 
-This is a Waku application generated with [Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+This is the public documentation site for Baresync, built with Waku and Fumadocs.
 
-Run development server:
+## Development
 
 ```bash
-npm run dev
-# or
-pnpm dev
-# or
-yarn dev
+bun run dev
 ```
+
+## Checks
+
+```bash
+bun run types:check
+bun run build
+```
+
+From the repository root, also run:
+
+```bash
+bun x ultracite check
+bun run typecheck
+```
+
+## Content
+
+Docs live in `content/docs`. Mermaid diagrams are supported through `remarkMdxMermaid` and the local `Mermaid` MDX component in `src/components/mdx/mermaid.tsx`.
