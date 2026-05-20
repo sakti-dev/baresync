@@ -78,7 +78,7 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 | `crates/tauri-plugin-baresync` | Tauri plugin wrapper and command surface                                              |
 | `tests/fixture-app`            | Public fixture Tauri app used for desktop and Android smoke flows                     |
 | `tests/e2e`                    | Fixture backend, generated protobuf workspace, desktop and Android automation         |
-| `apps/web`                     | Waku + Fumadocs documentation site                                                    |
+| `apps/docs`                    | Waku + Fumadocs documentation site                                                    |
 | `docs`                         | Planning notes, runbooks, and implementation knowledge                                |
 | `openspec`                     | Archived and active spec-driven change artifacts                                      |
 
@@ -325,7 +325,7 @@ export const syncRoutes = new Elysia({ prefix: "/sync" })
 
 The backend still owns authorization and persistence. Baresync decodes envelopes, validates push limits, orders table changes, wraps idempotent push handling, and encodes responses. The idempotency guard expects the `sync_batch_requests` table from `syncServerSchema` to exist in the server database.
 
-Read the documentation site in `apps/web` for the fuller integration path.
+Read the documentation site in `apps/docs` for the fuller integration path.
 
 ## Development
 
@@ -338,7 +338,7 @@ bun install
 Run the docs site:
 
 ```bash
-cd apps/web
+cd apps/docs
 bun run dev
 ```
 
@@ -347,7 +347,7 @@ Run the standard checks:
 ```bash
 bun x ultracite check
 bun run typecheck
-cd apps/web && bun run types:check && bun run build
+cd apps/docs && bun run types:check && bun run build
 ```
 
 Publishing to npm and crates.io remains a manual maintainer action after the build and package verification steps pass.
