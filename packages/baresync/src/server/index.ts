@@ -1,12 +1,12 @@
-export {
+import {
   chunkArray,
   DEFAULT_MAX_IDS_PER_READ_CHUNK,
   DEFAULT_MAX_ROWS_PER_WRITE_CHUNK,
   getWriteChunkSize,
   SAFE_SQLITE_BIND_PARAM_LIMIT,
   SQLITE_BIND_PARAM_LIMIT,
-} from "./chunking";
-export {
+} from "./chunking.js";
+import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
@@ -28,13 +28,13 @@ export {
   type SyncScopeResolution,
   type SyncStatusHandlerOptions,
   type SyncUnauthorizedScopeResponse,
-} from "./handlers";
-export {
+} from "./handlers.js";
+import {
   ConflictRequestError,
   cleanupSyncBatchRequests,
   createIdempotencyGuard,
-} from "./idempotency";
-export {
+} from "./idempotency.js";
+import {
   computeSyncRequestHash,
   countPushRows,
   decodeSyncRequest,
@@ -46,4 +46,48 @@ export {
   parseSyncCursor,
   SyncPayloadTooLargeError,
   validatePushEnvelope,
-} from "./service";
+} from "./service.js";
+
+export {
+  ConflictRequestError,
+  chunkArray,
+  cleanupSyncBatchRequests,
+  computeSyncRequestHash,
+  countPushRows,
+  createIdempotencyGuard,
+  createSyncPullHandler,
+  createSyncPushHandler,
+  createSyncStatusHandler,
+  DEFAULT_MAX_IDS_PER_READ_CHUNK,
+  DEFAULT_MAX_ROWS_PER_WRITE_CHUNK,
+  decodeSyncRequest,
+  encodeSyncResponse,
+  formatSyncCursor,
+  getWriteChunkSize,
+  type JsonSyncPullHandlerOptions,
+  type JsonSyncPushHandlerOptions,
+  type JsonSyncStatusHandlerOptions,
+  mapSyncError,
+  orderDeleteChanges,
+  orderPushChanges,
+  type ProtobufSyncPullHandlerOptions,
+  type ProtobufSyncPushHandlerOptions,
+  type ProtobufSyncStatusHandlerOptions,
+  parseSyncCursor,
+  SAFE_SQLITE_BIND_PARAM_LIMIT,
+  SQLITE_BIND_PARAM_LIMIT,
+  type SyncAuthorizedScope,
+  type SyncHandler,
+  type SyncLoadPullChangesInput,
+  type SyncLoadStatusInput,
+  SyncPayloadTooLargeError,
+  type SyncPullHandlerOptions,
+  type SyncPushChange,
+  type SyncPushChangesInput,
+  type SyncPushHandlerOptions,
+  type SyncResolveScopeInput,
+  type SyncScopeResolution,
+  type SyncStatusHandlerOptions,
+  type SyncUnauthorizedScopeResponse,
+  validatePushEnvelope,
+};

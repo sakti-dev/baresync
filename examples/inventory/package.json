@@ -1,0 +1,19 @@
+{
+  "name": "inventory-example",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "generate": "bun run --cwd packages/sync-contract generate",
+    "typecheck": "bun run --cwd packages/sync-contract typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/app typecheck",
+    "build": "bun run generate && bun run --cwd apps/server build && bun run --cwd apps/app tauri:build",
+    "dev": "bunx concurrently --kill-others-on-fail \"bun run --cwd apps/server dev\" \"bun run --cwd apps/app tauri:dev\"",
+    "check": "bun run generate && bun run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

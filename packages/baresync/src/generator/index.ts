@@ -8,14 +8,14 @@ import { writeManifest } from "./manifest";
 import { writeSyncContractJson, writeTableOrderConstants } from "./outputs";
 
 export type { GeneratorConfig } from "./config";
-export { runDiagnostics, type SyncDiagnostic } from "./diagnostics";
-export { computeSyncTableOrder, type SyncTableOrder } from "./fk-order";
-export { type SyncManifest, writeManifest } from "./manifest";
+export { runDiagnostics, type SyncDiagnostic } from "./diagnostics.js";
+export { computeSyncTableOrder, type SyncTableOrder } from "./fk-order.js";
+export { type SyncManifest, writeManifest } from "./manifest.js";
 export {
   generateProtobufWorkspaceArtifacts,
   type ProtobufWorkspaceConfig,
   type ProtobufWorkspaceOutputs,
-} from "./protobuf-workspace";
+} from "./protobuf-workspace.js";
 
 export interface GenerateOptions {
   check?: boolean;

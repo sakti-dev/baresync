@@ -1,9 +1,9 @@
-export {
+import {
   createTauriDrizzleDatabase,
   type MigrationEntry,
   type MigrationStatus,
-} from "./db";
-export {
+} from "./db/index.js";
+import {
   computeSyncTableOrder,
   generateSyncArtifacts,
   runDiagnostics,
@@ -11,14 +11,14 @@ export {
   type SyncDiagnosticError,
   type SyncManifest,
   writeManifest,
-} from "./generator";
-export {
+} from "./generator/index.js";
+import {
   DEFAULT_API_MAX_PUSH_BYTES,
   DEFAULT_DB_BIND_PARAMETER_BUDGET,
   DEFAULT_MAX_PUSH_ROWS,
   DEFAULT_POS_TARGET_PUSH_BYTES,
-} from "./limits";
-export {
+} from "./limits.js";
+import {
   apiSyncRowState,
   DEFAULT_SYNC_ENCODING,
   defineSyncContract,
@@ -33,9 +33,43 @@ export {
   syncedTable,
   syncSchema,
   syncServerSchema,
-} from "./schema";
-export {
+} from "./schema/index.js";
+import {
   createSyncClient,
   type SyncClient,
   type SyncClientConfig,
 } from "./tauri/index.js";
+
+export {
+  apiSyncRowState,
+  computeSyncTableOrder,
+  createSyncClient,
+  createTauriDrizzleDatabase,
+  DEFAULT_API_MAX_PUSH_BYTES,
+  DEFAULT_DB_BIND_PARAMETER_BUDGET,
+  DEFAULT_MAX_PUSH_ROWS,
+  DEFAULT_POS_TARGET_PUSH_BYTES,
+  DEFAULT_SYNC_ENCODING,
+  defineSyncContract,
+  defineSyncedTable,
+  generateSyncArtifacts,
+  localSyncRowState,
+  type MigrationEntry,
+  type MigrationStatus,
+  runDiagnostics,
+  type ScopeMapping,
+  type SyncClient,
+  type SyncClientConfig,
+  type SyncContract,
+  type SyncContractLimits,
+  type SyncDiagnostic,
+  type SyncDiagnosticError,
+  type SyncEncoding,
+  type SyncedTableDefinition,
+  type SyncManifest,
+  syncBatchRequests,
+  syncedTable,
+  syncSchema,
+  syncServerSchema,
+  writeManifest,
+};

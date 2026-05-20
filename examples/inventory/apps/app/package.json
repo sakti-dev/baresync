@@ -1,0 +1,22 @@
+{
+  "name": "inventory-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "format:generated": "bunx ultracite fix src-tauri/gen/schemas/*.json",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build && bun run format:generated"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "baresync": "file:../../../../packages/baresync"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.2",
+    "typescript": "5.9.2",
+    "vite": "^7.0.0"
+  }
+}

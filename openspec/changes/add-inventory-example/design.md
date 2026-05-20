@@ -44,7 +44,7 @@ Alternatives considered:
 ### Monorepo layout with `apps/app`, `apps/server`, and `packages/sync-contract`
 Use a small workspace that mirrors how a real consumer would split responsibilities:
 - `apps/app` for the Tauri client
-- `apps/server` for the Elysia backend
+- `apps/server` for the Hono backend
 - `packages/sync-contract` for the shared schema and generated artifacts
 
 This keeps the contract shared and avoids duplicating schema definitions between frontend and backend.

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "declaration": true,
     "declarationMap": false,
-    "emitDeclarationOnly": true,
+    "verbatimModuleSyntax": true,
     "outDir": "./dist",
     "rootDir": "./src"
   },

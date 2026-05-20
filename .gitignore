@@ -9,3 +9,4 @@ target
 *.lock
 !.flake.lock
 dist
+**/src-tauri/gen/

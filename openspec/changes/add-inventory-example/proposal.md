@@ -7,7 +7,7 @@ Baresync now has publishable package names and release-ready artifacts, so the n
 - Add one fullstack example under `examples/inventory`.
 - Structure the example as a monorepo with:
   - `apps/app` for the Tauri client
-  - `apps/server` for the Elysia backend
+  - `apps/server` for the Hono backend
   - `packages/sync-contract` for the shared schema and generated sync contract
 - Use a simple inventory domain with a small table set such as `locations`, `items`, and `stock_counts`.
 - Keep the example single-user or single-scope, not multi-tenant.
@@ -17,7 +17,7 @@ Baresync now has publishable package names and release-ready artifacts, so the n
 ## Capabilities
 
 ### New Capabilities
-- `inventory-example`: a complete, copyable fullstack example showing a Tauri app, an Elysia server, and a shared sync contract built on the published Baresync packages.
+- `inventory-example`: a complete, copyable fullstack example showing a Tauri app, a Hono server, and a shared sync contract built on the published Baresync packages.
 
 ### Modified Capabilities
 - None.

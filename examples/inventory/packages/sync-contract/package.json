@@ -1,0 +1,24 @@
+{
+  "name": "inventory-sync-contract",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/schema.ts",
+    "./generated/sync-table-order": "./generated/sync-table-order.ts",
+    "./generated/sync-contract": "./generated/sync-contract.json",
+    "./generated/manifest": "./generated/sync-contract.manifest.json"
+  },
+  "scripts": {
+    "generate": "bun run generate.ts",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "build": "bun run generate",
+    "check": "bun run generate && bun run typecheck"
+  },
+  "dependencies": {
+    "baresync": "file:../../../../packages/baresync",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}

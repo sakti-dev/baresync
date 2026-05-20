@@ -1,0 +1,19 @@
+{
+  "name": "inventory-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bunx tsc -p tsconfig.json --noEmit",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "baresync": "file:../../../../packages/baresync",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.6.16"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "typescript": "5.9.2"
+  }
+}

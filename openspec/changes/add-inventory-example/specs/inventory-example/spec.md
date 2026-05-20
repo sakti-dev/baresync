@@ -36,7 +36,7 @@ The example MUST use the published Baresync package names in its imports and con
 - **THEN** the import paths and package references still describe a public consumer workflow
 
 ### Requirement: Fullstack sync demonstration
-The example MUST demonstrate the full sync path across a Tauri client, an Elysia backend, and a shared sync contract package.
+The example MUST demonstrate the full sync path across a Tauri client, a Hono backend, and a shared sync contract package.
 
 #### Scenario: End-to-end flow is visible
 - **WHEN** a contributor follows the example code

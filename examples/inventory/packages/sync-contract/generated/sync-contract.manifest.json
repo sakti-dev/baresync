@@ -1,0 +1,110 @@
+{
+  "contractVersion": 1,
+  "generatorVersion": "0.1.0",
+  "encoding": "json",
+  "packageName": "inventory.sync.v1",
+  "tables": [
+    {
+      "fieldNumbers": {
+        "id": 1,
+        "scope_id": 2,
+        "name": 3,
+        "deleted_at": 4,
+        "is_synced": 5,
+        "created_at": 6,
+        "updated_at": 7
+      },
+      "name": "locations",
+      "fields": [
+        "id",
+        "scope_id",
+        "name",
+        "deleted_at",
+        "is_synced",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "fieldNumbers": {
+        "id": 1,
+        "scope_id": 2,
+        "location_id": 3,
+        "name": 4,
+        "sku": 5,
+        "deleted_at": 6,
+        "is_synced": 7,
+        "created_at": 8,
+        "updated_at": 9
+      },
+      "name": "items",
+      "fields": [
+        "id",
+        "scope_id",
+        "location_id",
+        "name",
+        "sku",
+        "deleted_at",
+        "is_synced",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "fieldNumbers": {
+        "id": 1,
+        "scope_id": 2,
+        "item_id": 3,
+        "counted_quantity": 4,
+        "recorded_at": 5,
+        "deleted_at": 6,
+        "is_synced": 7,
+        "created_at": 8,
+        "updated_at": 9
+      },
+      "name": "stock_counts",
+      "fields": [
+        "id",
+        "scope_id",
+        "item_id",
+        "counted_quantity",
+        "recorded_at",
+        "deleted_at",
+        "is_synced",
+        "created_at",
+        "updated_at"
+      ]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "table": "locations",
+      "field": "scopeId"
+    },
+    {
+      "table": "items",
+      "field": "scopeId"
+    },
+    {
+      "table": "stock_counts",
+      "field": "scopeId"
+    }
+  ],
+  "tableOrder": {
+    "upsert": [
+      "locations",
+      "items",
+      "stock_counts"
+    ],
+    "delete": [
+      "stock_counts",
+      "items",
+      "locations"
+    ]
+  },
+  "outputPaths": [
+    "sync-contract.json",
+    "sync-table-order.ts",
+    "sync-contract.manifest.json"
+  ]
+}

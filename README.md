@@ -84,7 +84,7 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 
 ## Quick Start
 
-The public install path is now the `baresync` npm package and the `tauri-plugin-baresync` Rust crate. In this repository, the workspace package still drives development, but a typical consumer project can start as a Bun monorepo with a Tauri app and an Elysia server:
+Start with [`examples/inventory`](./examples/inventory). It is the canonical fullstack starter in this repository and uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
 
 ```txt
 fieldkit/

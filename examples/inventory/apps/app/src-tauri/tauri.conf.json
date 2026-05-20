@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Inventory",
+  "version": "0.1.0",
+  "identifier": "com.baresync.inventory",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build",
+    "devUrl": "http://localhost:5174",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Inventory",
+        "width": 1280,
+        "height": 920,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}
