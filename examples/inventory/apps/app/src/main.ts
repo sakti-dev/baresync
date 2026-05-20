@@ -1,7 +1,7 @@
 import "./styles.css";
+import { INVENTORY_SCOPE_ID } from "@example/inventory-sync-contract";
 import { invoke } from "@tauri-apps/api/core";
 import { createSyncClient } from "baresync/tauri";
-import { INVENTORY_SCOPE_ID } from "../../../packages/sync-contract/src/schema";
 
 const syncClient = createSyncClient({
   apiUrl: "http://127.0.0.1:18181",

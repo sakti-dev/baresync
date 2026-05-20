@@ -1,5 +1,5 @@
 {
-  "name": "inventory-app",
+  "name": "@example/inventory-app",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
-    "baresync": "file:../../../../packages/baresync"
+    "baresync": "file:../../../../packages/baresync",
+    "@example/inventory-sync-contract": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.2",

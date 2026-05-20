@@ -1,5 +1,5 @@
 {
-  "name": "inventory-example",
+  "name": "@example/inventory",
   "private": true,
   "type": "module",
   "workspaces": [

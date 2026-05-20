@@ -1,5 +1,5 @@
 {
-  "name": "inventory-sync-contract",
+  "name": "@example/inventory-sync-contract",
   "private": true,
   "type": "module",
   "exports": {

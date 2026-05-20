@@ -1,30 +1,25 @@
+import { SYNC_UPSERT_ORDER } from "@example/inventory-sync-contract";
 import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
+import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { Hono } from "hono";
-import { SYNC_UPSERT_ORDER } from "../../../packages/sync-contract/generated/sync-table-order";
+import { createInventoryDatabase } from "./db/client";
 import {
-  createIdempotencyDb,
-  createSeedState,
+  createInventoryRepository,
   type InventoryScope,
-  inventoryState,
-} from "./state";
+} from "./db/repository";
 
-const port = Number(process.env.INVENTORY_SERVER_PORT ?? "18181");
 const app = new Hono();
+const { db, dbPath } = await createInventoryDatabase();
+const repository = createInventoryRepository(db);
+const idempotencyDb = db as unknown as SqliteRemoteDatabase;
 
-const idempotencyDb = await createIdempotencyDb();
-const state = inventoryState(createSeedState());
+await repository.seedIfNeeded();
 
-interface ResolveScopeInput {
-  context: unknown;
-  request: Request;
-  scopeId: string;
-}
-
-const resolveScope = ({ scopeId }: ResolveScopeInput) => {
+const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== "default") {
     return {
       ok: false as const,
@@ -44,42 +39,42 @@ const push = createSyncPushHandler({
   idempotency: { db: idempotencyDb },
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
-  applyPushChanges: ({ changes, scope, syncUpdatedAt }) => {
-    state.applyPush(changes, scope.scopeId, syncUpdatedAt);
-    return state.toPushResponse();
-  },
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+    repository.applyPushChanges({
+      changes,
+      scopeId: scope.scopeId,
+      syncUpdatedAt,
+    }),
 });
 
 const pull = createSyncPullHandler({
   encoding: "json",
   limit: 1000,
   resolveScope,
-  loadPullChanges: ({ scope }) => state.toPullResponse(scope.scopeId),
+  loadPullChanges: async ({ cursor, scope, tables }) =>
+    repository.loadPullChanges({
+      cursor,
+      scopeId: scope.scopeId,
+      tables,
+    }),
 });
 
 const status = createSyncStatusHandler({
   encoding: "json",
   resolveScope,
-  loadSyncStatus: () => state.toStatusResponse(),
+  loadSyncStatus: async ({ cursor, scope }) =>
+    repository.loadSyncStatus({
+      cursor,
+      scopeId: scope.scopeId,
+    }),
 });
 
+app.get("/", (c) => c.text("Hello Hono!"));
+app.get("/health", (c) => c.json({ ok: true }));
 app.post("/sync/push", (c) => push(c.req.raw, {}));
 app.post("/sync/pull", (c) => pull(c.req.raw, {}));
 app.post("/sync/status", (c) => status(c.req.raw, {}));
-app.get("/health", (c) => c.json({ ok: true }));
 
-const bunRuntime = globalThis as typeof globalThis & {
-  Bun: {
-    serve: (options: {
-      fetch: (request: Request) => Response | Promise<Response>;
-      port: number;
-    }) => unknown;
-  };
-};
+export default app;
 
-bunRuntime.Bun.serve({
-  fetch: app.fetch,
-  port,
-});
-
-console.log(`inventory server listening on http://127.0.0.1:${port}`);
+console.log(`inventory server listening on ${dbPath}`);

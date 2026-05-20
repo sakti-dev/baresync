@@ -1,6 +1,11 @@
 import { localSyncRowState, syncedTable, syncSchema } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+export {
+  SYNC_DELETE_ORDER,
+  SYNC_UPSERT_ORDER,
+} from "../generated/sync-table-order";
+
 export const INVENTORY_SCOPE_ID = "default";
 export const INVENTORY_PACKAGE_NAME = "inventory.sync.v1";
 
