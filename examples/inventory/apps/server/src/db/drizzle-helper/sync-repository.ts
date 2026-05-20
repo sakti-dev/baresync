@@ -40,6 +40,64 @@ export interface InventoryStatusResponse {
 export function createInventorySyncRepository(db: InventoryDb) {
   const repository = createDrizzleSyncRepository({
     tables: {
+      locations: {
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          id: requiredString(row.id, "locations.id"),
+          name: requiredString(row.name, "locations.name"),
+          scopeId,
+          syncUpdatedAt,
+          updatedAt,
+        }),
+        readLatestRow: async ({ scopeId }) => {
+          const rows = await db
+            .select()
+            .from(locations)
+            .where(eq(locations.scopeId, scopeId))
+            .orderBy(
+              desc(locations.syncUpdatedAt),
+              desc(locations.updatedAt),
+              desc(locations.id)
+            )
+            .limit(1);
+          return rows[0] ?? null;
+        },
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
+            .select()
+            .from(locations)
+            .where(
+              cursorTimestamp > 0
+                ? and(
+                    eq(locations.scopeId, scopeId),
+                    gt(locations.syncUpdatedAt, cursorTimestamp)
+                  )
+                : eq(locations.scopeId, scopeId)
+            )
+            .orderBy(
+              desc(locations.syncUpdatedAt),
+              desc(locations.updatedAt),
+              desc(locations.id)
+            ) as Promise<readonly DrizzleSyncReadRow[]>,
+        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+          await db
+            .update(locations)
+            .set({
+              deletedAt: updatedAt,
+              syncUpdatedAt,
+              updatedAt,
+            })
+            .where(eq(locations.id, id));
+        },
+        upsertRow: async (row: InferInsertModel<typeof locations>) => {
+          const { id: _id, ...setValues } = row;
+          await db.insert(locations).values(row).onConflictDoUpdate({
+            target: locations.id,
+            set: setValues,
+          });
+        },
+      },
       items: {
         buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
           createdAt: optionalString(row.createdAt) ?? updatedAt,
@@ -96,64 +154,6 @@ export function createInventorySyncRepository(db: InventoryDb) {
           const { id: _id, ...setValues } = row;
           await db.insert(items).values(row).onConflictDoUpdate({
             target: items.id,
-            set: setValues,
-          });
-        },
-      },
-      locations: {
-        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
-          createdAt: optionalString(row.createdAt) ?? updatedAt,
-          deletedAt: optionalString(row.deletedAt),
-          id: requiredString(row.id, "locations.id"),
-          name: requiredString(row.name, "locations.name"),
-          scopeId,
-          syncUpdatedAt,
-          updatedAt,
-        }),
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
-            .select()
-            .from(locations)
-            .where(eq(locations.scopeId, scopeId))
-            .orderBy(
-              desc(locations.syncUpdatedAt),
-              desc(locations.updatedAt),
-              desc(locations.id)
-            )
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        readRows: ({ cursorTimestamp, scopeId }) =>
-          db
-            .select()
-            .from(locations)
-            .where(
-              cursorTimestamp > 0
-                ? and(
-                    eq(locations.scopeId, scopeId),
-                    gt(locations.syncUpdatedAt, cursorTimestamp)
-                  )
-                : eq(locations.scopeId, scopeId)
-            )
-            .orderBy(
-              desc(locations.syncUpdatedAt),
-              desc(locations.updatedAt),
-              desc(locations.id)
-            ) as Promise<readonly DrizzleSyncReadRow[]>,
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
-            .update(locations)
-            .set({
-              deletedAt: updatedAt,
-              syncUpdatedAt,
-              updatedAt,
-            })
-            .where(eq(locations.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof locations>) => {
-          const { id: _id, ...setValues } = row;
-          await db.insert(locations).values(row).onConflictDoUpdate({
-            target: locations.id,
             set: setValues,
           });
         },

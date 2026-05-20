@@ -1,8 +1,4 @@
-## Purpose
-
-Define the connected Android fixture smoke requirements that prove the public Baresync fixture app works across real Android lifecycle, filesystem, networking, and adb automation boundaries.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Connected Android fixture smoke
 The system SHALL provide an Android fixture smoke flow that can be executed against a connected adb device or emulator and verifies the public Baresync fixture app through real Android lifecycle boundaries.
@@ -52,17 +48,6 @@ The Android fixture smoke SHALL validate the same public Baresync integration se
 #### Scenario: Android app data reset
 - **WHEN** automation clears app data or reinstalls the fixture app between Android smoke runs
 - **THEN** the next run SHALL start from a clean local SQLite state and repeat the baseline pull without relying on previous run state
-
-### Requirement: Android failure evidence
-The Android fixture smoke SHALL provide enough public, synthetic failure evidence to diagnose fixture integration failures without requiring private app data.
-
-#### Scenario: Android failure artifacts are collected
-- **WHEN** the Android smoke flow fails
-- **THEN** the runner SHALL collect or document how to collect Maestro output, adb logcat, fixture backend state, app id, device id, backend URL, reset method, and generated fixture build metadata
-
-#### Scenario: Failure artifacts remain public-safe
-- **WHEN** Android fixture artifacts are collected
-- **THEN** they SHALL contain only synthetic fixture data or redacted operational metadata and SHALL NOT require `openspec/external/sakti-pos` or any private consumer app data
 
 ### Requirement: Verified Android smoke execution
 The system SHALL only consider the public fixture Android smoke complete when it has been executed successfully against a connected adb device or emulator with the deterministic fixture backend.

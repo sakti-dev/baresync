@@ -220,8 +220,8 @@ smokeSuite("public fixture desktop smoke", () => {
       "product clean state should survive restart"
     );
     ensure(
-      (await text("#needs-baseline")) !== "yes",
-      "baseline should be satisfied"
+      (await text("#dirty-count")) === "0",
+      "dirty count should survive restart as clean"
     );
   });
 });

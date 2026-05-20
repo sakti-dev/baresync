@@ -18,7 +18,12 @@ Baresync has three useful verification layers. Do not collapse them into one UI 
    - Commands: `bun test`, `bun run typecheck`, `bun x ultracite check`
    - Typical files: `packages/baresync/src/**`, `tests/e2e/**`
 
-3. Opt-in device smoke tests
+3. Fixture backend contract tests
+   - Purpose: real HTTP request/response coverage for the deterministic fixture backend, backed by SQLite and exercised in both JSON and protobuf modes.
+   - Commands: `bun --cwd tests/e2e run fixture:backend:contract:json`, `bun --cwd tests/e2e run fixture:backend:contract:protobuf`
+   - Typical files: `tests/e2e/backend/__test__/fixture-server.contract.test.ts`, `tests/e2e/backend/fixture-server.ts`
+
+4. Opt-in device smoke tests
    - Purpose: real runtime wiring only: app launch, Tauri plugin registration, WebView-to-Rust IPC, embedded migrations, SQLite file persistence, baseline pull, local create, manual push, restart/app-data lifecycle.
    - Desktop command: `bun --cwd tests/e2e run desktop:sync`
    - Android command: `bun --cwd tests/e2e run android:sync`
@@ -55,6 +60,8 @@ Every E2E run needs a deterministic backend with three capabilities:
 - Push records rows sent by the app so the test can assert backend state.
 - Reset clears backend state before each run.
 
+The backend should store its fixture data in SQLite. Contract tests can use `BARESYNC_FIXTURE_DB_PATH=:memory:`; smoke runs should derive a stable file path from `BARESYNC_FIXTURE_RUN_ID` unless an explicit path is supplied.
+
 The current backend exposes:
 
 - `POST /__reset`
@@ -65,6 +72,7 @@ The current backend exposes:
 
 The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`. Use `protobuf` when you want the same smoke flow to exercise protobuf request/response bodies.
 The E2E package also exposes `fixture:backend:json`, `fixture:backend:protobuf`, `desktop:sync:json`, `desktop:sync:protobuf`, `android:sync:json`, and `android:sync:protobuf` for explicit transport selection.
+It also exposes `fixture:backend:contract:json` and `fixture:backend:contract:protobuf` for the host-side backend contract gate.
 
 Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:18080`. That leads to stale state, port conflicts, and false passes.
 
@@ -138,6 +146,8 @@ The smoke should assert all of these:
 - app restart preserves local rows and clean state
 - baseline is satisfied after restart
 
+Before treating a backend issue as a device issue, run the fixture backend contract checks against the same transport mode.
+
 Do not only assert that text exists after a click. Web UI and Tauri IPC are asynchronous. Wait for semantic state, such as `#sync-result` containing `manual:` or a local row matching `"is_synced":1`.
 
 ## Android Smoke Setup
@@ -203,6 +213,7 @@ Android smoke should prove:
 - app data reset or reinstall produces a fresh baseline
 
 Android smoke should not test idempotency, conflict resolution, adaptive chunking, or detailed protocol semantics. Those belong in host tests.
+The backend contract tests cover the HTTP contract and SQLite state transitions that the device smoke depends on.
 
 Android smoke assertions need Android-specific selector discipline:
 

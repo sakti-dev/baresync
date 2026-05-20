@@ -124,12 +124,17 @@ export const config = {
     runtime.process.env.BARESYNC_FIXTURE_API_URL = fixtureApiUrl;
     runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
     runtime.process.env.BARESYNC_FIXTURE_RUN_ID ??= `desktop-${Date.now()}`;
+    runtime.process.env.BARESYNC_FIXTURE_DB_PATH ??= path.resolve(
+      "/tmp",
+      `baresync-fixture-${runtime.process.env.BARESYNC_FIXTURE_RUN_ID}.db`
+    );
 
     fixtureBackend = spawn("bun", ["run", "backend/fixture-server.ts"], {
       cwd: path.resolve(__dirname, "../"),
       env: {
         ...runtime.process.env,
         BARESYNC_FIXTURE_BACKEND_PORT: backendPort,
+        BARESYNC_FIXTURE_DB_PATH: runtime.process.env.BARESYNC_FIXTURE_DB_PATH,
         [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
       },
       shell: true,

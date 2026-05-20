@@ -17,6 +17,7 @@ bun --cwd tests/e2e run fixture:backend
 ```
 
 Use `fixture:backend:json` or `fixture:backend:protobuf` when you want to pin the backend transport mode explicitly.
+Use `fixture:backend:contract`, `fixture:backend:contract:json`, or `fixture:backend:contract:protobuf` to run the HTTP contract checks against the real backend and its SQLite state.
 
 Useful env vars:
 
@@ -25,6 +26,7 @@ Useful env vars:
 - `BARESYNC_FIXTURE_ENCODING`: sync transport mode, default `json`
 - `BARESYNC_FIXTURE_RUN_ID`: run identifier used to derive a stable local DB path
 - `BARESYNC_FIXTURE_BACKEND_PORT`: backend listen port, default `18080`
+- `BARESYNC_FIXTURE_DB_PATH`: backend SQLite path, default `/tmp/baresync-fixture-${BARESYNC_FIXTURE_RUN_ID}.db`, or `:memory:` for contract tests
 
 ## Desktop
 
@@ -47,6 +49,7 @@ The smoke harness also exposes `desktop:sync:json` and `desktop:sync:protobuf` f
 
 The desktop smoke should validate plugin registration, command names, WebView-to-Rust IPC, local SQLite file behavior, baseline pull, local create, manual sync, and restart persistence.
 When a desktop smoke fails, collect the app logs and inspect `GET /__state` from the fixture backend to confirm whether the push path recorded the local rows.
+The backend contract checks should be used first when validating backend request/response behavior or SQLite persistence without launching the desktop app.
 
 ## Android
 
@@ -77,3 +80,4 @@ Android backend rules:
 
 The Android smoke is final lifecycle and filesystem confidence only. Sync correctness belongs in the host command, JS invoke, and host-only simulation suites.
 When Android smoke fails, collect logcat output and, when practical, capture the fixture backend `/__state` response or a SQLite snapshot for the local app data.
+Use the backend contract checks to verify the deterministic fixture backend before treating an Android failure as a device-only issue.

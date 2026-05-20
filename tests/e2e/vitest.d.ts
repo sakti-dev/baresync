@@ -10,6 +10,4 @@ declare module "vitest" {
   };
 }
 
-declare const process: {
-  env: Record<string, string | undefined>;
-};
+declare const process: NodeJS.Process;
