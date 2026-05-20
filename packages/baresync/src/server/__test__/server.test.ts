@@ -8,7 +8,11 @@ import {
   cleanupSyncBatchRequests,
   createIdempotencyGuard,
 } from "../idempotency";
-import { computeSyncRequestHash, decodeSyncRequest } from "../service";
+import {
+  computeSyncRequestHash,
+  decodeSyncRequest,
+  encodeSyncResponse,
+} from "../service";
 
 function createTestDb(): SqliteRemoteDatabase {
   const sqlite = new Database(":memory:");
@@ -71,6 +75,54 @@ describe("decodeSyncRequest", () => {
     expect(result.requestHash).toBeTruthy();
     expect(typeof result.requestHash).toBe("string");
     expect(result.requestHash.length).toBe(64);
+  });
+
+  it("decodes status request and hashes the raw body bytes", async () => {
+    const body = {
+      scopeId: "s1",
+      cursor: "sync:123:categories:row-1",
+    };
+    const rawBody = JSON.stringify(body);
+    const request = createJsonRequest(body);
+    const result = await decodeSyncRequest({
+      encoding: "json",
+      kind: "status",
+      request,
+    });
+
+    expect(result.body).toEqual(body);
+    expect(result.requestHash).toBe(await computeSyncRequestHash(rawBody));
+  });
+
+  it("rejects status requests without scopeId", async () => {
+    await expect(
+      decodeSyncRequest({
+        encoding: "json",
+        kind: "status",
+        request: createJsonRequest({
+          cursor: "sync:123:categories:row-1",
+        }),
+      })
+    ).rejects.toThrow('Missing required status field: "scopeId"');
+  });
+});
+
+describe("encodeSyncResponse", () => {
+  it("encodes JSON status response bodies", async () => {
+    const body = {
+      changedTables: ["categories", "products"],
+      hasChanges: true,
+      cursor: "sync:123:categories:row-1",
+      serverTime: "2026-05-19T12:00:00.000Z",
+    };
+    const response = encodeSyncResponse({
+      body,
+      encoding: "json",
+      kind: "status",
+    });
+
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(await response.json()).toEqual(body);
   });
 });
 

@@ -166,6 +166,55 @@ describe("protobuf parity", () => {
     );
   });
 
+  it("round-trips status requests and responses through protobuf", async () => {
+    const schema = createProtobufSchema();
+    const statusFixture = {
+      scopeId: "merchant-1",
+      cursor: "sync:123:categories:row-1",
+    };
+    const requestBytes = encodeProtobufBody({
+      body: statusFixture,
+      kind: "status",
+      message: "request",
+      schema,
+    });
+
+    const decoded = await decodeSyncRequest({
+      encoding: "protobuf",
+      kind: "status",
+      request: createProtobufRequest(requestBytes),
+      protobufSchema: schema,
+    });
+
+    expect(decoded.body).toEqual(statusFixture);
+    expect(decoded.requestHash).toBe(
+      await computeSyncRequestHash(requestBytes)
+    );
+
+    const responseBody = {
+      changedTables: ["categories", "products"],
+      hasChanges: true,
+      cursor: "sync:123:categories:row-1",
+      serverTime: "2026-05-19T12:00:00.000Z",
+    };
+    const response = encodeSyncResponse({
+      body: responseBody,
+      encoding: "protobuf",
+      kind: "status",
+      protobufSchema: schema,
+    });
+
+    expect(response.headers.get("Content-Type")).toBe("application/x-protobuf");
+    const responseDecoded = decodeProtobufBody({
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      kind: "status",
+      message: "response",
+      schema,
+    });
+
+    expect(responseDecoded).toEqual(responseBody);
+  });
+
   it("round-trips the canonical pull fixture as a protobuf response", async () => {
     const schema = createProtobufSchema();
     const pullFixture = loadFixture("category-product-pull.json");

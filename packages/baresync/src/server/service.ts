@@ -23,7 +23,51 @@ export class SyncPayloadTooLargeError extends Error {
 
 export interface SyncRequestKind {
   encoding: "json" | "protobuf";
-  kind: "push" | "pull";
+  kind: "push" | "pull" | "status";
+}
+
+function parseJsonRequestBody(rawBody: Uint8Array): Record<string, unknown> {
+  const text = new TextDecoder().decode(rawBody);
+  const parsed = JSON.parse(text) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Request body must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function requireFields(
+  body: Record<string, unknown>,
+  fields: readonly string[],
+  label: string
+): void {
+  for (const field of fields) {
+    if (!(field in body)) {
+      throw new Error(`Missing required ${label} field: "${field}"`);
+    }
+  }
+}
+
+function validateSyncRequestBody(
+  kind: SyncRequestKind["kind"],
+  body: Record<string, unknown>
+): void {
+  switch (kind) {
+    case "push":
+      requireFields(
+        body,
+        ["scopeId", "clientId", "idempotencyKey", "tables"],
+        "push"
+      );
+      return;
+    case "pull":
+      requireFields(body, ["scopeId", "tables", "cursor"], "pull");
+      return;
+    case "status":
+      requireFields(body, ["scopeId", "cursor"], "status");
+      return;
+    default:
+      throw new Error(`Unsupported sync request kind: ${kind}`);
+  }
 }
 
 export async function computeSyncRequestHash(body: unknown): Promise<string> {
@@ -50,48 +94,22 @@ export async function computeSyncRequestHash(body: unknown): Promise<string> {
 
 export async function decodeSyncRequest(input: {
   encoding: "json" | "protobuf";
-  kind: "push" | "pull";
+  kind: "push" | "pull" | "status";
   request: Request;
   protobufSchema?: SyncProtobufSchema;
 }) {
   const rawBody = new Uint8Array(await input.request.arrayBuffer());
-  let body: Record<string, unknown>;
+  const body =
+    input.encoding === "json"
+      ? parseJsonRequestBody(rawBody)
+      : decodeProtobufBody({
+          bytes: rawBody,
+          kind: input.kind,
+          message: "request",
+          schema: input.protobufSchema,
+        });
 
-  if (input.encoding === "json") {
-    const text = new TextDecoder().decode(rawBody);
-    const parsed = JSON.parse(text) as unknown;
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error("Request body must be a JSON object");
-    }
-    body = parsed as Record<string, unknown>;
-  } else {
-    body = decodeProtobufBody({
-      bytes: rawBody,
-      kind: input.kind,
-      message: "request",
-      schema: input.protobufSchema,
-    });
-  }
-
-  if (input.kind === "push") {
-    for (const field of ["scopeId", "clientId", "idempotencyKey", "tables"]) {
-      if (!(field in body)) {
-        throw new Error(`Missing required push field: "${field}"`);
-      }
-    }
-  }
-
-  if (input.kind === "pull") {
-    for (const field of ["scopeId", "tables", "cursor"]) {
-      if (!(field in body)) {
-        throw new Error(`Missing required pull field: "${field}"`);
-      }
-    }
-  }
+  validateSyncRequestBody(input.kind, body);
 
   const requestHash = await computeSyncRequestHash(rawBody);
   return { body, rawBodyByteLength: rawBody.byteLength, requestHash };
@@ -100,7 +118,7 @@ export async function decodeSyncRequest(input: {
 export function encodeSyncResponse(input: {
   body: unknown;
   encoding: "json" | "protobuf";
-  kind: "push" | "pull";
+  kind: "push" | "pull" | "status";
   protobufSchema?: SyncProtobufSchema;
 }): Response {
   if (input.encoding === "protobuf") {
