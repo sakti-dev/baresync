@@ -1,0 +1,161 @@
+---
+title: Architecture
+description: How the generator, client, plugin, and server helpers fit together.
+icon: Network
+---
+
+Baresync has three runtime areas and one generation area: TypeScript contract/generator code, a Rust core sync engine, a Tauri plugin wrapper, and server helpers for backend routes.
+
+## System map
+
+```mermaid
+flowchart TD
+  tables["Drizzle tables"]
+  schema["syncedTable(...) + syncSchema(...)"]
+  generator["runDiagnostics + generateSyncArtifacts"]
+  contract["sync-contract.json"]
+  order["sync-table-order.ts"]
+  manifest["sync-contract.manifest.json"]
+  protobuf["protobuf workspace files"]
+  app["Tauri app<br/>JS client + Drizzle proxy"]
+  backend["Backend routes<br/>server helpers"]
+  plugin["Tauri plugin"]
+  core["Rust core engine"]
+  sqlite[("SQLite")]
+
+  tables --> schema --> generator
+  generator --> contract
+  generator --> order
+  generator --> manifest
+  generator --> protobuf
+  contract --> app
+  order --> app
+  contract --> backend
+  order --> backend
+  app --> plugin --> core --> sqlite
+  core <--> backend
+```
+
+## Package boundaries
+
+The workspace package exports separate surfaces:
+
+- `@repo/baresync/schema` for schema helpers and server-side idempotency schema.
+- `@repo/baresync/generator` for diagnostics, table-order computation, manifests, and protobuf workspace generation.
+- `@repo/baresync/db` for Drizzle-over-Tauri SQLite proxy access.
+- `@repo/baresync/server` for sync route primitives and handler factories.
+- `@repo/baresync/tauri` for the frontend sync client.
+- `@repo/baresync/limits` for shared default limits.
+
+## Generator flow
+
+Generation starts from a `SyncContract`. Diagnostics run before files are written.
+
+```mermaid
+flowchart TD
+  contract["SyncContract"]
+  diagnostics["runDiagnostics"]
+  errors{"errors?"}
+  stop["stop generation"]
+  warnings["print warnings"]
+  order["computeSyncTableOrder"]
+  write["write contract, order constants, manifest"]
+
+  contract --> diagnostics --> errors
+  errors -- yes --> stop
+  errors -- no --> warnings --> order --> write
+```
+
+The table order comes from Drizzle foreign keys. Upsert order is topological; delete order is reversed.
+
+## Tauri plugin flow
+
+Plugin setup connects SQLite, creates plugin state, stores embedded migrations, and keeps contract table metadata for future commands.
+
+```mermaid
+flowchart TD
+  builder["Builder::new()<br/>api_base_url<br/>encoding<br/>db_path<br/>contract_tables<br/>migrations"]
+  plugin["Tauri plugin"]
+  state["PluginState"]
+  pool["SQLite pool"]
+  config["sync_config"]
+  tables["contract_tables"]
+  migrations["embedded_migrations"]
+
+  builder --> plugin --> state
+  state --> pool
+  state --> config
+  state --> tables
+  state --> migrations
+```
+
+Each sync command creates a `SyncEngine` with the requested `scopeId`. This keeps scope selection explicit at the command boundary.
+
+## Sync engine flow
+
+`sync_now` first gets local state, then calls the server status endpoint. It uses that decision to avoid unnecessary network work.
+
+```mermaid
+flowchart TD
+  local["get_sync_local_state"]
+  status["status request"]
+  baseline{"needs baseline?"}
+  dirty{"local dirty?"}
+  remote{"server has changes?"}
+  noop["NoOp"]
+  push["PushOnly"]
+  pull["PullOnly"]
+  full["FullSync"]
+  resync["FullResync"]
+
+  local --> status --> baseline
+  baseline -- yes --> resync
+  baseline -- no --> dirty
+  dirty -- no --> remote
+  dirty -- yes --> remote
+  remote -- "no + clean" --> noop
+  remote -- "no + dirty" --> push
+  remote -- "changed + clean" --> pull
+  remote -- "changed + dirty" --> full
+```
+
+Pull applies changed rows in upsert order and soft-deletes in delete order. Push reads pending outbox changes, chunks them, sends idempotent envelopes, marks accepted rows synced, and handles server-wins rejection by pulling rejected tables.
+
+## Drizzle proxy flow
+
+`createTauriDrizzleDatabase` uses Drizzle's `sqlite-proxy` adapter. Queries are not sent to a remote SQL API; they are sent to the trusted local Tauri command bridge.
+
+```mermaid
+flowchart LR
+  query["Drizzle query"]
+  proxy["sqlite-proxy callback"]
+  invoke["invoke('run_sql', { query })"]
+  command["plugin command"]
+  pool["sqlx SQLite pool"]
+
+  query --> proxy --> invoke --> command --> pool
+```
+
+Batch statements go through `run_sql_batch`.
+
+## Server helper flow
+
+Server helpers keep the HTTP boundary predictable while leaving business logic in your backend.
+
+```mermaid
+flowchart TD
+  decode["decodeSyncRequest"]
+  scope["resolveScope"]
+  validate["validatePushEnvelope"]
+  order["orderPushChanges"]
+  persist["app-owned persistence"]
+  encode["encodeSyncResponse"]
+
+  decode --> scope --> validate --> order --> persist --> encode
+```
+
+The higher-level handler factories package this shape for push, pull, and status routes.
+
+## Encoding boundary
+
+JSON is the runtime baseline. Protobuf generation emits `.proto`, TypeScript runtime wrappers, schema metadata, and Rust mapper structs. The fixture app uses a protobuf transport adapter to translate between the Rust engine's JSON-shaped values and protobuf HTTP payloads.

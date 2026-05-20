@@ -1,0 +1,155 @@
+---
+title: Quickstart
+description: Define synced tables, generate the contract, and run the first sync.
+icon: Rocket
+---
+
+This guide follows the same shape as the fixture app in this repository: define synced tables, create a contract, generate artifacts, register the Tauri plugin, access SQLite through the plugin, and call sync commands from the frontend.
+
+The package is currently private as `@repo/baresync`. Replace that with `baresync` once the public package is published.
+
+## Install
+
+Inside this repo, the package is already available through the workspace. A consumer app will eventually install the public package and the Rust plugin crate:
+
+```bash
+bun add baresync
+```
+
+## Define synced tables
+
+Baresync expects synced tables to use a single text `id` primary key and row-state columns. Local tables need `deleted_at`, `is_synced`, `created_at`, and `updated_at`.
+
+```ts
+import { localSyncRowState, syncedTable, syncSchema } from "@repo/baresync/schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  ...localSyncRowState,
+});
+
+export const products = sqliteTable("products", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  categoryId: text("category_id").notNull().references(() => categories.id),
+  name: text("name").notNull(),
+  priceMinorUnits: integer("price_minor_units").notNull(),
+  ...localSyncRowState,
+});
+```
+
+The scope column decides which tenant, merchant, outlet, workspace, or user-owned sandbox a row belongs to. `syncedTable` can infer the field from either `merchant_id` or `merchantId`.
+
+## Create the sync schema
+
+Mark the Drizzle tables as synced and group them into a contract:
+
+```ts
+export const syncedCategories = syncedTable(categories, {
+  scope: "merchant_id",
+});
+
+export const syncedProducts = syncedTable(products, {
+  scope: "merchant_id",
+  localOnlyColumns: ["isSynced"],
+});
+
+export const syncContract = syncSchema({
+  packageName: "example.sync.v1",
+  tables: [syncedCategories, syncedProducts],
+});
+```
+
+The generator checks this contract before writing files. It reports errors for missing primary keys, missing row-state columns, duplicate table names, unsupported primary keys, required foreign keys to non-synced tables, and FK cycles. It reports warnings for nullable scope columns, missing `sync_updated_at`, missing conflict/delete metadata, and useful sync indexes.
+
+## Generate runtime artifacts
+
+Export the contract from a config file, then run the generator:
+
+```ts title="sync.config.ts"
+import { syncContract } from "./src/schema";
+
+export default syncContract;
+```
+
+```bash
+bun packages/baresync/src/cli.ts doctor ./sync.config.ts
+bun packages/baresync/src/cli.ts generate ./sync.config.ts
+```
+
+By default, generation writes to `./generated`. The core outputs are `sync-contract.json`, `sync-table-order.ts`, and `sync-contract.manifest.json`.
+
+## Register the Tauri plugin
+
+The plugin owns the SQLite pool, migrations, sync config, and contract table metadata.
+
+```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+fn sync_tables() -> baresync_core::engine::SyncContractTables {
+    baresync_core::engine::SyncContractTables {
+        upsert_order: vec!["categories".into(), "products".into()],
+        delete_order: vec!["products".into(), "categories".into()],
+        local_only_columns: vec!["is_synced".into()],
+    }
+}
+
+tauri::Builder::default()
+    .plugin(
+        BaresyncBuilder::new()
+            .api_base_url("https://api.example.com")
+            .encoding("json")
+            .db_path("baresync.db")
+            .contract_tables(sync_tables())
+            .build(),
+    );
+```
+
+The fixture app uses explicit contract table metadata today. Generated Rust table metadata can replace the handwritten values as the generator surface settles.
+
+## Query SQLite from the app
+
+Use the Drizzle proxy helper so the frontend and sync engine talk to the same plugin-owned SQLite database.
+
+```ts
+import { createTauriDrizzleDatabase } from "@repo/baresync/db";
+import { invoke } from "@tauri-apps/api/core";
+import { categories, products } from "./schema";
+
+export const db = createTauriDrizzleDatabase({
+  schema: { categories, products },
+  invoke,
+});
+```
+
+The helper maps Drizzle proxy calls to the plugin commands `run_sql` and `run_sql_batch`.
+
+## Run sync from the frontend
+
+Create a client with a stable `scopeId` and call the sync commands. The current JS client passes `scopeId` to the Tauri commands; the plugin registration owns API URL and encoding.
+
+```ts
+import { createSyncClient } from "@repo/baresync/tauri";
+import { invoke } from "@tauri-apps/api/core";
+
+const sync = createSyncClient({
+  apiUrl: "https://api.example.com",
+  encoding: "json",
+  scopeId: "merchant-1",
+  invoke,
+});
+
+await sync.syncNow();
+
+const state = await sync.getState();
+```
+
+The available commands are `syncNow`, `push`, `pull`, `fullResync`, and `getState`.
+
+## What happened
+
+`syncNow` asks the server status endpoint whether there are remote changes, checks the local outbox state, chooses the smallest useful mode, and then runs pull and/or push through the Rust engine. Pull applies rows in generated upsert order and deletions in reverse order. Push reads pending outbox rows, chunks by row and byte limits, sends idempotent batches, clears accepted rows, and baseline-pulls rejected tables when the server wins.
