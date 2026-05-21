@@ -1,6 +1,47 @@
 ---
-title: Overview
-description: TODO
+title: Testing Overview
+description: How to test your Baresync app — layers, patterns, and what to test where.
 ---
 
-TODO: Write this page.
+# Testing Overview
+
+Your Baresync app has three testing surfaces: the JS frontend (hooks, components, sync client), the server (handlers, push/pull, idempotency), and end-to-end (real app + real backend). Each layer catches different bugs.
+
+## Testing layers for your app
+
+| What you're testing | How | Framework |
+|---|---|---|
+| **Sync client calls** | Mock `invoke` — no Tauri runtime needed | Vitest |
+| **React hooks / components** | Mock `createSyncClient` + Tauri `listen`, render with `@testing-library/react` | Vitest + jsdom |
+| **Server handlers** | Create handlers with mock callbacks, send real `Request` objects | Vitest or bun:test |
+| **Server repository** | In-memory `bun:sqlite` with real Drizzle queries | bun:test |
+| **End-to-end sync** | Real Tauri binary + fixture backend + WDIO | WDIO + Mocha |
+
+## Key principle: mock at the boundary
+
+Baresync is designed so you mock at the IPC boundary, not at the sync algorithm level:
+
+- **Frontend tests**: mock `invoke` so `createSyncClient` and `createTauriDrizzleDatabase` work without Tauri
+- **Server tests**: mock `resolveScope` and `applyPushChanges` so handlers work without auth or real DB
+- **E2E tests**: run the real thing — no mocks
+
+Don't mock the sync engine internals. Mock the edges.
+
+## What not to test
+
+The sync algorithm (push ordering, conflict resolution, chunking, cursor logic) is tested by Baresync's own Rust test suite. Your tests should focus on:
+
+- Your UI renders sync state correctly
+- Your server handlers authorize and apply changes
+- Your app survives a real sync cycle end-to-end
+
+## In this section
+
+| Page | What it covers |
+|---|---|
+| [JS Client Tests](/docs/testing/js-client-tests) | Mocking `invoke`, testing hooks and components |
+| [Server Tests](/docs/testing/server-tests) | Testing your push/pull/status handlers |
+| [Rust Core Simulation](/docs/testing/rust-core-simulation) | When you extend the Rust engine — recording transport pattern |
+| [Tauri Plugin Host Tests](/docs/testing/tauri-plugin-host-tests) | When you customize the plugin — command and polling tests |
+| [Inventory App Tests](/docs/testing/inventory-app-tests) | Real-world examples from the inventory app |
+| [E2E Runbook](/docs/testing/e2e-runbook) | Setting up and debugging end-to-end smoke tests |

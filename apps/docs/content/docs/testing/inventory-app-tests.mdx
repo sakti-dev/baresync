@@ -1,6 +1,198 @@
 ---
 title: Inventory App Tests
-description: TODO
+description: Real-world testing examples from the inventory example app.
 ---
 
-TODO: Write this page.
+# Inventory App Tests
+
+The inventory example app (`examples/inventory-json-polling/`) demonstrates how to test a real Baresync app. Here are the patterns it uses.
+
+## React hook tests: event bridge
+
+The `SyncClientProvider` listens for Tauri events and invalidates React Query. Tests mock the Tauri APIs and verify query invalidation.
+
+```ts
+// apps/app/src/hooks/__test__/useBaresyncEventBridge.test.ts
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Mock at the module boundary — your app never talks to real Tauri in tests
+const listen = vi.hoisted(() => vi.fn());
+const createSyncClient = vi.hoisted(() => vi.fn());
+
+vi.mock("baresync/tauri", () => ({ createSyncClient }));
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
+
+it("invalidates queries when data changes", async () => {
+  const queryClient = new QueryClient();
+  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+  createSyncClient.mockReturnValue({
+    startPolling: vi.fn(),
+    stopPolling: vi.fn().mockResolvedValue(undefined),
+  });
+
+  // Capture the listener your provider registers
+  const listeners = new Map<string, (event: unknown) => void>();
+  listen.mockImplementation((event, handler) => {
+    listeners.set(event, handler);
+    return Promise.resolve(async () => {});
+  });
+
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(SyncClientProvider, null, createElement("div", null, "child"))
+    )
+  );
+
+  // Wait for the provider to register its event listener
+  await waitFor(() => {
+    expect(listeners.has("baresync://data-changed")).toBe(true);
+  });
+
+  // Simulate the plugin emitting a data-changed event
+  await listeners.get("baresync://data-changed")?.(undefined);
+
+  // Verify your query keys are invalidated
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["sync-state"] });
+});
+
+it("only invalidates sync-state on status changes", async () => {
+  // ... same setup ...
+
+  await listeners.get("baresync://sync-status-changed")?.(undefined);
+
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["sync-state"] });
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["inventory"] });
+});
+```
+
+**Key pattern**: Mock `baresync/tauri` and `@tauri-apps/api/event` at the module level. Capture the `listen` callback to simulate events. Assert `invalidateQueries` calls.
+
+## Component tests: data table
+
+Test that your UI components render correctly with mock data:
+
+```ts
+// apps/app/src/components/__test__/DataTable.test.tsx
+import { render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import { describe, expect, it } from "vitest";
+
+it("renders loading state", () => {
+  render(createElement(DataTable, { data: undefined, isLoading: true }));
+  expect(screen.getByText("Loading...")).toBeDefined();
+});
+
+it("renders rows", () => {
+  const data = [
+    { id: "item-1", name: "Coffee" },
+    { id: "item-2", name: "Tea" },
+  ];
+  render(createElement(DataTable, { data, isLoading: false }));
+  expect(screen.getByText("Coffee")).toBeDefined();
+  expect(screen.getByText("Tea")).toBeDefined();
+});
+```
+
+## Server repository tests
+
+Test your Drizzle-backed server repository with a real in-memory SQLite database:
+
+```ts
+// apps/server/src/db/drizzle-helper/__test__/sync-repository.test.ts
+import { describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+
+function createTestDb() {
+  const sqlite = new Database(":memory:");
+  sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA foreign_keys = ON");
+  // Create your schema
+  sqlite.exec(`CREATE TABLE categories (...)`);
+  sqlite.exec(`CREATE TABLE products (...)`);
+  return drizzle(sqlite);
+}
+
+it("loads status with cursor", async () => {
+  const db = createTestDb();
+  const repo = createSyncRepository(db);
+
+  const status = await repo.loadSyncStatus({
+    scopeId: "merchant-1",
+    cursor: "",
+  });
+
+  expect(status.hasChanges).toBe(true); // baseline has data
+  expect(status.cursor).toBeTruthy();
+});
+
+it("applies push changes and returns accepted IDs", async () => {
+  const db = createTestDb();
+  const repo = createSyncRepository(db);
+
+  const result = await repo.applyPushChanges({
+    changes: [
+      {
+        table: "categories",
+        changedRows: [{ id: "cat-1", name: "Drinks", ... }],
+        deletedIds: [],
+      },
+    ],
+    scopeId: "merchant-1",
+    syncUpdatedAt: Date.now(),
+  });
+
+  expect(result.acceptedTables).toContain("categories");
+});
+```
+
+**Key pattern**: Use `bun:test` with `bun:sqlite` for real SQL. No mocking needed — Drizzle runs against real SQLite in memory.
+
+## Test configuration
+
+### Vitest config (for React tests)
+
+```ts
+// apps/app/vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "jsdom",
+    globals: true,
+  },
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "react",
+  },
+});
+```
+
+### Running the tests
+
+```bash
+# React component and hook tests (vitest)
+cd examples/inventory-json-polling/apps/app && bun run test
+
+# Server repository tests (bun:test)
+cd examples/inventory-json-polling/apps/server && bun test
+
+# Watch mode for React tests
+cd examples/inventory-json-polling/apps/app && bun run test:watch
+```
+
+## What to test in your app
+
+| Layer | What to test | Framework |
+|---|---|---|
+| **Sync provider** | Event → query invalidation wiring | Vitest + jsdom + @testing-library/react |
+| **Components** | Renders data, loading states, empty states | Vitest + @testing-library/react |
+| **Server repository** | SQL queries return correct results | bun:test + bun:sqlite |
+| **Custom hooks** | Calls client methods with right arguments | Vitest with mock `invoke` |

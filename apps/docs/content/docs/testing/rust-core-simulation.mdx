@@ -1,6 +1,249 @@
 ---
 title: Rust Core Simulation
-description: TODO
+description: Test custom Rust sync logic with a recording HTTP transport.
 ---
 
-TODO: Write this page.
+# Rust Core Simulation
+
+If you're extending the Rust sync engine — custom conflict resolution, alternative transports, or new sync modes — you'll need to test your changes. Baresync uses a **recording transport** pattern: replace the HTTP layer with a mock that captures requests and returns controlled responses.
+
+## When you need this
+
+Most apps don't extend the Rust core. You only need this page if you:
+
+- Implement a custom `SyncHttpTransport`
+- Modify push/pull logic in `baresync-core`
+- Add new sync strategies or conflict resolution
+- Contribute to Baresync itself
+
+## Recording transport
+
+Implement `SyncHttpTransport` to control what the server returns and record what the engine sends:
+
+```rust
+use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct RecordingTransport {
+    calls: Arc<Mutex<Vec<(String, Value)>>>,
+    push_response: Value,
+    status_response: Value,
+    pull_response: Value,
+}
+
+impl RecordingTransport {
+    fn new(
+        push_response: Value,
+        status_response: Value,
+        pull_response: Value,
+    ) -> Self {
+        Self {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            push_response,
+            status_response,
+            pull_response,
+        }
+    }
+
+    fn calls(&self) -> Vec<(String, Value)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl SyncHttpTransport for RecordingTransport {
+    fn send_push_request(&self, _api_url: String, envelope: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.push_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("push".to_string(), envelope));
+            Ok(response)
+        })
+    }
+
+    fn send_status_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.status_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("status".to_string(), body));
+            Ok(response)
+        })
+    }
+
+    fn send_pull_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.pull_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("pull".to_string(), body));
+            Ok(response)
+        })
+    }
+}
+```
+
+## Setting up a test engine
+
+Create a `SyncEngine` with your recording transport and a temp database:
+
+```rust
+use baresync_core::engine::{SyncContractTables, SyncEngine};
+use baresync_core::config::SyncEngineConfig;
+use sqlx::SqlitePool;
+
+async fn temp_db() -> SqlitePool {
+    let dir = std::env::temp_dir().join(format!(
+        "baresync-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::create_dir_all(&dir);
+    let db_path = dir.join("test.db");
+    let db = baresync_core::db::LocalDatabase::connect(db_path.to_str().unwrap())
+        .await
+        .unwrap();
+    // Run your CREATE TABLE statements
+    sqlx::query("CREATE TABLE items (...)").execute(db.pool()).await.unwrap();
+    db.pool().clone()
+}
+
+async fn test_engine(pool: SqlitePool, transport: RecordingTransport) -> SyncEngine {
+    let mut config = SyncEngineConfig::default();
+    config.api_url = "http://127.0.0.1:9".to_string();
+    config.scope_id = "merchant-1".to_string();
+    config.transport = Arc::new(transport);
+
+    SyncEngine::new(
+        pool,
+        config,
+        SyncContractTables {
+            upsert_order: vec!["categories".into(), "products".into()],
+            delete_order: vec!["products".into(), "categories".into()],
+            local_only_columns: vec!["is_synced".into()],
+        },
+    )
+    .await
+}
+```
+
+## Testing sync modes
+
+### NoOp — nothing to sync
+
+```rust
+#[tokio::test]
+async fn sync_now_skips_when_clean() {
+    let pool = temp_db().await;
+    // Seed a cursor so the engine thinks it has synced before
+    sqlx::query("INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, ?2, '2026-05-19T12:00:00.000Z')")
+        .bind("merchant-1").bind("sync:phase14")
+        .execute(&pool).await.unwrap();
+
+    let transport = RecordingTransport::new(
+        json!({"tables": [], "serverTime": "2026-05-19T12:00:00.000Z"}),
+        json!({"changedTables": [], "hasChanges": false, "cursor": "sync:phase14", "serverTime": "2026-05-19T12:00:00.000Z"}),
+        json!({"cursor": "sync:phase14", "hasMore": false, "tables": [], "serverTime": "2026-05-19T12:00:00.000Z"}),
+    );
+    let engine = test_engine(pool, transport.clone()).await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, SyncNowMode::NoOp);
+    // Only a status check was sent — no push or pull
+    assert_eq!(transport.calls().len(), 1);
+    assert_eq!(transport.calls()[0].0, "status");
+}
+```
+
+### PushOnly — local changes, server is clean
+
+```rust
+#[tokio::test]
+async fn sync_now_pushes_when_local_dirty_server_clean() {
+    let pool = temp_db().await;
+    // ... seed cursor + outbox row ...
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        json!({"changedTables": [], "hasChanges": false, ...}),
+        json!({...}),
+    );
+    let engine = test_engine(pool, transport.clone()).await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, SyncNowMode::PushOnly);
+    // status check, then push — no pull
+    assert_eq!(
+        transport.calls().iter().map(|(k, _)| k).collect::<Vec<_>>(),
+        vec!["status", "push"]
+    );
+}
+```
+
+### FullSync — both sides have changes
+
+```rust
+#[tokio::test]
+async fn sync_now_does_full_sync_when_both_dirty() {
+    // ... seed cursor, outbox row, status showing server changes ...
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, SyncNowMode::FullSync);
+    assert_eq!(
+        transport.calls().iter().map(|(k, _)| k).collect::<Vec<_>>(),
+        vec!["status", "push", "pull"]
+    );
+}
+```
+
+## Testing push chunking
+
+Set `max_push_rows` and `max_push_bytes` low to force chunking, then verify multiple push requests are sent:
+
+```rust
+// Engine with small limits
+config.max_push_rows = 1;
+config.max_push_bytes = 1024;
+
+// Seed many outbox rows...
+
+let result = engine.push().await.unwrap();
+// transport.calls() should have multiple "push" entries
+```
+
+## Testing garbage collection
+
+```rust
+#[tokio::test]
+async fn gc_removes_synced_soft_deleted_rows() {
+    let pool = temp_db().await;
+    // Insert a row with deleted_at set and is_synced = true
+    sqlx::query("INSERT INTO items (id, name, deleted_at, is_synced, ...) VALUES ('item-1', 'Old', '2026-05-19', 1, ...)")
+        .execute(&pool).await.unwrap();
+
+    let engine = test_engine(pool, /* any transport */).await;
+    let removed = engine.run_garbage_collection().await.unwrap();
+
+    assert_eq!(removed, 1);
+    // Row is gone
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM items")
+        .fetch_one(engine.pool()).await.unwrap();
+    assert_eq!(count, 0);
+}
+```
+
+## Running Rust tests
+
+```bash
+cargo test --workspace          # all tests in all crates
+cargo test -p baresync-core     # just the core library
+cargo test -p tauri-plugin-baresync  # just the plugin
+
+cargo test -- --nocapture       # show println! output
+cargo test push                 # run only tests matching "push"
+```
