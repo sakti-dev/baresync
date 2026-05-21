@@ -15,12 +15,12 @@ Create `apps/app/src/lib/db.ts`:
 import {
   syncCursors,
   syncOutbox,
-} from "my-inventory-sync-contract/local-schema";
+} from "@repo/sync-contract/local-schema";
 import {
   items,
   locations,
   stockCounts,
-} from "my-inventory-sync-contract/local-synced-schema";
+} from "@repo/sync-contract/local-synced-schema";
 import { invoke } from "@tauri-apps/api/core";
 import { createTauriDrizzleDatabase } from "baresync/db";
 
@@ -38,7 +38,7 @@ export const db = createTauriDrizzleDatabase({
 });
 ```
 
-Replace `my-inventory-sync-contract` with your actual package name.
+Replace `@repo/sync-contract` with your actual package name.
 
 ## Why the TABLE registry?
 

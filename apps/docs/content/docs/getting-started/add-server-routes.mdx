@@ -59,7 +59,7 @@ import {
   items,
   locations,
   stockCounts,
-} from "my-inventory-sync-contract/api-synced-schema";
+} from "@repo/sync-contract/api-synced-schema";
 import {
   createDrizzleSyncRepository,
   optionalString,
@@ -212,7 +212,7 @@ Each table entry has:
 Edit `apps/server/src/index.ts`:
 
 ```ts
-import { SYNC_UPSERT_ORDER } from "my-inventory-sync-contract/generated/sync-table-order";
+import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-order";
 import {
   createSyncPullHandler,
   createSyncPushHandler,

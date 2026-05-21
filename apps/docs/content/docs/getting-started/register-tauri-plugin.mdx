@@ -13,7 +13,7 @@ Edit `apps/app/src-tauri/Cargo.toml`:
 
 ```toml
 [package]
-name = "my-inventory-app"
+name = "app"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
@@ -178,7 +178,7 @@ include!(concat!(env!("OUT_DIR"), "/inventory_migrations.rs"));
 fn inventory_db_path() -> String {
     let base = env::var("INVENTORY_DB_PATH").unwrap_or_else(|_| {
         let mut path = std::env::temp_dir();
-        path.push("my-inventory.db");
+        path.push("my-app.db");
         path.to_string_lossy().to_string()
     });
 

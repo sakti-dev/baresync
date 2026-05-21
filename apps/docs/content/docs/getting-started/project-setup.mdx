@@ -10,7 +10,7 @@ Start from an empty directory. You will create a Bun workspace with two apps and
 ## Create the root workspace
 
 ```bash
-mkdir my-inventory && cd my-inventory
+mkdir my-app && cd my-app
 bun init -y
 ```
 
@@ -18,7 +18,7 @@ Edit `package.json` to add workspaces and scripts:
 
 ```json
 {
-  "name": "my-inventory",
+  "name": "@repo/root",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -40,6 +40,7 @@ Edit `package.json` to add workspaces and scripts:
 ```bash
 bun create tauri-app apps/app --template react-ts
 cd apps/app
+# Rename package to @repo/app
 ```
 
 Then add the dependencies your app needs:
@@ -75,6 +76,7 @@ From the project root:
 ```bash
 bun create hono apps/server
 cd apps/server
+# Rename package to @repo/server
 ```
 
 Then add dependencies:
@@ -90,11 +92,11 @@ Again, use a local path if Baresync is not published yet.
 Your project should now look like this:
 
 ```txt
-my-inventory/
+my-app/
 ├── package.json
 ├── apps/
-│   ├── app/         # Tauri + React app
-│   └── server/      # Hono server
+│   ├── app/         # @repo/app — Tauri + React
+│   └── server/      # @repo/server — Hono
 ```
 
 Next: [Create the Sync Contract](/docs/getting-started/create-sync-contract).
