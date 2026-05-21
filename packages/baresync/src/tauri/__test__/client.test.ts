@@ -14,11 +14,21 @@ describe("createSyncClient", () => {
     expect(client).toHaveProperty("pull");
     expect(client).toHaveProperty("fullResync");
     expect(client).toHaveProperty("getState");
+    expect(client).toHaveProperty("startPolling");
+    expect(client).toHaveProperty("stopPolling");
+    expect(client).toHaveProperty("pausePolling");
+    expect(client).toHaveProperty("resumePolling");
+    expect(client).toHaveProperty("getPollingStatus");
     expect(typeof client.syncNow).toBe("function");
     expect(typeof client.push).toBe("function");
     expect(typeof client.pull).toBe("function");
     expect(typeof client.fullResync).toBe("function");
     expect(typeof client.getState).toBe("function");
+    expect(typeof client.startPolling).toBe("function");
+    expect(typeof client.stopPolling).toBe("function");
+    expect(typeof client.pausePolling).toBe("function");
+    expect(typeof client.resumePolling).toBe("function");
+    expect(typeof client.getPollingStatus).toBe("function");
   });
 
   it("syncNow calls invoke with sync_now command", async () => {
@@ -213,5 +223,95 @@ describe("createSyncClient", () => {
     await expect(client.syncNow()).rejects.toThrow(
       "Tauri IPC is not available"
     );
+  });
+
+  it("startPolling calls invoke with start_polling command", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve({});
+      },
+    });
+    await client.startPolling();
+    expect(calls).toEqual([
+      { cmd: "start_polling", args: { scopeId: "outlet-1" } },
+    ]);
+  });
+
+  it("stopPolling calls invoke without scopeId", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve({});
+      },
+    });
+    await client.stopPolling();
+    expect(calls).toEqual([{ cmd: "stop_polling" }]);
+  });
+
+  it("pausePolling and resumePolling call correct commands", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve({});
+      },
+    });
+    await client.pausePolling();
+    await client.resumePolling();
+    expect(calls).toEqual([
+      { cmd: "pause_polling" },
+      { cmd: "resume_polling" },
+    ]);
+  });
+
+  it("getPollingStatus calls invoke with get_polling_status", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve({
+          running: false,
+          paused: false,
+          last_sync_at: null,
+        });
+      },
+    });
+    const status = await client.getPollingStatus();
+    expect(calls).toEqual([{ cmd: "get_polling_status" }]);
+    expect(status).toEqual({
+      running: false,
+      paused: false,
+      last_sync_at: null,
+    });
+  });
+
+  it("polling methods propagate errors unchanged", async () => {
+    const error = new Error("polling failed");
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.reject(error),
+    });
+    await expect(client.startPolling()).rejects.toBe(error);
+    await expect(client.stopPolling()).rejects.toBe(error);
+    await expect(client.pausePolling()).rejects.toBe(error);
+    await expect(client.resumePolling()).rejects.toBe(error);
+    await expect(client.getPollingStatus()).rejects.toBe(error);
   });
 });

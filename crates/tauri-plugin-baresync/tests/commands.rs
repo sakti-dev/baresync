@@ -7,12 +7,16 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri_plugin_baresync::commands::{
     get_db_info_with_state, get_migration_status_with_state, get_sync_local_state_with_state,
-    purge_synced_outbox_with_state, run_garbage_collection_with_state, run_migrations_with_state,
-    run_sql_batch_with_state, run_sql_with_state, PluginState,
+    handle_window_focus_for_state, purge_synced_outbox_with_state,
+    run_garbage_collection_with_state, run_migrations_with_state, run_sql_batch_with_state,
+    run_sql_with_state, start_polling_with_state, stop_polling_with_state, PluginState,
 };
+use tauri_plugin_baresync::polling::PollingState;
+use tokio::sync::Notify;
 
 struct TestCommandState {
     state: PluginState,
@@ -79,6 +83,16 @@ impl TestCommandState {
                     );
                 ",
             }]),
+            poll_notify: Arc::new(Notify::new()),
+            sync_in_progress: Arc::new(AtomicBool::new(false)),
+            poll_control_tx: tokio::sync::Mutex::new(None),
+            poll_task_handle: tokio::sync::Mutex::new(None),
+            poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
+                paused: false,
+                last_sync_at: None,
+            })),
+            poll_interval_secs: 30,
+            poll_on_background: false,
         };
 
         Self { state }
@@ -279,4 +293,80 @@ async fn maintenance_commands_purge_synced_outbox_and_collect_deleted_rows() {
         .await
         .unwrap();
     assert_eq!(remaining_items, 1);
+}
+
+#[tokio::test]
+async fn start_polling_does_not_replace_an_existing_task() {
+    let harness = TestCommandState::new().await;
+    let pending_handle = tokio::spawn(async {
+        core::future::pending::<()>().await;
+    });
+
+    *harness.state.poll_task_handle.lock().await = Some(pending_handle);
+    *harness.state.poll_control_tx.lock().await = Some(tokio::sync::mpsc::channel(1).0);
+
+    start_polling_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let timed_out = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        stop_polling_with_state(&harness.state),
+    )
+    .await
+    .is_err();
+
+    assert!(timed_out);
+
+    let mut handle_guard = harness.state.poll_task_handle.lock().await;
+    if let Some(handle) = handle_guard.take() {
+        handle.abort();
+    }
+}
+
+#[tokio::test]
+async fn background_lifecycle_events_pause_and_resume_polling() {
+    let harness = TestCommandState::new().await;
+    let sync_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let sync_count_clone = sync_count.clone();
+    let sync_fn = move |_scope_id: String| {
+        let count = sync_count_clone.clone();
+        async move {
+            count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let notify = harness.state.poll_notify.clone();
+    let sync_in_progress = harness.state.sync_in_progress.clone();
+    let state = harness.state.poll_state.clone();
+
+    let handle = tokio::spawn(tauri_plugin_baresync::polling::polling_loop(
+        "scope-1".to_string(),
+        1,
+        sync_fn,
+        notify,
+        rx,
+        sync_in_progress,
+        state,
+    ));
+
+    *harness.state.poll_control_tx.lock().await = Some(tx);
+
+    handle_window_focus_for_state(&harness.state, false);
+
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert_eq!(
+        sync_count.load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
+
+    handle_window_focus_for_state(&harness.state, true);
+
+    tokio::time::sleep(std::time::Duration::from_millis(1300)).await;
+    assert!(sync_count.load(std::sync::atomic::Ordering::Relaxed) >= 1);
+
+    stop_polling_with_state(&harness.state).await.unwrap();
+    handle.await.unwrap();
 }

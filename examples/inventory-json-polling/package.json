@@ -1,5 +1,5 @@
 {
-  "name": "@example/inventory",
+  "name": "@example/inventory-json-polling",
   "private": true,
   "type": "module",
   "workspaces": [

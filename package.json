@@ -9,12 +9,7 @@
   "scripts": {
     "typecheck": "bun x tsc -p packages/baresync/tsconfig.json --noEmit",
     "typecheck:e2e": "bun x tsc -p tests/e2e/tsconfig.json --noEmit",
-    "typecheck:fixture": "bun x tsc -p tests/fixture-app/tsconfig.json --noEmit",
-    "inventory:install": "bun run --cwd examples/inventory install",
-    "inventory:generate": "bun run --cwd examples/inventory generate",
-    "inventory:build": "bun run --cwd examples/inventory build",
-    "inventory:dev": "bun run --cwd examples/inventory dev",
-    "inventory:typecheck": "bun run --cwd examples/inventory typecheck"
+    "typecheck:fixture": "bun x tsc -p tests/fixture-app/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",

@@ -17,15 +17,17 @@ apps/server
 packages/sync-contract
 ```
 
-Run it from the repo root:
+Run it from the example root:
 
 ```bash
-bun run inventory:install
-bun run inventory:generate
-bun run inventory:dev
+bun install
+bun run generate
+bun run dev
 ```
 
 The shared contract package owns the `locations`, `items`, and `stock_counts` schema. The app uses the public `baresync` package, and the server uses the public `baresync/server` helpers with Hono.
+
+The inventory app now starts plugin polling automatically on launch, and the sync panel shows the current polling state and last sync time.
 
 The server DB example now shows two side-by-side repository paths:
 

@@ -84,7 +84,7 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 
 ## Quick Start
 
-Start with [`examples/inventory`](./examples/inventory). It is the canonical fullstack starter in this repository and uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
+Start with [`examples/inventory-json-polling`](./examples/inventory-json-polling). It is the canonical fullstack starter in this repository and uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
 
 ```txt
 inventory/
@@ -108,8 +108,8 @@ The shared contract package is where Drizzle tables, Baresync metadata, and gene
 
 Define local synced tables in the shared contract package:
 
-```ts title="examples/inventory/packages/sync-contract/src/local-synced-schema.ts"
-// examples/inventory/packages/sync-contract/src/local-synced-schema.ts
+```ts title="examples/inventory-json-polling/packages/sync-contract/src/local-synced-schema.ts"
+// examples/inventory-json-polling/packages/sync-contract/src/local-synced-schema.ts
 import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -124,8 +124,8 @@ export const categories = sqliteTable("categories", {
 
 Define the API-side synced table shape separately:
 
-```ts title="examples/inventory/packages/sync-contract/src/api-synced-schema.ts"
-// examples/inventory/packages/sync-contract/src/api-synced-schema.ts
+```ts title="examples/inventory-json-polling/packages/sync-contract/src/api-synced-schema.ts"
+// examples/inventory-json-polling/packages/sync-contract/src/api-synced-schema.ts
 import { apiSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -140,8 +140,8 @@ export const categories = sqliteTable("categories", {
 
 Create the generator config from both synced schema views:
 
-```ts title="examples/inventory/packages/sync-contract/sync.config.ts"
-// examples/inventory/packages/sync-contract/sync.config.ts
+```ts title="examples/inventory-json-polling/packages/sync-contract/sync.config.ts"
+// examples/inventory-json-polling/packages/sync-contract/sync.config.ts
 import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
@@ -176,9 +176,9 @@ export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
 
 Expose the schema and generated artifacts from the shared package:
 
-```json title="examples/inventory/packages/sync-contract/package.json"
+```json title="examples/inventory-json-polling/packages/sync-contract/package.json"
 {
-  "//": "examples/inventory/packages/sync-contract/package.json",
+  "//": "examples/inventory-json-polling/packages/sync-contract/package.json",
   "name": "@example/inventory-sync-contract",
   "private": true,
   "type": "module",
@@ -195,15 +195,15 @@ Expose the schema and generated artifacts from the shared package:
 Run diagnostics and generation from the contract package directory. The CLI discovers `sync.config.ts` automatically when you are in the right folder.
 
 ```bash
-cd examples/inventory/packages/sync-contract
+cd examples/inventory-json-polling/packages/sync-contract
 bunx baresync doctor
 bunx baresync generate
 ```
 
 If you need protobuf workspace files, export `protobufSyncGeneratorConfig` from the same `sync.config.ts`.
 
-```ts title="examples/inventory/packages/sync-contract/generate-protobuf.ts"
-// examples/inventory/packages/sync-contract/generate-protobuf.ts
+```ts title="examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts"
+// examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts
 import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
 import { protobufSyncGeneratorConfig } from "./sync.config";
 
@@ -213,7 +213,7 @@ generateProtobufWorkspaceArtifacts(protobufSyncGeneratorConfig);
 Run it when the sync schema changes:
 
 ```bash
-bun ./examples/inventory/packages/sync-contract/generate-protobuf.ts
+bun ./examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts
 ```
 
 Use the Tauri client from the app created with `bun create tauri-app`:

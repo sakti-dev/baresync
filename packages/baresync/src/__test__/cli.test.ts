@@ -35,7 +35,7 @@ const repoRoot = path.resolve(
 );
 const inventoryContractRoot = path.join(
   repoRoot,
-  "examples/inventory/packages/sync-contract"
+  "examples/inventory-json-polling/packages/sync-contract"
 );
 const repoTempRoot = path.join(inventoryContractRoot, ".tmp", "cli-tests");
 const baresyncSourceUrl = pathToFileURL(

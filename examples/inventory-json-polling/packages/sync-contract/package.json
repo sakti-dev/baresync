@@ -14,7 +14,7 @@
     "./generated/manifest": "./generated/sync-contract.manifest.json"
   },
   "scripts": {
-    "generate": "bunx baresync generate",
+    "generate": "bun ../../../../packages/baresync/src/cli.ts generate",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit",
     "build": "bun run generate",
     "check": "bun run generate && bun run typecheck"

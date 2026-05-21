@@ -4,13 +4,16 @@ use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::EmbeddedMigration;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tauri::{
     plugin::{Builder as TauriPluginBuilder, TauriPlugin},
     Manager, Runtime,
 };
+use tokio::sync::Notify;
 
 use crate::commands::PluginState;
 use crate::config::PluginConfig;
+use crate::polling::PollingState;
 
 pub struct Builder {
     api_base_url: Option<String>,
@@ -21,6 +24,8 @@ pub struct Builder {
     contract_tables: Option<SyncContractTables>,
     embedded_migrations: Vec<EmbeddedMigration>,
     transport: Option<Arc<dyn SyncHttpTransport>>,
+    poll_interval_secs: Option<u64>,
+    poll_on_background: Option<bool>,
 }
 
 impl Builder {
@@ -34,6 +39,8 @@ impl Builder {
             contract_tables: None,
             embedded_migrations: Vec::new(),
             transport: None,
+            poll_interval_secs: None,
+            poll_on_background: None,
         }
     }
 
@@ -77,6 +84,16 @@ impl Builder {
         self
     }
 
+    pub fn poll_interval_secs(mut self, secs: u64) -> Self {
+        self.poll_interval_secs = Some(secs);
+        self
+    }
+
+    pub fn poll_on_background(mut self, enabled: bool) -> Self {
+        self.poll_on_background = Some(enabled);
+        self
+    }
+
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, PluginConfig> {
         let config = PluginConfig {
             api_base_url: self.api_base_url.unwrap_or_default(),
@@ -89,6 +106,8 @@ impl Builder {
                 delete_order: vec![],
                 local_only_columns: vec![],
             }),
+            poll_interval_secs: self.poll_interval_secs.unwrap_or(30),
+            poll_on_background: self.poll_on_background.unwrap_or(false),
         };
 
         let embedded_migrations = self.embedded_migrations;
@@ -122,9 +141,22 @@ impl Builder {
                     contract_tables: config.contract_tables.clone(),
                     db_path: PathBuf::from(&config.db_path),
                     embedded_migrations: Arc::new(embedded_migrations),
+                    poll_notify: Arc::new(Notify::new()),
+                    sync_in_progress: Arc::new(AtomicBool::new(false)),
+                    poll_control_tx: tokio::sync::Mutex::new(None),
+                    poll_task_handle: tokio::sync::Mutex::new(None),
+                    poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
+                        paused: false,
+                        last_sync_at: None,
+                    })),
+                    poll_interval_secs: config.poll_interval_secs,
+                    poll_on_background: config.poll_on_background,
                 });
 
                 Ok(())
+            })
+            .on_event(|app, event| {
+                crate::commands::handle_run_event(app, event);
             })
             .build()
     }

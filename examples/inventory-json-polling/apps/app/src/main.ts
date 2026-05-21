@@ -17,6 +17,7 @@ const status = el<HTMLElement>("#status");
 const dirtyCount = el<HTMLElement>("#dirty-count");
 const watermark = el<HTMLElement>("#watermark");
 const needsBaseline = el<HTMLElement>("#needs-baseline");
+const pollingStatusEl = el<HTMLElement>("#polling-status");
 const locationsList = el<HTMLUListElement>("#locations-list");
 const itemsList = el<HTMLUListElement>("#items-list");
 const countsList = el<HTMLUListElement>("#counts-list");
@@ -65,22 +66,38 @@ function renderList(list: HTMLUListElement, rows: Record<string, unknown>[]) {
 }
 
 async function refresh() {
-  const [localState, locations, items, counts] = await Promise.all([
-    syncClient.getState(),
-    queryRows(
-      "SELECT id, scope_id, name, created_at, updated_at, deleted_at, is_synced FROM locations ORDER BY updated_at DESC"
-    ),
-    queryRows(
-      "SELECT id, scope_id, location_id, name, sku, created_at, updated_at, deleted_at, is_synced FROM items ORDER BY updated_at DESC"
-    ),
-    queryRows(
-      "SELECT id, scope_id, item_id, counted_quantity, recorded_at, created_at, updated_at, deleted_at, is_synced FROM stock_counts ORDER BY updated_at DESC"
-    ),
-  ]);
+  const [localState, pollingStatus, locations, items, counts] =
+    await Promise.all([
+      syncClient.getState(),
+      syncClient.getPollingStatus().catch(() => null),
+      queryRows(
+        "SELECT id, scope_id, name, created_at, updated_at, deleted_at, is_synced FROM locations ORDER BY updated_at DESC"
+      ),
+      queryRows(
+        "SELECT id, scope_id, location_id, name, sku, created_at, updated_at, deleted_at, is_synced FROM items ORDER BY updated_at DESC"
+      ),
+      queryRows(
+        "SELECT id, scope_id, item_id, counted_quantity, recorded_at, created_at, updated_at, deleted_at, is_synced FROM stock_counts ORDER BY updated_at DESC"
+      ),
+    ]);
 
   dirtyCount.textContent = String(localState.local_dirty_count);
   watermark.textContent = localState.last_server_watermark || "-";
   needsBaseline.textContent = localState.needs_baseline_sync ? "yes" : "no";
+
+  if (pollingStatus) {
+    if (!pollingStatus.running) {
+      pollingStatusEl.textContent = "stopped";
+    } else if (pollingStatus.paused) {
+      pollingStatusEl.textContent = "paused";
+    } else {
+      const last = pollingStatus.last_sync_at
+        ? new Date(pollingStatus.last_sync_at).toLocaleTimeString()
+        : "never";
+      pollingStatusEl.textContent = `active (last: ${last})`;
+    }
+  }
+
   renderList(locationsList, locations);
   renderList(itemsList, items);
   renderList(countsList, counts);
@@ -178,8 +195,16 @@ seedButton.addEventListener("click", () => {
   });
 });
 
-invoke("run_migrations")
-  .then(() => refresh())
-  .catch((error: unknown) => {
-    status.textContent = `Failed to load inventory example: ${String(error)}`;
+async function init() {
+  await invoke("run_migrations");
+  await syncClient.startPolling();
+  await refresh();
+
+  window.addEventListener("beforeunload", () => {
+    syncClient.stopPolling().catch(() => {});
   });
+}
+
+init().catch((error: unknown) => {
+  status.textContent = `Failed to load inventory example: ${String(error)}`;
+});
