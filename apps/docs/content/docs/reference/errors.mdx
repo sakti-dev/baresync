@@ -1,6 +1,145 @@
 ---
 title: Errors
-description: TODO
+description: Error types, codes, and HTTP classification in Baresync.
 ---
 
-TODO: Write this page.
+# Errors
+
+Baresync has three error layers: Rust core errors, server-side errors, and HTTP response classification.
+
+## Rust: SyncError
+
+All Rust errors are `SyncError` enum variants. They're serialized to strings when crossing the Tauri IPC boundary.
+
+```rust
+pub enum SyncError {
+    Network(String),
+    Validation(String),
+    Database(String),
+    Encoding(String),
+    Migration(String),
+    Http { status: u16, body: String, kind: String },
+    SingleRowTooLarge { table: String, id: String },
+}
+```
+
+### Variants
+
+| Variant | When | Fields |
+|---|---|---|
+| `Network(msg)` | HTTP request fails, timeout, DNS, connection refused | `msg` — error description |
+| `Validation(msg)` | Invalid input — bad cursor, missing scope, malformed envelope | `msg` — what's wrong |
+| `Database(msg)` | SQLite errors — constraint violations, locked, disk I/O | `msg` — SQLite error |
+| `Encoding(msg)` | JSON parse/serialize failures | `msg` — what failed |
+| `Migration(msg)` | Migration SQL fails to apply | `msg` — which migration and why |
+| `Http { status, body, kind }` | Server returned non-2xx | See HTTP classification below |
+| `SingleRowTooLarge { table, id }` | One row exceeds `max_push_bytes` | `table` and `id` of the row |
+
+### HTTP error classification
+
+When a server response is non-2xx, Baresync classifies it:
+
+| Status Code | Kind | Meaning |
+|---|---|---|
+| `401`, `403` | `"auth"` | Authentication or authorization failure |
+| `413` | `"payload_too_large"` | Push payload exceeds server limit |
+| `500`–`599` | `"server"` | Server-side error |
+| Other | `"unknown"` | Unexpected status code |
+
+```ts
+// Example: checking error kind from JS
+try {
+  await client.push();
+} catch (e) {
+  if (e.includes("payload_too_large")) {
+    // Push was too big — reduce batch size or check for oversized rows
+  }
+}
+```
+
+## Server: TypeScript Errors
+
+### `SyncPayloadTooLargeError`
+
+Thrown by `validatePushEnvelope` when the push body exceeds byte or row limits.
+
+```ts
+class SyncPayloadTooLargeError extends Error {
+  readonly kind: "payload_too_large";
+}
+```
+
+Handled by `mapSyncError` → returns HTTP 413 with `code: "sync_payload_too_large"`.
+
+### `ConflictRequestError`
+
+Thrown by the idempotency guard when a duplicate request is detected.
+
+```ts
+class ConflictRequestError extends Error {
+  status: 409;
+}
+```
+
+Handled by `mapSyncError` → returns HTTP 409 with `code: "sync_idempotency_conflict"`.
+
+## Server error response format
+
+All server errors return JSON:
+
+```json
+{
+  "code": "sync_payload_too_large",
+  "message": "Push payload exceeds maximum size"
+}
+```
+
+### Error codes
+
+| Code | HTTP Status | When |
+|---|---|---|
+| `sync_payload_too_large` | 413 | Push body exceeds `maxPushBytes` or `maxPushRows` |
+| `sync_idempotency_conflict` | 409 | Duplicate idempotency key with different hash |
+| `sync_unauthorized` | 401 | `resolveScope` returns `{ ok: false, status: 401 }` |
+| `sync_scope_invalid` | 403/404 | `resolveScope` returns `{ ok: false, status: 403/404 }` |
+| `sync_cursor_invalid` | 400 | Malformed cursor string |
+| `sync_network_error` | 500 | TypeError or network failure |
+| `sync_unknown` | 500 | Any other unhandled error |
+
+## Handling errors in JS
+
+### Sync operations
+
+```ts
+try {
+  const result = await client.syncNow();
+  console.log("sync mode:", result.mode);
+} catch (e) {
+  // e is a string (serialized SyncError from IPC)
+  if (e.includes("Network")) {
+    // Offline or unreachable server
+  } else if (e.includes("auth")) {
+    // Token expired or invalid
+  }
+}
+```
+
+### Writes
+
+```ts
+try {
+  await client.writeTransaction(db, async (tx) => {
+    await client.writeLocalChange(tx, { ... });
+  });
+} catch (e) {
+  // Likely a constraint violation or database lock
+}
+```
+
+### Push retry
+
+The push system automatically retries on chunkable failures. When a push chunk fails, `split_push_chunk_for_retry` splits it in half and retries each half. This handles cases where one oversized row causes the entire chunk to fail.
+
+## Diagnostic errors
+
+Generator diagnostics are separate from runtime errors. See [Generator Diagnostics](/docs/generator/diagnostics) for the full list of diagnostic codes like `SYNC_SCHEMA_MISSING_PRIMARY_KEY`, `SYNC_SCHEMA_MISSING_SCOPE_COLUMN`, etc.

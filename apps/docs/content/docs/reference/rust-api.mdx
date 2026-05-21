@@ -1,6 +1,439 @@
 ---
-title: Rust Api
-description: TODO
+title: Rust API
+description: Complete reference for the Baresync Rust core library and Tauri plugin builder.
 ---
 
-TODO: Write this page.
+# Rust API
+
+The Rust layer lives in two crates: `baresync-core` (engine, database, migrations) and `tauri-plugin-baresync` (Tauri integration).
+
+---
+
+## Plugin Builder
+
+The builder configures and constructs the Tauri plugin. Used in your app's `lib.rs`.
+
+```rust
+use tauri_plugin_baresync::Builder;
+
+Builder::new()
+    .api_base_url("https://api.example.com")
+    .encoding("json")
+    .db_path("baresync.db")
+    .poll_interval_secs(30)
+    .poll_on_background(false)
+    .migrations(vec![/* ... */])
+    .contract_tables(SyncContractTables { upsert_order, delete_order, local_only_columns })
+    .build()
+```
+
+### `Builder` methods
+
+| Method | Type | Default | Description |
+|---|---|---|---|
+| `new()` | - | - | Create a new builder |
+| `api_base_url(url)` | `impl Into<String>` | `""` | Server base URL |
+| `encoding(enc)` | `impl Into<String>` | `"json"` | Wire format: `"json"` or `"protobuf"` |
+| `db_path(path)` | `impl Into<String>` | `"baresync.db"` | SQLite database file path |
+| `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
+| `max_push_rows(n)` | `usize` | `2000` | Maximum rows per push batch |
+| `migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations |
+| `migrations_dir(dir)` | `impl Into<PathBuf>` | - | Directory of `.sql` migration files |
+| `contract_tables(t)` | `SyncContractTables` | - | Table ordering and column config |
+| `transport(t)` | `Arc<dyn SyncHttpTransport>` | `JsonHttpTransport` | Custom HTTP transport |
+| `poll_interval_secs(n)` | `u64` | `30` | Seconds between automatic syncs |
+| `poll_on_background(b)` | `bool` | `false` | Continue polling when app is backgrounded |
+| `build()` | `TauriPlugin<R>` | - | Build the plugin |
+
+### `SyncContractTables`
+
+```rust
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SyncContractTables {
+    pub upsert_order: Vec<String>,
+    pub delete_order: Vec<String>,
+    pub local_only_columns: Vec<String>,
+}
+```
+
+Typically loaded from the generated `sync-contract.json` or `sync-table-order.ts`.
+
+---
+
+## SyncEngine
+
+The core sync engine. Created internally by the plugin — you don't construct it directly. Methods are exposed via [Tauri commands](/docs/reference/commands).
+
+```rust
+pub struct SyncEngine { /* private fields */ }
+```
+
+### Methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `new(pool, config, tables)` | `Self` | Create engine with SQLite pool, config, and table ordering |
+| `push()` | `Result<PushResult>` | Push local outbox to server |
+| `pull(limit)` | `Result<PullResult>` | Pull server changes to local |
+| `sync_now(limit)` | `Result<SyncNowResult>` | Intelligent sync — decides push/pull/full based on state |
+| `sync_full_resync(limit)` | `Result<SyncNowResult>` | Drop cursor and re-sync from scratch |
+| `get_sync_local_state()` | `Result<LocalSyncState>` | Dirty count, cursor, baseline flag |
+| `purge_synced_outbox(older_than)` | `Result<u64>` | Delete synced outbox entries |
+| `run_garbage_collection()` | `Result<usize>` | Remove soft-deleted synced rows |
+| `pool()` | `&SqlitePool` | Access the underlying SQLite pool |
+
+### `SyncEngineConfig`
+
+```rust
+#[derive(Clone, Deserialize, Serialize)]
+pub struct SyncEngineConfig {
+    pub scope_id: String,
+    pub api_url: String,
+    pub client_id: String,
+    pub encoding: String,
+    pub target_push_bytes: usize,
+    pub max_push_bytes: usize,
+    pub max_push_rows: usize,
+    pub transport: Arc<dyn SyncHttpTransport>,
+}
+```
+
+Defaults: `encoding="json"`, `target_push_bytes=256KB`, `max_push_bytes=2MB`, `max_push_rows=2000`.
+
+### `SyncNowMode`
+
+```rust
+pub enum SyncNowMode {
+    NoOp,        // Nothing to sync
+    PushOnly,    // Local changes need pushing
+    PullOnly,    // Server has changes
+    FullSync,    // Both sides have changes
+    FullResync,  // Dropping cursor, re-syncing everything
+}
+```
+
+### `SyncNowResult`
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct SyncNowResult {
+    pub mode: SyncNowMode,
+    pub status: Option<SyncStatusResult>,
+    pub pull: Option<PullResult>,
+    pub push: Option<PushResult>,
+    pub purged: usize,
+    pub skipped: Option<SyncNoOpResult>,
+}
+```
+
+---
+
+## LocalDatabase
+
+Wraps a SQLite connection pool with Baresync's settings (WAL mode, foreign keys, busy timeout).
+
+```rust
+pub struct LocalDatabase { /* private */ }
+
+impl LocalDatabase {
+    pub fn pool(&self) -> &SqlitePool;
+    pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError>;
+}
+```
+
+### Database functions
+
+```rust
+pub async fn connect_db(path: &str) -> Result<SqlitePool, SyncError>;
+pub async fn get_db_info(path: impl AsRef<Path>) -> Result<DbInfo, SyncError>;
+pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncError>;
+```
+
+### `DbInfo`
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct DbInfo {
+    pub db_path: String,
+    pub size_bytes: u64,
+    pub size_formatted: String,
+}
+```
+
+---
+
+## Migrations
+
+### Types
+
+```rust
+#[derive(Clone, Debug)]
+pub struct EmbeddedMigration {
+    pub name: &'static str,
+    pub sql: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationFile {
+    pub name: String,
+    pub file_name: String,
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MigrationConfig {
+    pub strict: bool,  // default: true
+}
+
+#[derive(Debug, Serialize)]
+pub struct MigrationRecord {
+    pub hash: String,
+    pub created_at: i64,
+}
+```
+
+### Functions
+
+```rust
+pub fn collect_migration_files(dir: impl AsRef<Path>) -> Result<Vec<MigrationFile>, String>;
+pub async fn run_migrations(pool: &SqlitePool, config: &MigrationConfig, migrations: &[EmbeddedMigration]) -> Result<(), SyncError>;
+pub async fn run_migration_files(pool: &SqlitePool, config: &MigrationConfig, dir: impl AsRef<Path>) -> Result<(), SyncError>;
+pub async fn get_migration_status(pool: &SqlitePool) -> Result<Vec<MigrationRecord>, SyncError>;
+```
+
+`MigrationConfig` has two constructors:
+- `MigrationConfig::strict()` — fails on any error (recommended for production)
+- `MigrationConfig::tolerant()` — skips "already exists" and "duplicate column" errors
+
+---
+
+## Push
+
+### Types
+
+```rust
+#[derive(Debug, serde::Serialize)]
+pub struct PushResult {
+    pub tables_synced: Vec<String>,
+    pub rejected_tables: Vec<String>,
+    pub server_wins_count: usize,
+    pub server_time: String,
+}
+```
+
+### Functions
+
+| Function | Description |
+|---|---|
+| `build_json_push_envelope(scope_id, client_id, key, changes)` | Constructs the JSON push request body |
+| `chunk_pending_push_tables(units, max_rows, max_bytes, ...)` | Splits pending changes into chunks within size limits |
+| `split_push_chunk_for_retry(chunk)` | Splits a failed chunk in half for retry |
+| `push(pool, config, upsert_order, local_only_columns)` | Full push cycle — read outbox, chunk, send, mark synced |
+
+---
+
+## Pull
+
+### Types
+
+```rust
+#[derive(Debug, serde::Serialize)]
+pub struct PullResult {
+    pub rows_received: usize,
+    pub server_time: String,
+}
+
+pub enum PullStartCursor {
+    Baseline,  // No cursor — pull everything
+    Stored,    // Use cursor from sync_cursors table
+}
+```
+
+### Functions
+
+```rust
+pub async fn pull(
+    pool: &SqlitePool,
+    config: &SyncEngineConfig,
+    upsert_order: &[String],
+    delete_order: &[String],
+    local_only_columns: &[String],
+    limit: i32,
+    start_cursor: PullStartCursor,
+    table_filter: Option<&[String]>,
+) -> Result<PullResult, SyncError>;
+
+pub async fn apply_pull_batch_tables_tx(
+    conn: &mut SqliteConnection,
+    upsert_order: &[String],
+    delete_order: &[String],
+    response_tables: &Value,
+    server_time: &str,
+    local_only_columns: &[&str],
+) -> Result<usize, SyncError>;
+```
+
+---
+
+## State
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct LocalSyncState {
+    pub local_dirty_count: i64,
+    pub last_server_watermark: String,
+    pub needs_baseline_sync: bool,
+}
+
+pub async fn get_sync_local_state(pool: &SqlitePool, scope_id: &str) -> Result<LocalSyncState, SyncError>;
+```
+
+---
+
+## Status
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatusResult {
+    pub changed_tables: Vec<String>,
+    pub has_changes: bool,
+    pub cursor: String,
+    pub server_time: String,
+}
+
+pub async fn status(pool: &SqlitePool, config: &SyncEngineConfig) -> Result<SyncStatusResult, SyncError>;
+```
+
+---
+
+## Cursor
+
+```rust
+pub async fn get_last_cursor(pool: &SqlitePool, scope_id: &str) -> Result<String, String>;
+pub async fn set_last_cursor_tx(
+    conn: &mut SqliteConnection,
+    scope_id: &str,
+    cursor: &str,
+) -> Result<(), String>;
+```
+
+Cursor format: `sync:{unixTimestampMs}:{tableName}:{rowId}`
+
+---
+
+## Outbox
+
+```rust
+pub async fn count_pending_outbox(pool: &SqlitePool, scope_id: &str) -> Result<i64, String>;
+pub async fn mark_outbox_synced_by_outbox_ids_tx(
+    conn: &mut SqliteConnection,
+    synced_at: &str,
+    outbox_ids: &[String],
+) -> Result<u64, String>;
+pub async fn purge_synced_outbox(pool: &SqlitePool, older_than: &str) -> Result<u64, SyncError>;
+```
+
+---
+
+## Garbage Collection
+
+```rust
+pub async fn run_garbage_collection(
+    pool: &SqlitePool,
+    tables: &[String],
+    scope_id: &str,
+) -> Result<usize, SyncError>;
+```
+
+Deletes rows where `deleted_at IS NOT NULL AND is_synced = 1`.
+
+---
+
+## Drizzle Proxy
+
+The Rust side of the Drizzle proxy — handles SQL statements sent from JS.
+
+```rust
+#[derive(Debug, Deserialize)]
+pub struct SqlQuery {
+    pub sql: String,
+    pub params: Vec<Value>,
+    pub method: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SqlRow {
+    pub columns: Vec<String>,
+    pub values: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SqlStatement {
+    pub sql: String,
+    pub params: Vec<Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchResult {
+    pub last_insert_id: i64,
+    pub rows_affected: u64,
+}
+```
+
+### Functions
+
+```rust
+pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError>;
+pub async fn run_sql_with_metadata(pool: &SqlitePool, query: SqlQuery) -> Result<SqlExecutionResult, SyncError>;
+pub async fn run_sql_batch(pool: &SqlitePool, statements: Vec<SqlStatement>) -> Result<BatchResult, SyncError>;
+```
+
+---
+
+## HTTP Transport
+
+```rust
+pub trait SyncHttpTransport: Send + Sync {
+    fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture;
+    fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture;
+    fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture;
+}
+```
+
+Default implementation: `JsonHttpTransport` — uses `reqwest` to POST JSON.
+
+Endpoints:
+- `POST {api_url}/sync/push`
+- `POST {api_url}/sync/status`
+- `POST {api_url}/sync/pull`
+
+---
+
+## Limits
+
+```rust
+pub const DEFAULT_POS_TARGET_PUSH_BYTES: usize = 256 * 1024;  // 256 KB
+pub const DEFAULT_API_MAX_PUSH_BYTES: usize = 2 * 1024 * 1024; // 2 MB
+pub const DEFAULT_MAX_PUSH_ROWS: usize = 2000;
+pub const DEFAULT_DB_BIND_PARAMETER_BUDGET: usize = 30_000;
+```
+
+---
+
+## Polling
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PollingStatus {
+    pub running: bool,
+    pub paused: bool,
+    pub last_sync_at: Option<String>,
+}
+```
+
+The polling loop uses `tokio::select!` over three triggers:
+1. **Timer** — interval-based (configurable via `poll_interval_secs`)
+2. **Notify** — wakes on local writes (via `run_sql`/`run_sql_batch`)
+3. **Control** — Pause/Resume/Stop/SyncCompleted messages
+
+Auto-pauses on window unfocus unless `poll_on_background` is enabled.

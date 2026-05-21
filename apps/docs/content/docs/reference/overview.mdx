@@ -1,6 +1,50 @@
 ---
-title: Overview
-description: TODO
+title: Reference Overview
+description: Complete API reference for Baresync — TypeScript, Rust, commands, events, and errors.
 ---
 
-TODO: Write this page.
+# Reference Overview
+
+This section covers every public API in Baresync. Use it when you need to look up a specific type, method, command, or error.
+
+## Pages
+
+| Page | What's in it |
+|---|---|
+| [TypeScript API](/docs/reference/typescript-api) | `SyncClient`, `createTauriDrizzleDatabase`, schema helpers, generator, server handlers, CLI |
+| [Rust API](/docs/reference/rust-api) | `SyncEngine`, `Builder`, `LocalDatabase`, migrations, push/pull, GC, HTTP transport |
+| [Generated Artifacts](/docs/reference/generated-artifacts) | What `baresync generate` produces — contract JSON, table order, manifest, protobuf outputs |
+| [Commands](/docs/reference/commands) | Every Tauri IPC command — parameters, return types, usage |
+| [Events](/docs/reference/events) | Tauri events emitted by the plugin — `DataChanged`, `SyncStatusChanged` |
+| [Errors](/docs/reference/errors) | `SyncError` variants, server error codes, HTTP error classification |
+| [Glossary](/docs/reference/glossary) | Terms used throughout Baresync documentation |
+
+## Package structure
+
+```txt
+baresync/
+├── packages/baresync/src/       TypeScript package
+│   ├── tauri/client.ts          SyncClient (JS → IPC → Rust)
+│   ├── db/drizzle-proxy.ts      createTauriDrizzleDatabase
+│   ├── schema/                  localSyncColumns, apiSyncColumns, tables
+│   ├── generator/               defineSyncConfig, generate, diagnostics
+│   ├── server/                  handlers, service, idempotency, chunking
+│   └── limits.ts                DEFAULT_MAX_PUSH_ROWS, etc.
+├── crates/baresync-core/src/    Rust core library
+│   ├── engine.rs                SyncEngine (push, pull, syncNow, fullResync)
+│   ├── db.rs                    LocalDatabase, connect, get_db_info
+│   ├── migrations.rs            EmbeddedMigration, run_migrations
+│   ├── push.rs                  build envelope, upsert, soft delete
+│   ├── pull.rs                  apply batch, cursor handling
+│   ├── state.rs                 LocalSyncState
+│   ├── gc.rs                    run_garbage_collection
+│   ├── outbox.rs                count, mark synced, purge
+│   ├── cursor.rs                get/set cursor
+│   ├── error.rs                 SyncError enum
+│   └── http.rs                  SyncHttpTransport trait
+└── crates/tauri-plugin-baresync/src/  Tauri plugin
+    ├── builder.rs               Builder (configures and builds the plugin)
+    ├── commands.rs              #[tauri::command] functions
+    ├── polling.rs               polling loop, PollingStatus
+    └── config.rs                PluginConfig
+```

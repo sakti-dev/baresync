@@ -1,6 +1,39 @@
 ---
 title: Glossary
-description: TODO
+description: Terms used throughout Baresync documentation.
 ---
 
-TODO: Write this page.
+# Glossary
+
+| Term | Definition |
+|---|---|
+| **Baseline sync** | The first sync for a scope — pulls all existing server data. Happens when no cursor is stored. |
+| **Chunking** | Splitting large push payloads into smaller batches that fit within size and row limits. Automatic and transparent. |
+| **Client ID** | A unique identifier generated per local database (`sync_client_identity`). Used for idempotency and conflict detection. |
+| **Contract** | The `SyncContract` — defines which tables sync, their columns, scope mappings, and limits. Shared understanding between client and server. |
+| **Cursor** | A server-side watermark in the format `sync:{timestamp}:{tableName}:{rowId}`. Tracks the last point the client has synced to. Stored in `sync_cursors`. |
+| **Delete order** | The order tables are processed during deletions, respecting foreign key constraints. Reverse of upsert order. |
+| **Drizzle proxy** | A Drizzle ORM driver that serializes SQL to JSON, sends it via Tauri IPC to Rust, and returns typed results. Created by `createTauriDrizzleDatabase`. |
+| **Embedded migration** | A SQL migration compiled into the Rust binary as a static string. Runs at app startup. |
+| **Encoding** | The wire format for sync data — `"json"` (default) or `"protobuf"`. |
+| **Full resync** | Dropping the stored cursor and re-pulling all server data. Used for recovery after data corruption. |
+| **Garbage collection** | Removing soft-deleted rows where `is_synced = true` and `deleted_at` is set. Runs via `runGarbageCollection`. |
+| **Idempotency key** | A unique key per push batch derived from outbox entry IDs. Prevents duplicate processing on network retries. |
+| **Local-only columns** | Columns that exist in the local schema but are not sent to the server (e.g. `is_synced`). Stripped from push payloads. |
+| **Outbox** | The `sync_outbox` table — queues local writes for push. Each entry has `tableName`, `rowId`, `operation`, and `syncedAt` (null until confirmed). |
+| **Paired sync config** | A generator config that takes both `localSyncedSchema` and `apiSyncedSchema`, auto-matching tables by name. Created by `defineSyncConfig`. |
+| **Polling** | Automatic background sync on a timer. Configured via `poll_interval_secs` on the builder. |
+| **Pull** | Fetching server changes and applying them locally. Uses cursor-based incremental sync. |
+| **Push** | Sending local outbox changes to the server. Entries are chunked, sent, and marked as synced on success. |
+| **Reconciliation** | Resolving conflicts between local and server data. Server wins by default — server data overwrites local. |
+| **Scope** | A partition key for sync data (e.g. merchant ID, tenant ID). Each scope has its own cursor and outbox entries. |
+| **Server-only columns** | Columns that exist on the server but not in the local schema (e.g. `sync_updated_at`). Not sent to the client. |
+| **Soft delete** | Setting `deleted_at` instead of removing the row. Allows the deletion to sync to other clients before garbage collection removes it. |
+| **Sync contract** | See **Contract**. |
+| **Sync engine** | The Rust `SyncEngine` that orchestrates push, pull, cursor management, and chunking. Lives in `baresync-core`. |
+| **Synced table** | A table that participates in sync — has `localSyncColumns()` on the client and `apiSyncColumns()` on the server. |
+| **TABLE registry** | A single JS object grouping all Drizzle table definitions. Passed to `createTauriDrizzleDatabase` and used in queries. |
+| **Transport** | The HTTP transport layer (`SyncHttpTransport` trait). Default is `JsonHttpTransport` using reqwest. Customizable for testing or platforms without reqwest. |
+| **Upsert order** | The order tables are processed during inserts/updates, respecting foreign key constraints (parents before children). |
+| **Watermark** | The `sync_updated_at` value on the server — used as the timestamp component of the cursor. |
+| **writeTransaction** | A transaction that wraps Drizzle writes with outbox entry creation. Ensures atomicity between data changes and sync tracking. |

@@ -1,6 +1,223 @@
 ---
 title: Commands
-description: TODO
+description: Every Tauri IPC command exposed by the Baresync plugin.
 ---
 
-TODO: Write this page.
+# Commands
+
+The Tauri plugin exposes these IPC commands. The JS `SyncClient` calls them via `invoke()`. You rarely call them directly — use the client instead.
+
+## Database
+
+### `run_sql`
+
+Execute a single SQL statement. Used by the Drizzle proxy.
+
+```ts
+await invoke("run_sql", {
+  query: { sql: "SELECT * FROM items WHERE id = ?", params: ["item-1"], method: "all" },
+});
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `query.sql` | `string` | SQL statement |
+| `query.params` | `Value[]` | Bind parameters |
+| `query.method` | `string` | `"all"`, `"execute"`, or `"raw"` |
+
+Returns `Vec<SqlRow>` — each row has `columns: string[]` and `values: Value[]`.
+
+Side effect: notifies the polling loop that data may have changed.
+
+### `run_sql_batch`
+
+Execute multiple SQL statements in a transaction.
+
+```ts
+await invoke("run_sql_batch", {
+  statements: [
+    { sql: "INSERT INTO items ...", params: [] },
+    { sql: "INSERT INTO outbox ...", params: [] },
+  ],
+});
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `statements` | `SqlStatement[]` | Array of `{ sql, params }` |
+
+Returns `BatchResult { last_insert_id: i64, rows_affected: u64 }`.
+
+All statements run in a single transaction. If any fails, all roll back.
+
+### `get_db_info`
+
+Returns database file metadata. No parameters.
+
+```ts
+const info = await invoke("get_db_info");
+// { db_path: "/path/to/baresync.db", size_bytes: 524288, size_formatted: "512 KB" }
+```
+
+### `run_migrations`
+
+Runs embedded and file-based migrations. No parameters.
+
+```ts
+await invoke("run_migrations");
+```
+
+Runs at plugin startup automatically. Call manually only if you need to re-run migrations after a hot-reload.
+
+### `get_migration_status`
+
+Lists applied migrations. No parameters.
+
+```ts
+const status = await invoke("get_migration_status");
+// [{ hash: "0001_create_items", created_at: 1747894800000 }, ...]
+```
+
+## Sync
+
+### `sync_now`
+
+Intelligent sync — decides mode based on local state and server status.
+
+```ts
+const result = await invoke("sync_now", { scopeId: "merchant-1" });
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `scopeId` | `string` | Sync scope identifier |
+
+Returns `SyncNowResult` with `mode`, `status`, `push`, `pull`, `purged`, `skipped`.
+
+### `sync_push`
+
+Push local outbox changes to the server.
+
+```ts
+const result = await invoke("sync_push", { scopeId: "merchant-1" });
+```
+
+Returns `PushResult` with `tables_synced`, `rejected_tables`, `server_wins_count`, `server_time`.
+
+### `sync_pull`
+
+Pull server changes to local.
+
+```ts
+const result = await invoke("sync_pull", { scopeId: "merchant-1" });
+```
+
+Returns `PullResult` with `rows_received`, `server_time`.
+
+### `sync_full_resync`
+
+Drop the cursor and re-sync from scratch.
+
+```ts
+const result = await invoke("sync_full_resync", { scopeId: "merchant-1" });
+```
+
+Returns `SyncNowResult`.
+
+### `get_sync_local_state`
+
+Returns local sync state.
+
+```ts
+const state = await invoke("get_sync_local_state", { scopeId: "merchant-1" });
+// { local_dirty_count: 3, last_server_watermark: "sync:...", needs_baseline_sync: false }
+```
+
+### `purge_synced_outbox`
+
+Delete synced outbox entries older than a timestamp.
+
+```ts
+const count = await invoke("purge_synced_outbox", { olderThan: "2026-05-15T00:00:00Z" });
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `olderThan` | `string` | ISO timestamp — entries synced before this are deleted |
+
+Returns the number of deleted rows.
+
+### `run_garbage_collection`
+
+Remove soft-deleted synced rows.
+
+```ts
+const count = await invoke("run_garbage_collection", { scopeId: "merchant-1" });
+```
+
+Returns the number of deleted rows.
+
+## Polling
+
+### `start_polling`
+
+Start the polling loop for a scope.
+
+```ts
+await invoke("start_polling", { scopeId: "merchant-1" });
+```
+
+### `stop_polling`
+
+Stop the polling loop entirely.
+
+```ts
+await invoke("stop_polling");
+```
+
+### `pause_polling`
+
+Pause polling (keeps the task alive).
+
+```ts
+await invoke("pause_polling");
+```
+
+### `resume_polling`
+
+Resume paused polling.
+
+```ts
+await invoke("resume_polling");
+```
+
+### `get_polling_status`
+
+Returns current polling state.
+
+```ts
+const status = await invoke("get_polling_status");
+// { running: true, paused: false, last_sync_at: "2026-05-22T10:30:00Z" }
+```
+
+## Command summary
+
+| Command | Params | Returns |
+|---|---|---|
+| `run_sql` | `query` | `Vec<SqlRow>` |
+| `run_sql_batch` | `statements` | `BatchResult` |
+| `get_db_info` | - | `DbInfo` |
+| `run_migrations` | - | `()` |
+| `get_migration_status` | - | `Vec<MigrationRecord>` |
+| `sync_now` | `scopeId` | `SyncNowResult` |
+| `sync_push` | `scopeId` | `PushResult` |
+| `sync_pull` | `scopeId` | `PullResult` |
+| `sync_full_resync` | `scopeId` | `SyncNowResult` |
+| `get_sync_local_state` | `scopeId` | `LocalSyncState` |
+| `purge_synced_outbox` | `olderThan` | `u64` |
+| `run_garbage_collection` | `scopeId` | `usize` |
+| `start_polling` | `scopeId` | `()` |
+| `stop_polling` | - | `()` |
+| `pause_polling` | - | `()` |
+| `resume_polling` | - | `()` |
+| `get_polling_status` | - | `PollingStatus` |

@@ -1,6 +1,158 @@
 ---
 title: Generated Artifacts
-description: TODO
+description: What baresync generate produces — file names, shapes, and how to use them.
 ---
 
-TODO: Write this page.
+# Generated Artifacts
+
+Running `baresync generate` (or `generateSyncArtifacts()`) writes files to your output directory. The exact set depends on whether you use JSON or protobuf encoding.
+
+## JSON artifacts
+
+### `sync-contract.json`
+
+Full contract definition consumed by the Rust plugin at startup.
+
+```json
+{
+  "version": 1,
+  "generatorVersion": "0.x.x",
+  "encoding": "json",
+  "packageName": "@repo/sync-contract",
+  "upsertOrder": ["locations", "items", "stock_counts"],
+  "deleteOrder": ["stock_counts", "items", "locations"],
+  "tables": {
+    "items": {
+      "columns": ["id", "name", "scope_id", "deleted_at", "is_synced", "created_at", "updated_at"],
+      "scope": { "field": "scope_id" },
+      "localOnlyColumns": ["is_synced"],
+      "serverOnlyColumns": ["sync_updated_at"]
+    }
+  },
+  "limits": { "maxPushBytes": 2097152, "maxPushRows": 2000 }
+}
+```
+
+### `sync-table-order.ts`
+
+TypeScript constants for table ordering. Used by server handlers to apply changes in FK-safe order.
+
+```ts
+export const SYNC_UPSERT_ORDER = ["locations", "items", "stock_counts"] as const;
+export const SYNC_DELETE_ORDER = ["stock_counts", "items", "locations"] as const;
+```
+
+### `sync-contract.manifest.json`
+
+Manifest for detecting contract changes between generator runs. Contains field numbers, scope mappings, and table lists. Used by the `doctor` command to detect drift.
+
+```json
+{
+  "contractVersion": 1,
+  "generatorVersion": "0.x.x",
+  "encoding": "json",
+  "packageName": "@repo/sync-contract",
+  "tables": [
+    { "name": "items", "fields": ["id", "name", ...], "fieldNumbers": { "id": 1, "name": 2 } }
+  ],
+  "scopeMappings": [{ "field": "scope_id", "table": "items" }],
+  "tableOrder": { "delete": [...], "upsert": [...] }
+}
+```
+
+## Protobuf artifacts
+
+In addition to the JSON artifacts above, protobuf mode generates:
+
+### `.proto` file
+
+Protobuf3 schema with row messages, changes messages, and envelope messages per table.
+
+```protobuf
+message ItemsRow {
+  string id = 1;
+  string name = 2;
+  ...
+}
+
+message ItemsChanges {
+  repeated ItemsRow changed_rows = 1;
+  repeated string deleted_ids = 2;
+}
+
+message SyncPushBatchRequest {
+  string scope_id = 1;
+  string client_id = 2;
+  string idempotency_key = 3;
+  ItemsChanges items = 4;
+  ...
+}
+```
+
+Path is user-specified via `outputs.proto`.
+
+### `sync.generated.ts`
+
+TypeScript runtime schema with field mappings for protobuf encode/decode.
+
+```ts
+export const SYNC_PROTOBUF_SCHEMA = {
+  packageName: "@repo/sync-contract",
+  tableOrder: { delete: [...], upsert: [...] },
+  tables: {
+    items: {
+      fields: [...],
+      rowMessageName: "ItemsRow",
+      changesMessageName: "ItemsChanges",
+      requestFieldNumber: 4,
+      wrapperFieldNumbers: { changedRows: 1, deletedIds: 2 },
+    },
+  },
+} as const;
+```
+
+### `runtime.ts`
+
+Protobuf encode/decode runtime — re-exported functions for serialization.
+
+```ts
+export { decodeProtobufBody, encodeProtobufBody } from "...";
+export type { SyncProtobufSchema } from "...";
+```
+
+### Rust sync mappers
+
+Prost-compatible Rust structs with `#[derive(Clone, PartialEq, ::prost::Message)]`.
+
+```rust
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ItemsRow {
+    #[prost(string, tag = "1")]
+    pub id: String,
+    #[prost(string, tag = "2")]
+    pub name: String,
+}
+```
+
+## How to regenerate
+
+```bash
+bunx baresync generate --config sync.config.ts
+```
+
+Or programmatically:
+
+```ts
+import { generateSyncArtifacts } from "baresync/generator";
+import { config } from "./sync.config";
+
+generateSyncArtifacts(config);
+```
+
+## Checking for drift
+
+```bash
+bunx baresync doctor
+```
+
+Compares the current manifest against what would be generated, reporting any differences in tables, fields, or ordering.

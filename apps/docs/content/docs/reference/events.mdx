@@ -1,6 +1,99 @@
 ---
 title: Events
-description: TODO
+description: Tauri events emitted by the Baresync plugin.
 ---
 
-TODO: Write this page.
+# Events
+
+The plugin emits two Tauri app events. Listen to them to reactively update your UI.
+
+## `baresync://data-changed`
+
+Fired when local data has been modified. Your query hooks use this to re-fetch.
+
+```ts
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen("baresync://data-changed", () => {
+  queryClient.invalidateQueries({ queryKey: ["items"] });
+});
+```
+
+### When it fires
+
+| Trigger | Why |
+|---|---|
+| `run_sql` (writes) | A Drizzle write modified local data |
+| `run_sql_batch` (writes) | A batch of writes modified local data |
+| `sync_push` success | Push confirmed local changes |
+| `sync_pull` with new data | Server rows applied locally |
+| `sync_now` with pull data | Sync cycle pulled new data |
+| `sync_full_resync` with data | Full resync applied rows |
+| Polling sync with data changes | Background poll pulled or pushed data |
+
+### When it does NOT fire
+
+- Read-only `run_sql` calls (SELECT)
+- `sync_now` with `mode: "no_op"`
+- Polling sync with no data changes
+- `pause_polling`, `resume_polling`, `stop_polling`
+
+## `baresync://sync-status-changed`
+
+Fired when the sync state transitions. Use this to update sync status indicators.
+
+```ts
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen("baresync://sync-status-changed", () => {
+  client.getPollingStatus().then((status) => {
+    setSyncIndicator(status.running && !status.paused ? "synced" : "paused");
+  });
+});
+```
+
+### When it fires
+
+| Trigger | Why |
+|---|---|
+| Any sync operation completes | push, pull, syncNow, fullResync |
+| Polling starts | `start_polling` |
+| Polling pauses | `pause_polling` |
+| Polling resumes | `resume_polling` |
+| Polling stops | `stop_polling` |
+
+## Internal control messages
+
+The polling loop also uses internal control messages (not emitted as Tauri events):
+
+| Message | Purpose |
+|---|---|
+| `Pause` | Pause the polling loop |
+| `Resume` | Resume paused polling |
+| `Stop` | Terminate the polling task |
+| `SyncCompleted` | Reset the sync timer (debounce) |
+
+These are sent via `mpsc::channel` between commands and the polling task.
+
+## Event flow in a typical app
+
+```txt
+User writes data
+  │
+  ▼ writeTransaction → writeLocalChange
+  │
+  ▼ run_sql (insert row) → run_sql (insert outbox entry)
+  │
+  ├─► emit("baresync://data-changed")  ← UI re-fetches
+  │
+  ▼ notify polling loop
+  │
+  ▼ polling: syncNow()
+  │
+  ├─► emit("baresync://sync-status-changed")
+  │
+  ▼ push → pull
+  │
+  ├─► emit("baresync://data-changed")  ← UI re-fetches with server data
+  └─► emit("baresync://sync-status-changed")
+```

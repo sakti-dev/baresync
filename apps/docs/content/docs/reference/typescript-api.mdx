@@ -1,6 +1,755 @@
 ---
-title: Typescript Api
-description: TODO
+title: TypeScript API
+description: Complete reference for the Baresync TypeScript/JavaScript API.
 ---
 
-TODO: Write this page.
+# TypeScript API
+
+All types and functions are exported from the `baresync` package or its sub-paths.
+
+```ts
+import { createSyncClient } from "baresync";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { localSyncColumns, apiSyncColumns } from "baresync/schema";
+import { generateSyncArtifacts, defineSyncConfig } from "baresync/generator";
+import { DEFAULT_MAX_PUSH_ROWS, DEFAULT_API_MAX_PUSH_BYTES } from "baresync/limits";
+```
+
+---
+
+## SyncClient
+
+The main client for interacting with the sync engine from JavaScript.
+
+### `createSyncClient`
+
+```ts
+import { createSyncClient } from "baresync";
+
+const client = createSyncClient({
+  apiUrl: "https://api.example.com",
+  encoding: "json",
+  scopeId: "merchant-1",
+  invoke, // optional — defaults to Tauri's invoke
+});
+```
+
+### `SyncClientConfig`
+
+```ts
+interface SyncClientConfig {
+  apiUrl: string;
+  encoding: "json" | "protobuf";
+  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  scopeId: string;
+}
+```
+
+| Field | Description |
+|---|---|
+| `apiUrl` | Server base URL (e.g. `"https://api.example.com"`) |
+| `encoding` | Sync wire format — `"json"` (default) or `"protobuf"` |
+| `invoke` | Tauri IPC invoke function. Defaults to `@tauri-apps/api/core::invoke`. Pass a mock for testing. |
+| `scopeId` | The sync scope — partitions data (e.g. merchant ID, tenant ID) |
+
+### `SyncClient` methods
+
+#### `writeTransaction`
+
+Wraps writes in a SQLite transaction. Use this with `writeLocalChange` for synced table writes.
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: "item-1",
+    table: TABLE.items,
+    write: (writeTx) =>
+      writeTx.insert(TABLE.items).values({ id: "item-1", name: "Widget", ... }),
+  });
+});
+```
+
+```ts
+writeTransaction<TTx, TResult>(
+  db: SyncDatabase<TTx>,
+  callback: (tx: TTx) => Promise<TResult>
+): Promise<TResult>
+```
+
+#### `writeLocalChange`
+
+Performs a Drizzle write and creates an outbox entry for the sync engine to push. Must be called inside `writeTransaction`.
+
+```ts
+writeLocalChange<TTx>(
+  tx: TTx,
+  options: WriteLocalChangeOptions<TTx>
+): Promise<void>
+```
+
+```ts
+interface WriteLocalChangeOptions<TTx> {
+  operation: "insert" | "update";
+  rowId: string;
+  table: AnySQLiteTable;
+  write: (tx: TTx) => Promise<unknown> | unknown;
+}
+```
+
+| Field | Description |
+|---|---|
+| `operation` | `"insert"` for new rows, `"update"` for modifications |
+| `rowId` | Primary key value of the affected row |
+| `table` | Drizzle table definition (e.g. `TABLE.items`) |
+| `write` | Drizzle write operation — receives the transaction context |
+
+#### `enqueueChange`
+
+Inserts only an outbox entry without performing the actual write. Use when the row is already in the database and you just need to mark it for sync.
+
+```ts
+enqueueChange<TTx>(tx: TTx, options: LocalChangeOptions): Promise<void>
+```
+
+```ts
+interface LocalChangeOptions {
+  operation: "insert" | "update";
+  rowId: string;
+  table: AnySQLiteTable;
+}
+```
+
+#### `syncNow`
+
+Runs an intelligent sync cycle — decides push, pull, or full sync based on local state and server status.
+
+```ts
+syncNow(): Promise<{
+  mode: "push_only" | "pull_only" | "full_sync" | "full_resync" | "no_op";
+  status?: SyncStatusResult;
+  pull?: PullResult;
+  push?: PushResult;
+  purged: number;
+  skipped?: { local_dirty_count: number; server_has_changes: boolean };
+}>
+```
+
+#### `push`
+
+Pushes local outbox changes to the server.
+
+```ts
+push(): Promise<{
+  tables_synced: string[];
+  rejected_tables: string[];
+  server_wins_count: number;
+  server_time: string;
+}>
+```
+
+#### `pull`
+
+Pulls server changes to the local database.
+
+```ts
+pull(): Promise<{
+  rows_received: number;
+  server_time: string;
+}>
+```
+
+#### `fullResync`
+
+Drops the local cursor and re-syncs everything from the server.
+
+```ts
+fullResync(): Promise<SyncNowResult>
+```
+
+#### `getState`
+
+Returns local sync state — dirty count, cursor, and baseline flag.
+
+```ts
+getState(): Promise<{
+  local_dirty_count: number;
+  last_server_watermark: string;
+  needs_baseline_sync: boolean;
+}>
+```
+
+#### `getDbInfo`
+
+Returns database file metadata.
+
+```ts
+getDbInfo(): Promise<{
+  db_path: string;
+  size_bytes: number;
+  size_formatted: string;
+}>
+```
+
+#### `getMigrationStatus`
+
+Lists applied migrations.
+
+```ts
+getMigrationStatus(): Promise<Array<{
+  hash: string;
+  created_at: number;
+}>>
+```
+
+#### `purgeSyncedOutbox`
+
+Deletes synced outbox entries older than a timestamp.
+
+```ts
+purgeSyncedOutbox(olderThan: string): Promise<number>
+```
+
+#### `runGarbageCollection`
+
+Removes soft-deleted rows that have been synced.
+
+```ts
+runGarbageCollection(): Promise<number>
+```
+
+#### Polling methods
+
+```ts
+startPolling(): Promise<void>
+stopPolling(): Promise<void>
+pausePolling(): Promise<void>
+resumePolling(): Promise<void>
+getPollingStatus(): Promise<{
+  running: boolean;
+  paused: boolean;
+  last_sync_at: string | null;
+}>
+```
+
+---
+
+## Drizzle Proxy
+
+### `createTauriDrizzleDatabase`
+
+Creates a Drizzle ORM database that routes SQL through Tauri IPC.
+
+```ts
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { invoke } from "@tauri-apps/api/core";
+
+const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
+```
+
+```ts
+interface TauriDrizzleDatabaseConfig {
+  schema: Record<string, unknown>;
+  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  commands?: {
+    runSql?: string;       // default: "run_sql"
+    runSqlBatch?: string;  // default: "run_sql_batch"
+  };
+  onQueryError?: (
+    error: unknown,
+    query: { sql: string; params: unknown[]; method: string }
+  ) => void;
+}
+```
+
+| Field | Description |
+|---|---|
+| `schema` | All Drizzle table definitions in a single object |
+| `invoke` | Tauri IPC invoke function |
+| `commands` | Custom IPC command names (rarely needed) |
+| `onQueryError` | Error callback — fires before the error is thrown |
+
+---
+
+## Schema Helpers
+
+### `localSyncColumns`
+
+Columns added to every local synced table.
+
+```ts
+import { localSyncColumns } from "baresync/schema";
+
+const { deletedAt, isSynced, createdAt, updatedAt } = localSyncColumns();
+```
+
+| Column | Drizzle definition | Description |
+|---|---|---|
+| `isSynced` | `integer("is_synced", { mode: "boolean" }).notNull().default(false)` | Whether the row is confirmed by the server |
+| `deletedAt` | `text("deleted_at")` | Soft-delete timestamp — null means active |
+| `createdAt` | `text("created_at").notNull().$defaultFn(() => new Date().toISOString())` | Row creation timestamp |
+| `updatedAt` | `text("updated_at").notNull().$defaultFn(() => new Date().toISOString())` | Last modification timestamp |
+
+### `apiSyncColumns`
+
+Columns added to every server-side synced table.
+
+```ts
+import { apiSyncColumns } from "baresync/schema";
+
+const { deletedAt, syncUpdatedAt, createdAt, updatedAt } = apiSyncColumns();
+```
+
+| Column | Drizzle definition | Description |
+|---|---|---|
+| `syncUpdatedAt` | `integer("sync_updated_at", { mode: "number" }).notNull()` | Cursor watermark — server uses this for change detection |
+| `deletedAt` | `text("deleted_at")` | Soft-delete timestamp |
+| `createdAt` | `text("created_at").notNull()` | Row creation timestamp |
+| `updatedAt` | `text("updated_at").notNull()` | Last modification timestamp |
+
+### `syncOutbox` and `syncCursors`
+
+Pre-built Drizzle table definitions for Baresync runtime tables.
+
+```ts
+import { syncOutbox, syncCursors } from "baresync/schema";
+```
+
+**`sync_outbox` columns:**
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `text` PK | Auto-generated UUID |
+| `tableName` | `text` | Table name of the changed row |
+| `rowId` | `text` | Primary key of the changed row |
+| `operation` | `text` | `"insert"`, `"update"`, or `"delete"` |
+| `payload` | `text` | JSON snapshot of the row (nullable) |
+| `scopeId` | `text` | Sync scope |
+| `changedAt` | `text` | ISO timestamp when entry was created |
+| `syncedAt` | `text` | ISO timestamp when confirmed synced (null = pending) |
+
+**`sync_cursors` columns:**
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `integer` PK | Auto-increment |
+| `scopeId` | `text` | Sync scope |
+| `lastCursor` | `text` | Server cursor (format: `sync:{timestamp}:{table}:{rowId}`) |
+| `updatedAt` | `text` | ISO timestamp of last update |
+
+### `syncBatchRequests`
+
+Server-side idempotency tracking table.
+
+```ts
+import { syncBatchRequests } from "baresync/schema";
+```
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `integer` PK | Auto-increment |
+| `clientId` | `text` | Client identifier |
+| `idempotencyKey` | `text` | Unique key per push batch |
+| `requestHash` | `text` | SHA-256 hash of the request body |
+| `status` | `text` | `"pending"`, `"completed"`, or `"failed"` |
+| `responseBody` | `text` | Stored response for replays |
+| `createdAt` | `integer` | Unix timestamp |
+| `completedAt` | `integer` | Unix timestamp |
+
+---
+
+## Sync Contract
+
+### `defineSyncContract`
+
+Validates and creates a sync contract from table definitions.
+
+```ts
+import { defineSyncContract } from "baresync";
+
+const contract = defineSyncContract({
+  packageName: "@repo/sync-contract",
+  encoding: "json",
+  tables: [
+    defineSyncedTable({ table: items, scope: { column: items.scopeId, field: "scope_id", source: "scope" } }),
+  ],
+  limits: { maxPushRows: 1000 },
+});
+```
+
+```ts
+function defineSyncContract(input: {
+  encoding: "json" | "protobuf";
+  packageName: string;
+  tables: SyncedTableDefinition[];
+  limits?: Partial<SyncContractLimits>;
+}): SyncContract
+```
+
+### `defineSyncedTable`
+
+Defines a single table in the sync contract.
+
+```ts
+function defineSyncedTable(input: {
+  table: AnySQLiteTable;
+  scope: ScopeMapping;
+  localOnlyColumns?: string[];
+  serverOnlyColumns?: string[];
+  conflict?: { strategy: string; column: AnySQLiteColumn };
+  delete?: { mode: "soft"; column: AnySQLiteColumn };
+}): SyncedTableDefinition
+```
+
+```ts
+interface ScopeMapping {
+  column: AnySQLiteColumn;
+  field: string;
+  source: "scope";
+}
+```
+
+### `syncedTable`
+
+Shorthand — pass `scope` as a string and it auto-resolves the column.
+
+```ts
+function syncedTable(
+  table: AnySQLiteTable,
+  options: {
+    scope: string | ScopeMapping;
+    localOnlyColumns?: string[];
+    serverOnlyColumns?: string[];
+  }
+): SyncedTableDefinition
+```
+
+---
+
+## Generator
+
+### `defineSyncConfig`
+
+Creates a paired generator config for JSON sync.
+
+```ts
+import { defineSyncConfig } from "baresync/generator";
+
+const config = defineSyncConfig({
+  packageName: "@repo/sync-contract",
+  localSyncedSchema,
+  apiSyncedSchema,
+  outputDir: "./packages/sync-contract/generated",
+  tables: {
+    items: { scope: "scope_id" },
+    locations: { scope: "scope_id" },
+  },
+});
+```
+
+```ts
+function defineSyncConfig<
+  LocalSchema extends Record<string, AnySQLiteTable>,
+  ApiSchema extends Record<string, AnySQLiteTable>,
+>(input: {
+  apiSyncedSchema: ApiSchema;
+  encoding?: "json" | "protobuf";
+  limits?: Partial<SyncContractLimits>;
+  localSyncedSchema: LocalSchema;
+  outputDir: string;
+  packageName: string;
+  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+}): PairedSyncGeneratorConfig
+```
+
+### `defineProtobufSyncConfig`
+
+Creates a generator config for protobuf sync.
+
+```ts
+function defineProtobufSyncConfig<
+  LocalSchema extends Record<string, AnySQLiteTable>,
+  ApiSchema extends Record<string, AnySQLiteTable>,
+>(input: {
+  apiSyncedSchema: ApiSchema;
+  localSyncedSchema: LocalSchema;
+  outputDir: string;
+  outputs: ProtobufWorkspaceOutputs;
+  packageName: string;
+  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+  limits?: Partial<SyncContractLimits>;
+}): ProtobufWorkspaceConfig
+```
+
+```ts
+interface ProtobufWorkspaceOutputs {
+  proto: string;
+  runtimeSourceTs: string;
+  runtimeTs: string;
+  rustSyncMappers: string;
+  syncTs: string;
+}
+```
+
+### `generateSyncArtifacts`
+
+Runs the generator — validates, generates diagnostics, writes output files.
+
+```ts
+import { generateSyncArtifacts } from "baresync/generator";
+
+generateSyncArtifacts(config);
+```
+
+Overloaded signatures:
+
+```ts
+function generateSyncArtifacts(config: PairedSyncGeneratorConfig): void;
+function generateSyncArtifacts(
+  contract: SyncContract,
+  outputDir: string,
+  options?: GenerateOptions
+): void;
+```
+
+```ts
+interface GenerateOptions {
+  check?: boolean;            // validate only, don't write files
+  warningsAsErrors?: boolean; // treat warnings as errors
+}
+```
+
+### `runDiagnostics`
+
+Validates a sync contract without generating files.
+
+```ts
+import { runDiagnostics } from "baresync/generator";
+
+const diagnostics = runDiagnostics(contract);
+for (const d of diagnostics) {
+  console.log(`[${d.severity}] ${d.code}: ${d.message}`);
+}
+```
+
+```ts
+interface SyncDiagnostic {
+  code: string;
+  column?: string;
+  docs?: string;
+  fix: string;
+  message: string;
+  severity: "error" | "warning" | "info";
+  table?: string;
+  why: string;
+}
+```
+
+See [Generator Diagnostics](/docs/generator/diagnostics) for the full list of diagnostic codes.
+
+### `computeSyncTableOrder`
+
+Topologically sorts tables by foreign key dependencies.
+
+```ts
+function computeSyncTableOrder(input: {
+  schemaModule: Record<string, unknown>;
+  syncedTableNames?: string[];
+}): { upsertOrder: string[]; deleteOrder: string[] }
+```
+
+---
+
+## Server Handlers
+
+### `createSyncPushHandler`
+
+Creates a push endpoint handler.
+
+```ts
+import { createSyncPushHandler } from "baresync/server";
+
+const pushHandler = createSyncPushHandler({
+  encoding: "json",
+  resolveScope: async ({ scopeId }) => {
+    if (!isAuthorized(scopeId)) return { ok: false, status: 403, body: { error: "forbidden" } };
+    return { ok: true, scope: { scopeId } };
+  },
+  applyPushChanges: async ({ changes, scopeId }) => { ... },
+  idempotency: { db },
+  upsertOrder: SYNC_UPSERT_ORDER,
+});
+```
+
+### `createSyncStatusHandler`
+
+Creates a status endpoint handler. Returns `has_changes` and `cursor` for the client to decide whether to pull.
+
+```ts
+const statusHandler = createSyncStatusHandler({
+  encoding: "json",
+  resolveScope,
+  loadSyncStatus: async ({ scopeId, cursor }) => { ... },
+});
+```
+
+### `createSyncPullHandler`
+
+Creates a pull endpoint handler.
+
+```ts
+const pullHandler = createSyncPullHandler({
+  encoding: "json",
+  resolveScope,
+  loadPullChanges: async ({ scopeId, cursor, limit, tables }) => { ... },
+  limit: 500,
+});
+```
+
+### Handler options base types
+
+```ts
+interface SyncResolveScopeInput<TContext> {
+  context: TContext;
+  request: Request;
+  scopeId: string;
+}
+
+type SyncScopeResolution<TScope> =
+  | { ok: true; scope: TScope }
+  | { ok: false; status: number; body: unknown };
+
+interface SyncPushChangesInput<TContext, TScope> {
+  changes: readonly SyncPushChange[];
+  clientId: string;
+  context: TContext;
+  idempotencyKey: string;
+  request: Request;
+  requestHash: string;
+  scope: TScope;
+  scopeId: string;
+  syncUpdatedAt: number;
+}
+
+interface SyncPushChange {
+  changedRows: unknown[];
+  deletedIds: string[];
+  table: string;
+}
+```
+
+---
+
+## Server Utilities
+
+### `createIdempotencyGuard`
+
+Wraps push handling in an idempotency check using `sync_batch_requests`.
+
+```ts
+import { createIdempotencyGuard } from "baresync/server";
+
+const guard = createIdempotencyGuard({ db });
+
+const { result, wasReplay } = await guard.run(
+  { clientId, idempotencyKey, requestHash },
+  async () => applyChanges(changes),
+);
+```
+
+### `cleanupSyncBatchRequests`
+
+Purges old idempotency records.
+
+```ts
+import { cleanupSyncBatchRequests } from "baresync/server";
+
+await cleanupSyncBatchRequests({
+  db,
+  olderThanMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
+```
+
+### `getWriteChunkSize`
+
+Computes safe chunk size based on column count and bind parameter limits.
+
+```ts
+import { getWriteChunkSize } from "baresync/server";
+
+const chunkSize = getWriteChunkSize({
+  columnCount: 12,
+  maxRowsPerChunk: 500,
+});
+```
+
+### `chunkArray`
+
+Splits an array into chunks.
+
+```ts
+import { chunkArray } from "baresync/server";
+
+const chunks = chunkArray(rows, 500);
+```
+
+### Cursor utilities
+
+```ts
+import { parseSyncCursor, formatSyncCursor } from "baresync/server";
+
+const parsed = parseSyncCursor("sync:1747894800000:items:item-1");
+// { syncUpdatedAt: 1747894800000, tableName: "items", rowId: "item-1" }
+
+const cursor = formatSyncCursor({
+  syncUpdatedAt: 1747894800000,
+  tableName: "items",
+  rowId: "item-1",
+});
+// "sync:1747894800000:items:item-1"
+```
+
+---
+
+## Limits
+
+```ts
+import {
+  DEFAULT_POS_TARGET_PUSH_BYTES,  // 262144 (256 KB)
+  DEFAULT_API_MAX_PUSH_BYTES,     // 2097152 (2 MB)
+  DEFAULT_MAX_PUSH_ROWS,          // 2000
+  DEFAULT_DB_BIND_PARAMETER_BUDGET, // 30000
+} from "baresync/limits";
+```
+
+| Constant | Value | Description |
+|---|---|---|
+| `DEFAULT_POS_TARGET_PUSH_BYTES` | 262144 | Target push payload size (256 KB) |
+| `DEFAULT_API_MAX_PUSH_BYTES` | 2097152 | Maximum push payload size (2 MB) |
+| `DEFAULT_MAX_PUSH_ROWS` | 2000 | Maximum rows per push batch |
+| `DEFAULT_DB_BIND_PARAMETER_BUDGET` | 30000 | SQLite bind parameter budget |
+
+---
+
+## CLI
+
+```bash
+baresync generate --config sync.config.ts --output ./generated
+baresync generate --check --warnings-as-errors
+baresync doctor
+```
+
+### `runGenerate`
+
+Programmatic generator entry point.
+
+```ts
+import { runGenerate } from "baresync";
+
+await runGenerate("./sync.config.ts", "./generated", {
+  check: true,
+  warningsAsErrors: false,
+});
+```
+
+Config files searched: `sync.config.ts`, `sync.config.mts`, `sync.config.js`, `sync.config.mjs`.
