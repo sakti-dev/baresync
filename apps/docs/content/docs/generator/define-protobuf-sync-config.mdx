@@ -47,4 +47,22 @@ The `outputs` object tells the generator where to write protobuf-specific artifa
 - The `outputs` field is required
 - Additional protobuf artifacts are generated alongside the standard ones
 
+## Output directories
+
+Configure these in the `outputs` field:
+
+```ts
+outputs: {
+  protoDir: "./generated/proto",
+  rustMapperDir: "./generated/rust",
+  tsRuntimeDir: "./generated/ts",
+}
+```
+
+| Directory | Contents |
+|---|---|
+| `protoDir` | `.proto` files for each synced table |
+| `rustMapperDir` | Rust mapper functions for encoding/decoding |
+| `tsRuntimeDir` | TypeScript runtime code for protobuf serialization |
+
 See [Protobuf](/docs/protobuf/overview) for details on the generated protobuf artifacts.

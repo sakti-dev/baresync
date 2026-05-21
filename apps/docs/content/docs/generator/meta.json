@@ -6,7 +6,6 @@
     "define-protobuf-sync-config",
     "cli",
     "generated-files",
-    "protobuf-workspace",
     "diagnostics"
   ]
 }
