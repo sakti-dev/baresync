@@ -1,6 +1,89 @@
 ---
 title: Status Handler
-description: TODO
+description: Implement the "are there changes?" endpoint.
 ---
 
-TODO: Write this page.
+# Status Handler
+
+The status handler answers a simple question: "Has anything changed since this cursor?" The sync engine calls this before every sync cycle to decide whether to pull.
+
+## Factory
+
+```ts
+import { createSyncStatusHandler } from "baresync/server";
+
+const status = createSyncStatusHandler({
+  encoding: "json",
+  resolveScope,
+  loadSyncStatus: async ({ cursor, scope }) =>
+    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+});
+```
+
+## What the handler does
+
+1. Decodes the request body
+2. Validates required fields (`scopeId`, `cursor`)
+3. Calls `resolveScope` to authorize the request
+4. Calls your `loadSyncStatus` callback
+5. Encodes the response
+
+## loadSyncStatus callback
+
+```ts
+async ({ cursor, scope, scopeId, context, request }) => {
+  // Query your database for changes since the cursor
+  return {
+    hasChanges: true,
+    changedTables: ["items", "locations"],
+    cursor: "sync:1747894800000:items:item-99",
+    serverTime: new Date().toISOString(),
+  };
+}
+```
+
+| Input | Description |
+|---|---|
+| `cursor` | The client's last cursor (empty string for baseline) |
+| `scope` | The resolved scope from `resolveScope` |
+| `scopeId` | The raw scope ID from the request |
+| `context` | Whatever you passed as the second argument to the handler |
+| `request` | The raw `Request` object |
+
+### Return shape
+
+```ts
+interface SyncStatusResponse {
+  hasChanges: boolean;
+  changedTables: string[];
+  cursor: string;
+  serverTime: string;
+}
+```
+
+- `hasChanges` — `true` if any table has rows with `syncUpdatedAt` greater than the cursor timestamp
+- `changedTables` — list of table names that have changes
+- `cursor` — the current latest cursor on the server
+- `serverTime` — ISO timestamp
+
+### How the sync engine uses this
+
+When `sync_now()` runs:
+
+1. Calls `getState()` to check `local_dirty_count`
+2. Calls `/sync/status` to check `hasChanges`
+3. Decides the mode:
+   - `local_dirty_count === 0 && !hasChanges` → NoOp
+   - `local_dirty_count > 0 && !hasChanges` → PushOnly
+   - `local_dirty_count === 0 && hasChanges` → PullOnly
+   - Both → FullSync
+
+## Wire it up
+
+```ts
+app.post("/sync/status", (c) => status(c.req.raw, {}));
+```
+
+The second argument `{}` is the context — it is passed through to your callbacks. Use it to carry request-scoped data like auth tokens or trace IDs.
+
+Next: [Pull Handler](/docs/server/pull-handler).

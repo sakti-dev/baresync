@@ -1,6 +1,96 @@
 ---
 title: Push Handler
-description: TODO
+description: Implement the "accept local changes" endpoint.
 ---
 
-TODO: Write this page.
+# Push Handler
+
+The push handler accepts local changes from the client, validates them, orders them, and passes them to your `applyPushChanges` callback.
+
+## Factory
+
+```ts
+import { createSyncPushHandler } from "baresync/server";
+
+const push = createSyncPushHandler({
+  encoding: "json",
+  resolveScope,
+  upsertOrder: SYNC_UPSERT_ORDER,
+  idempotency: { db: idempotencyDb },
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+    repository.applyPushChanges({
+      changes,
+      scopeId: scope.scopeId,
+      syncUpdatedAt,
+    }),
+});
+```
+
+## What the handler does
+
+1. Decodes the request body
+2. Validates required fields (`scopeId`, `clientId`, `idempotencyKey`, `tables`)
+3. Validates payload size against limits (`DEFAULT_API_MAX_PUSH_BYTES`, `DEFAULT_MAX_PUSH_ROWS`)
+4. Calls `resolveScope` to authorize the request
+5. Orders changes by `upsertOrder` (parent tables first)
+6. Runs the idempotency guard
+7. Calls your `applyPushChanges` callback
+8. Encodes the response
+
+## applyPushChanges callback
+
+```ts
+async ({ changes, scope, scopeId, syncUpdatedAt, clientId, idempotencyKey, requestHash, context, request }) => {
+  // Write changes to your database
+  // Return a pull response (the client uses it to update its cursor)
+}
+```
+
+| Input | Description |
+|---|---|
+| `changes` | Ordered array of `{ table, changedRows, deletedIds }` |
+| `scope` | The resolved scope |
+| `scopeId` | Raw scope ID |
+| `syncUpdatedAt` | Server-assigned timestamp (`Date.now()`) for all rows in this batch |
+| `clientId` | The device's unique ID |
+| `idempotencyKey` | Unique key for this push batch |
+| `requestHash` | SHA-256 hash of the request body |
+| `context` | Handler context |
+| `request` | Raw `Request` |
+
+### The syncUpdatedAt timestamp
+
+The handler assigns `syncUpdatedAt = Date.now()` before calling your callback. All rows in this batch get the same timestamp. This ensures cursors are monotonically increasing.
+
+### What to return
+
+Your callback should return a pull response (the same shape as the pull handler). After pushing, the client needs the latest cursor and any server-side changes that resulted from the push (for example, rows that were upserted). The Drizzle repository helper returns a full snapshot after applying changes.
+
+## Change ordering
+
+The handler reorders the incoming `tables` array to match your `upsertOrder`. This ensures parent tables are upserted before child tables (respecting foreign keys).
+
+Changes for tables not in `upsertOrder` are placed at the end, unsorted.
+
+## Payload limits
+
+| Limit | Default | Description |
+|---|---|---|
+| `maxBytes` | 2 MB (`DEFAULT_API_MAX_PUSH_BYTES`) | Maximum request body size |
+| `maxRows` | 2000 (`DEFAULT_MAX_PUSH_ROWS`) | Maximum total rows across all tables |
+
+If the limits are exceeded, the handler throws `SyncPayloadTooLargeError` and returns a `413` response.
+
+## Wire it up
+
+```ts
+app.post("/sync/push", (c) => push(c.req.raw, {}));
+```
+
+## Common mistakes
+
+- **Not using the provided `syncUpdatedAt`.** Use the one from the callback, not `Date.now()` in your own code — the handler already assigned it.
+- **Forgetting `upsertOrder`.** Without it, changes arrive in whatever order the client sent them, which may violate foreign key constraints.
+- **Not configuring idempotency.** Without the idempotency guard, a retried push could double-write rows. See [Idempotency](/docs/server/idempotency).
+
+Next: [Scope Resolution](/docs/server/scope-resolution).

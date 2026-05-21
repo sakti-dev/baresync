@@ -1,6 +1,162 @@
 ---
 title: Low Level Primitives
-description: TODO
+description: Build custom handlers without the Drizzle repository helper.
 ---
 
-TODO: Write this page.
+# Low Level Primitives
+
+If you do not use Drizzle ORM on the server, or need more control, use the low-level primitives from `baresync/server` directly.
+
+## Import
+
+```ts
+import {
+  decodeSyncRequest,
+  encodeSyncResponse,
+  validatePushEnvelope,
+  orderPushChanges,
+  orderDeleteChanges,
+  splitSyncRows,
+  parseSyncCursor,
+  parseSyncCursorTimestamp,
+  formatSyncCursor,
+  formatLatestSyncCursor,
+  pickLatestSyncCursorRow,
+  buildPullTables,
+  changedTableNames,
+  validateSyncTable,
+} from "baresync/server";
+```
+
+## Decode a request
+
+```ts
+const decoded = await decodeSyncRequest({
+  encoding: "json",
+  kind: "push", // "push" | "pull" | "status"
+  request,
+});
+
+// decoded.body — parsed request body
+// decoded.rawBodyByteLength — original body size
+// decoded.requestHash — SHA-256 hash
+```
+
+Validates required fields based on `kind`:
+- push: `scopeId`, `clientId`, `idempotencyKey`, `tables`
+- pull: `scopeId`, `tables`, `cursor`
+- status: `scopeId`, `cursor`
+
+## Encode a response
+
+```ts
+const response = encodeSyncResponse({
+  body: result,
+  encoding: "json",
+  kind: "push",
+});
+
+return response; // Response object
+```
+
+## Validate push payload
+
+```ts
+validatePushEnvelope(decoded, {
+  maxBytes: DEFAULT_API_MAX_PUSH_BYTES,
+  maxRows: DEFAULT_MAX_PUSH_ROWS,
+});
+```
+
+Throws `SyncPayloadTooLargeError` if limits are exceeded.
+
+## Order push changes
+
+```ts
+const ordered = orderPushChanges({
+  changes: decoded.body.tables,
+  order: SYNC_UPSERT_ORDER,
+});
+```
+
+Reorders tables to match `upsertOrder`. Unknown tables go last.
+
+## Order delete changes
+
+```ts
+const ordered = orderDeleteChanges({
+  changes: decoded.body.tables,
+  order: SYNC_DELETE_ORDER,
+});
+```
+
+Reverse of `upsertOrder` — child tables deleted before parents.
+
+## Split rows into changed/deleted
+
+```ts
+const { changedRows, deletedIds } = splitSyncRows(rows);
+```
+
+Takes an array of rows with `id`, `deletedAt`, and `syncUpdatedAt`. Returns:
+- `changedRows` — rows without `deletedAt` (strip `syncUpdatedAt`)
+- `deletedIds` — IDs of rows with `deletedAt`
+
+## Cursor helpers
+
+```ts
+const timestamp = parseSyncCursorTimestamp(cursor); // number
+const parsed = parseSyncCursor(cursor); // { syncUpdatedAt, tableName, rowId } | null
+const cursor = formatSyncCursor({ syncUpdatedAt, tableName, rowId }); // string
+const cursor = formatLatestSyncCursor({ id, syncUpdatedAt, tableName }); // string
+const latestRow = pickLatestSyncCursorRow(rows); // row with highest (syncUpdatedAt, updatedAt, id)
+```
+
+## Build pull tables response
+
+```ts
+const tables = buildPullTables({
+  allTables: ["locations", "items", "stock_counts"],
+  changes: { locations: { changedRows: [...], deletedIds: [...] }, ... },
+  requestedTables: ["items"], // empty = all
+});
+```
+
+Filters and formats the per-table response array.
+
+## Detect changed tables
+
+```ts
+const changed = changedTableNames({
+  allTables: ["locations", "items"],
+  changes: { locations: { changedRows: [...], deletedIds: [] }, items: { changedRows: [], deletedIds: [] } },
+});
+// ["locations"]
+```
+
+## Validate table names
+
+```ts
+const validName = validateSyncTable("locations", ["locations", "items"]); // "locations"
+// throws if not in the list
+```
+
+## Chunking helpers
+
+For large writes, chunk rows to stay within SQLite's bind parameter limit:
+
+```ts
+import { chunkArray, getWriteChunkSize, SAFE_SQLITE_BIND_PARAM_LIMIT } from "baresync/server";
+
+const chunkSize = getWriteChunkSize({ columnCount: 8 });
+const chunks = chunkArray(rows, chunkSize);
+```
+
+| Constant | Value | Description |
+|---|---|---|
+| `SQLITE_BIND_PARAM_LIMIT` | 32,766 | Hard SQLite limit |
+| `SAFE_SQLITE_BIND_PARAM_LIMIT` | 30,000 | Safe default |
+| `DEFAULT_MAX_ROWS_PER_WRITE_CHUNK` | 500 | Max rows per write chunk |
+| `DEFAULT_MAX_IDS_PER_READ_CHUNK` | 1,000 | Max IDs per read query |
+
+Next: [Errors](/docs/server/errors).

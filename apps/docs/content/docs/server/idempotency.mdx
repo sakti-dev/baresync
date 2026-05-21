@@ -1,6 +1,89 @@
 ---
 title: Idempotency
-description: TODO
+description: Prevent duplicate push processing with the idempotency guard.
 ---
 
-TODO: Write this page.
+# Idempotency
+
+Push requests include a `clientId` and `idempotencyKey`. The idempotency guard uses these to prevent the same push batch from being processed twice — even if the client retries due to a network timeout.
+
+## How it works
+
+The guard stores push results in a `sync_batch_requests` table. When a push arrives:
+
+1. Look up existing records for `(clientId, idempotencyKey)`
+2. **If completed with matching hash** → return the stored response (replay)
+3. **If pending** → reject with `409 Conflict`
+4. **If completed with different hash** → reject with `409 Conflict`
+5. **If not found** → reserve a pending slot, run the callback, finalize with the result
+
+## Setup
+
+The push handler requires an `idempotency` config:
+
+```ts
+import { createSyncPushHandler } from "baresync/server";
+
+const push = createSyncPushHandler({
+  encoding: "json",
+  resolveScope,
+  upsertOrder: SYNC_UPSERT_ORDER,
+  idempotency: { db: yourDrizzleDb },
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) => {
+    // ...
+  },
+});
+```
+
+The `db` must be a Drizzle `SqliteRemoteDatabase` with the `sync_batch_requests` table. This is the same table exported from `baresync`:
+
+```ts
+import { syncBatchRequests } from "baresync";
+```
+
+Include it in your server database schema and migrations.
+
+## The sync_batch_requests table
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `INTEGER` | Auto-increment primary key |
+| `client_id` | `TEXT` | The device's client ID |
+| `idempotency_key` | `TEXT` | Unique key for this push batch |
+| `request_hash` | `TEXT` | SHA-256 hash of the request body |
+| `status` | `TEXT` | `"pending"`, `"completed"`, or `"failed"` |
+| `response_body` | `TEXT` | JSON-serialized response for replays |
+| `created_at` | `INTEGER` | Timestamp when the record was created |
+| `completed_at` | `INTEGER` | Timestamp when processing finished |
+
+Unique index on `(client_id, idempotency_key)`.
+
+## Cleanup
+
+Over time, the table accumulates records. Clean up old entries:
+
+```ts
+import { cleanupSyncBatchRequests } from "baresync/server";
+
+const result = await cleanupSyncBatchRequests({
+  db,
+  olderThanMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+  stalePendingOlderThanMs: 60 * 60 * 1000, // 1 hour
+  limit: 1000, // delete in batches
+});
+
+console.log(`Cleaned up ${result.deletedCount} records`);
+```
+
+| Option | Description |
+|---|---|
+| `olderThanMs` | Delete completed/failed records older than this |
+| `stalePendingOlderThanMs` | Also delete pending records older than this (stuck requests) |
+| `limit` | Max records to delete in one call |
+| `dryRun` | If `true`, count but do not delete |
+
+## When not to use it
+
+If you are building a read-only server (no push endpoint), you do not need the idempotency guard or the `sync_batch_requests` table.
+
+Next: [Cursors](/docs/server/cursors).

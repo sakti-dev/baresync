@@ -1,6 +1,71 @@
 ---
 title: Overview
-description: TODO
+description: The server side of Baresync — what it provides and what you build.
 ---
 
-TODO: Write this page.
+# Server Overview
+
+Baresync does **not** provide a hosted server. It provides handler factories and helpers that you use to build sync routes in your own server (Hono, Express, or any JS runtime).
+
+## Package
+
+```ts
+import { createSyncPushHandler, createSyncPullHandler, createSyncStatusHandler } from "baresync/server";
+```
+
+The `"baresync/server"` sub-path exports handler factories, primitives, and types.
+
+## The three routes
+
+Your server needs three `POST` endpoints:
+
+| Route | Purpose | Handler factory |
+|---|---|---|
+| `/sync/status` | "Are there changes since this cursor?" | `createSyncStatusHandler` |
+| `/sync/pull` | "Give me all changed rows since this cursor" | `createSyncPullHandler` |
+| `/sync/push` | "Here are my local changes, write them" | `createSyncPushHandler` |
+
+## What Baresync provides
+
+Each handler factory handles:
+
+- Request body decoding (JSON or protobuf)
+- Field validation (required fields present)
+- Push payload size limits
+- Push change ordering (respects `upsertOrder`)
+- Idempotency guard (prevents duplicate push processing)
+- Scope resolution (calls your callback)
+- Response envelope formatting
+- Error mapping to structured error codes
+
+## What you provide
+
+- **Scope resolution** — verify the client is authorized for the requested scope
+- **Database operations** — read and write rows for each table
+- **The server itself** — Hono, Express, Bun, etc.
+
+## The Drizzle repository helper
+
+If you use Drizzle ORM on the server, `createDrizzleSyncRepository` from `baresync/server/drizzle` implements the database operations for you. You provide per-table callbacks (`buildRow`, `readRows`, `upsertRow`, `softDeleteRow`) and the helper wires them into the handler factories.
+
+## Architecture
+
+```txt
+Tauri plugin  ──── HTTP POST ────  Your server
+  sync_now()                       /sync/status  →  resolveScope + loadSyncStatus
+  push()                           /sync/push    →  resolveScope + idempotency + applyPushChanges
+  pull()                           /sync/pull    →  resolveScope + loadPullChanges
+```
+
+## Next steps
+
+- [Route Shape](/docs/server/route-shape) — request/response envelopes
+- [Scope Resolution](/docs/server/scope-resolution) — authorization and tenant mapping
+- [Status Handler](/docs/server/status-handler) — has-changes check
+- [Pull Handler](/docs/server/pull-handler) — returning changed rows
+- [Push Handler](/docs/server/push-handler) — accepting local changes
+- [Idempotency](/docs/server/idempotency) — preventing duplicate processing
+- [Cursors](/docs/server/cursors) — how cursors work
+- [Drizzle Repository Helper](/docs/server/drizzle-repository-helper) — the easy path
+- [Low Level Primitives](/docs/server/low-level-primitives) — building without the helper
+- [Errors](/docs/server/errors) — error codes and HTTP status mapping

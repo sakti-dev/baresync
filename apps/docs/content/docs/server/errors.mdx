@@ -1,6 +1,97 @@
 ---
 title: Errors
-description: TODO
+description: Error codes, HTTP status mapping, and how to customize error responses.
 ---
 
-TODO: Write this page.
+# Errors
+
+The handler factories catch all errors and convert them to structured JSON responses. You do not need to wrap your callbacks in try/catch — the handlers do it for you.
+
+## Error response shape
+
+```json
+{
+  "code": "sync_scope_invalid",
+  "message": "Invalid scope"
+}
+```
+
+## Error codes
+
+| Code | HTTP Status | When |
+|---|---|---|
+| `sync_unauthorized` | 401 | Auth failure (status 401 in resolveScope) |
+| `sync_scope_invalid` | 403 | Invalid scope (status 403/404 in resolveScope) |
+| `sync_payload_too_large` | 413 | Push body exceeds size or row limits |
+| `sync_idempotency_conflict` | 409 | Duplicate or conflicting idempotency key |
+| `sync_cursor_invalid` | 400 | Bad request (status 400) |
+| `sync_network_error` | 500 | TypeError (network failure) |
+| `sync_unknown` | 500 | Anything else |
+
+## Error mapping
+
+Errors are mapped by `mapSyncError`:
+
+1. If the error is a `SyncPayloadTooLargeError` → `sync_payload_too_large`
+2. If the error has `status: 409` → `sync_idempotency_conflict`
+3. If the error has `status: 401` → `sync_unauthorized`
+4. If the error has `status: 413` → `sync_payload_too_large`
+5. If the error has `status: 403` or `404` → `sync_scope_invalid`
+6. If the error has `status: 400` → `sync_cursor_invalid`
+7. If the error is a `TypeError` → `sync_network_error`
+8. Everything else → `sync_unknown`
+
+The error message is preserved from the original error.
+
+## HTTP status determination
+
+The HTTP status comes from:
+
+1. The error's `status` property, if it is a number (e.g., `{ status: 422 }`)
+2. The mapped code's default status (see table above)
+
+This means you can throw custom errors with specific status codes from your callbacks:
+
+```ts
+if (row.name.length > 100) {
+  const error = new Error("Name too long");
+  error.status = 422;
+  throw error;
+}
+```
+
+This will return:
+
+```json
+{ "code": "sync_unknown", "message": "Name too long" }
+```
+
+with HTTP status `422`.
+
+## Throwing from callbacks
+
+Your callbacks (`resolveScope`, `loadSyncStatus`, `loadPullChanges`, `applyPushChanges`) can throw:
+
+- Objects with a `status` property — the handler uses it for the HTTP status
+- `Error` instances — the handler uses `error.message`
+- Anything else — the handler uses `String(error)`
+
+The handler always catches and returns a proper error response. It never lets an unhandled exception reach the HTTP framework.
+
+## Scope resolution errors
+
+Return `{ ok: false, status, body }` from `resolveScope` instead of throwing. The handler uses the `status` for the HTTP response and `body` as the JSON response body directly — no error mapping.
+
+## Custom error handling
+
+If you need to log errors or add monitoring, wrap the handler:
+
+```ts
+app.post("/sync/push", async (c) => {
+  const response = await push(c.req.raw, {});
+  if (!response.ok) {
+    console.error("Push failed:", response.status);
+  }
+  return response;
+});
+```

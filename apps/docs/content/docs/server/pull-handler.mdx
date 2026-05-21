@@ -1,6 +1,107 @@
 ---
 title: Pull Handler
-description: TODO
+description: Implement the "give me changed rows" endpoint.
 ---
 
-TODO: Write this page.
+# Pull Handler
+
+The pull handler returns all rows that changed since a given cursor, grouped by table.
+
+## Factory
+
+```ts
+import { createSyncPullHandler } from "baresync/server";
+
+const pull = createSyncPullHandler({
+  encoding: "json",
+  limit: 1000,
+  resolveScope,
+  loadPullChanges: async ({ cursor, scope, tables }) =>
+    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+});
+```
+
+## What the handler does
+
+1. Decodes the request body
+2. Validates required fields (`scopeId`, `tables`, `cursor`)
+3. Calls `resolveScope` to authorize the request
+4. Calls your `loadPullChanges` callback
+5. Encodes the response
+
+## loadPullChanges callback
+
+```ts
+async ({ cursor, scope, scopeId, tables, limit, context, request }) => {
+  return {
+    cursor: "sync:1747894800000:items:item-99",
+    hasMore: false,
+    serverTime: new Date().toISOString(),
+    tables: [
+      {
+        table: "locations",
+        changedRows: [{ id: "loc-1", name: "Back room", ... }],
+        deletedIds: ["loc-3"],
+      },
+    ],
+  };
+}
+```
+
+| Input | Description |
+|---|---|
+| `cursor` | The client's last cursor (empty for baseline) |
+| `tables` | Requested table names (empty array = all tables) |
+| `limit` | Max rows per table (from handler config) |
+| `scope` | The resolved scope |
+| `scopeId` | Raw scope ID |
+| `context` | Handler context |
+| `request` | Raw `Request` |
+
+### Return shape
+
+```ts
+interface SyncPullResponse {
+  cursor: string;
+  hasMore: boolean;
+  serverTime: string;
+  tables: Array<{
+    table: string;
+    changedRows: unknown[];
+    deletedIds: string[];
+  }>;
+}
+```
+
+- `cursor` — the new cursor the client stores
+- `hasMore` — whether more rows exist (for pagination)
+- `serverTime` — ISO timestamp
+- `tables` — per-table changed rows and deleted row IDs
+
+### Changed rows vs deleted IDs
+
+- **changedRows** — rows that have been inserted or updated (no `deletedAt`)
+- **deletedIds** — row IDs that have been soft-deleted (`deletedAt` is set)
+
+The client uses these to upsert or mark deleted in the local database.
+
+## How the sync engine uses this
+
+The engine calls `/sync/pull` with:
+- `cursor` from `sync_cursors.last_cursor`
+- `tables` from the status handler's `changedTables` (or all tables for baseline)
+- Empty cursor for baseline or full resync
+
+After a successful pull, the engine updates `sync_cursors` with the new cursor.
+
+## limit
+
+The `limit` in the handler config is passed to your callback. Use it to cap the number of rows returned per table. The Drizzle repository helper does not enforce this — your `readRows` callback should apply the limit.
+
+## Wire it up
+
+```ts
+app.post("/sync/pull", (c) => pull(c.req.raw, {}));
+```
+
+Next: [Push Handler](/docs/server/push-handler).

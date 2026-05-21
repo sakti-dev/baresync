@@ -1,6 +1,87 @@
 ---
 title: Cursors
-description: TODO
+description: How sync cursors work — format, comparison, and the latest-row strategy.
 ---
 
-TODO: Write this page.
+# Cursors
+
+Cursors are opaque strings that the server returns and the client stores. They encode a position in the change stream so the client can resume from where it left off.
+
+## Cursor format
+
+```txt
+sync:{syncUpdatedAt}:{tableName}:{rowId}
+```
+
+Example:
+
+```txt
+sync:1747894800000:items:item-99
+```
+
+| Segment | Description |
+|---|---|
+| `sync` | Fixed prefix |
+| `syncUpdatedAt` | Millisecond timestamp of the row's `syncUpdatedAt` |
+| `tableName` | The table with the most recently updated row |
+| `rowId` | The primary key of that row |
+
+An empty string (`""`) means "no cursor" — the client has never synced (baseline).
+
+## Parsing
+
+```ts
+import { parseSyncCursor, parseSyncCursorTimestamp } from "baresync/server";
+
+const parsed = parseSyncCursor("sync:1747894800000:items:item-99");
+// { syncUpdatedAt: 1747894800000, tableName: "items", rowId: "item-99" }
+
+const timestamp = parseSyncCursorTimestamp("sync:1747894800000:items:item-99");
+// 1747894800000
+```
+
+`parseSyncCursor` returns `null` for empty cursors. `parseSyncCursorTimestamp` returns `0` for empty cursors.
+
+## Formatting
+
+```ts
+import { formatSyncCursor, formatLatestSyncCursor } from "baresync/server";
+
+formatSyncCursor({ syncUpdatedAt: 1747894800000, tableName: "items", rowId: "item-99" });
+// "sync:1747894800000:items:item-99"
+
+formatLatestSyncCursor({ id: "item-99", syncUpdatedAt: 1747894800000, tableName: "items" });
+// "sync:1747894800000:items:item-99"
+```
+
+## The latest-row strategy
+
+The server determines the cursor by finding the row with the highest `(syncUpdatedAt, updatedAt, id)` across all tables for the given scope. This is what `pickLatestSyncCursorRow` does:
+
+```ts
+import { pickLatestSyncCursorRow } from "baresync/server";
+
+const latestRow = pickLatestSyncCursorRow(rows);
+```
+
+Comparison order:
+1. `syncUpdatedAt` (descending) — newer timestamps win
+2. `updatedAt` (descending, string comparison) — tiebreaker
+3. `id` (descending, string comparison) — final tiebreaker
+
+This ensures cursors are monotonically increasing as long as the server assigns `syncUpdatedAt` with `Date.now()`.
+
+## How the Drizzle repository uses cursors
+
+For each table, the repository:
+1. Queries rows where `syncUpdatedAt > cursorTimestamp` (or all rows if cursor is empty)
+2. Splits results into `changedRows` (no `deletedAt`) and `deletedIds` (has `deletedAt`)
+3. Finds the latest row across all tables for the new cursor
+
+Your `readRows` callback should filter by `syncUpdatedAt > cursorTimestamp` and order by `syncUpdatedAt DESC, updatedAt DESC, id DESC`.
+
+## Cursor invalidation
+
+If the client sends a cursor that the server cannot parse, `parseSyncCursor` throws. The handler catches this and returns a `400` error. The client should then call `fullResync` to get a fresh baseline.
+
+Next: [Drizzle Repository Helper](/docs/server/drizzle-repository-helper).

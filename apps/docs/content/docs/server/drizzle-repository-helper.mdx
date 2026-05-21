@@ -1,6 +1,183 @@
 ---
 title: Drizzle Repository Helper
-description: TODO
+description: Use createDrizzleSyncRepository to implement all three handlers with per-table callbacks.
 ---
 
-TODO: Write this page.
+# Drizzle Repository Helper
+
+`createDrizzleSyncRepository` from `baresync/server/drizzle` implements `applyPushChanges`, `loadPullChanges`, and `loadSyncStatus` for you. You provide per-table callbacks and the helper wires everything together.
+
+## Import
+
+```ts
+import { createDrizzleSyncRepository, optionalString, requiredString } from "baresync/server/drizzle";
+```
+
+## Basic usage
+
+```ts
+const repository = createDrizzleSyncRepository({
+  tables: {
+    locations: {
+      buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+        id: requiredString(row.id, "locations.id"),
+        scopeId,
+        name: requiredString(row.name, "locations.name"),
+        syncUpdatedAt,
+        updatedAt,
+        createdAt: optionalString(row.createdAt) ?? updatedAt,
+        deletedAt: optionalString(row.deletedAt),
+      }),
+      readLatestRow: async ({ scopeId }) => {
+        const rows = await db
+          .select()
+          .from(locations)
+          .where(eq(locations.scopeId, scopeId))
+          .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id))
+          .limit(1);
+        return rows[0] ?? null;
+      },
+      readRows: ({ cursorTimestamp, scopeId }) =>
+        db
+          .select()
+          .from(locations)
+          .where(
+            cursorTimestamp > 0
+              ? and(eq(locations.scopeId, scopeId), gt(locations.syncUpdatedAt, cursorTimestamp))
+              : eq(locations.scopeId, scopeId)
+          )
+          .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id)),
+      softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+        await db
+          .update(locations)
+          .set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt })
+          .where(eq(locations.id, id));
+      },
+      upsertRow: async (row) => {
+        const { id: _id, ...setValues } = row;
+        await db.insert(locations).values(row).onConflictDoUpdate({
+          target: locations.id,
+          set: setValues,
+        });
+      },
+    },
+    // ... more tables
+  },
+});
+```
+
+## Per-table callbacks
+
+Each table in the `tables` object has five callbacks:
+
+### buildRow
+
+```ts
+buildRow({ row, scopeId, syncUpdatedAt, updatedAt }): TWriteRow
+```
+
+Constructs the database row from the raw push payload. Called once per changed row during push.
+
+- `row` — the raw object from the push request
+- `scopeId` — the resolved scope ID
+- `syncUpdatedAt` — server-assigned timestamp (number)
+- `updatedAt` — ISO string derived from `syncUpdatedAt`
+
+Use `requiredString` and `optionalString` to validate and coerce values:
+
+```ts
+import { requiredString, optionalString } from "baresync/server/drizzle";
+
+requiredString(row.name, "locations.name"); // throws if not a string
+optionalString(row.deletedAt);              // returns string | null
+```
+
+### readLatestRow
+
+```ts
+readLatestRow({ scopeId }): Promise<TReadRow | null>
+```
+
+Returns the single most recently updated row for a scope. Used to compute the cursor. Order by `syncUpdatedAt DESC, updatedAt DESC, id DESC` and `LIMIT 1`.
+
+### readRows
+
+```ts
+readRows({ cursorTimestamp, scopeId }): Promise<readonly TReadRow[]>
+```
+
+Returns all rows changed since `cursorTimestamp`. When `cursorTimestamp` is `0`, return all rows for the scope. Order by `syncUpdatedAt DESC, updatedAt DESC, id DESC`.
+
+The repository helper calls `splitSyncRows` on the results to separate changed rows from deleted rows.
+
+### upsertRow
+
+```ts
+upsertRow(row: TWriteRow): Promise<void>
+```
+
+Insert or update a row. Use Drizzle's `onConflictDoUpdate` with the primary key as the target.
+
+### softDeleteRow
+
+```ts
+softDeleteRow({ id, syncUpdatedAt, updatedAt }): Promise<void>
+```
+
+Mark a row as deleted by setting `deletedAt` and `syncUpdatedAt`.
+
+## Read row type
+
+Each table's read row must extend `DrizzleSyncReadRow`:
+
+```ts
+interface DrizzleSyncReadRow {
+  deletedAt: string | null;
+  id: string;
+  syncUpdatedAt: number;
+  updatedAt: string;
+}
+```
+
+These four fields are required for the repository to split rows and compute cursors.
+
+## Repository methods
+
+`createDrizzleSyncRepository` returns an object with three methods:
+
+| Method | Used by |
+|---|---|
+| `applyPushChanges({ changes, scopeId, syncUpdatedAt })` | Push handler |
+| `loadPullChanges({ cursor, scopeId, tables })` | Pull handler |
+| `loadSyncStatus({ cursor, scopeId })` | Status handler |
+| `tableNames` | Table name list (readonly) |
+
+## Wire it all together
+
+```ts
+const push = createSyncPushHandler({
+  encoding: "json",
+  resolveScope,
+  upsertOrder: SYNC_UPSERT_ORDER,
+  idempotency: { db },
+  applyPushChanges: ({ changes, scope, syncUpdatedAt }) =>
+    repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
+});
+
+const pull = createSyncPullHandler({
+  encoding: "json",
+  limit: 1000,
+  resolveScope,
+  loadPullChanges: ({ cursor, scope, tables }) =>
+    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+});
+
+const status = createSyncStatusHandler({
+  encoding: "json",
+  resolveScope,
+  loadSyncStatus: ({ cursor, scope }) =>
+    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+});
+```
+
+Next: [Low Level Primitives](/docs/server/low-level-primitives).

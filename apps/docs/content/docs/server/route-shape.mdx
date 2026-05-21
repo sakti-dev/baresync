@@ -1,6 +1,122 @@
 ---
 title: Route Shape
-description: TODO
+description: Request and response envelopes for the three sync endpoints.
 ---
 
-TODO: Write this page.
+# Route Shape
+
+All three sync routes share the same envelope structure. Requests are `POST` with a JSON body (or protobuf binary). Responses are JSON objects.
+
+## Request envelope
+
+Every request includes:
+
+| Field | Type | Present in | Description |
+|---|---|---|---|
+| `scopeId` | `string` | all | The scope the client is syncing under |
+| `clientId` | `string` | push | Unique device identifier |
+| `idempotencyKey` | `string` | push | Unique key for this push batch |
+| `tables` | `string[]` | pull, push | Which tables to include |
+| `cursor` | `string` | pull, status | The last cursor the client received |
+
+### Push request
+
+```json
+{
+  "scopeId": "outlet-1",
+  "clientId": "device-uuid",
+  "idempotencyKey": "batch-uuid",
+  "tables": [
+    {
+      "table": "locations",
+      "changedRows": [{ "id": "loc-1", "name": "Back room", ... }],
+      "deletedIds": ["loc-2"]
+    }
+  ]
+}
+```
+
+### Pull request
+
+```json
+{
+  "scopeId": "outlet-1",
+  "tables": ["locations", "items"],
+  "cursor": "sync:1747891200000:locations:loc-42"
+}
+```
+
+An empty `tables` array means "all tables". An empty `cursor` means "give me everything" (baseline sync).
+
+### Status request
+
+```json
+{
+  "scopeId": "outlet-1",
+  "cursor": "sync:1747891200000:locations:loc-42"
+}
+```
+
+## Response envelope
+
+### Pull / Push response
+
+```json
+{
+  "cursor": "sync:1747894800000:items:item-99",
+  "hasMore": false,
+  "serverTime": "2026-05-22T12:00:00.000Z",
+  "tables": [
+    {
+      "table": "locations",
+      "changedRows": [{ ... }],
+      "deletedIds": ["loc-3"]
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `cursor` | The new cursor the client should store for the next request |
+| `hasMore` | Whether more rows exist beyond this batch |
+| `serverTime` | Server ISO timestamp |
+| `tables` | Per-table changed rows and deleted IDs |
+
+### Status response
+
+```json
+{
+  "hasChanges": true,
+  "changedTables": ["items"],
+  "cursor": "sync:1747894800000:items:item-99",
+  "serverTime": "2026-05-22T12:00:00.000Z"
+}
+```
+
+| Field | Description |
+|---|---|
+| `hasChanges` | Whether any table has changed since the cursor |
+| `changedTables` | List of table names with changes |
+| `cursor` | Current latest cursor |
+| `serverTime` | Server ISO timestamp |
+
+### Error response
+
+```json
+{
+  "code": "sync_scope_invalid",
+  "message": "Invalid scope"
+}
+```
+
+See [Errors](/docs/server/errors) for all error codes.
+
+## Content type
+
+- JSON: `Content-Type: application/json`
+- Protobuf: `Content-Type: application/x-protobuf`
+
+The encoding is configured per handler, not negotiated per request.
+
+Next: [Scope Resolution](/docs/server/scope-resolution).

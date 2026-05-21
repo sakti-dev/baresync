@@ -1,6 +1,121 @@
 ---
 title: Scope Resolution
-description: TODO
+description: Authorize requests and map scope IDs to tenant context.
 ---
 
-TODO: Write this page.
+# Scope Resolution
+
+Every handler calls `resolveScope` before accessing your database. This is where you check authorization, verify tenant membership, and decide whether the request is allowed.
+
+## The callback
+
+```ts
+const resolveScope = async ({ scopeId, request, context }) => {
+  // Check auth, verify tenant, etc.
+  if (!isAuthorized(request)) {
+    return {
+      ok: false,
+      status: 401,
+      body: { error: "unauthorized" },
+    };
+  }
+
+  if (!isValidScope(scopeId)) {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: "invalid_scope" },
+    };
+  }
+
+  return {
+    ok: true,
+    scope: { scopeId, tenantId: "tenant-1" },
+  };
+};
+```
+
+## Return types
+
+### Authorized
+
+```ts
+{
+  ok: true,
+  scope: TScope, // any shape you want
+}
+```
+
+The `scope` value is passed to all subsequent callbacks (`loadSyncStatus`, `loadPullChanges`, `applyPushChanges`). Put whatever you need here — tenant ID, permissions, feature flags.
+
+### Unauthorized
+
+```ts
+{
+  ok: false,
+  status: number,
+  body: unknown,
+}
+```
+
+The handler returns this as a JSON response with the given HTTP status.
+
+## Input
+
+| Field | Description |
+|---|---|
+| `scopeId` | The scope ID from the request body |
+| `request` | The raw `Request` object (use for auth headers) |
+| `context` | Whatever you passed as the second argument to the handler |
+
+## Simple example: single scope
+
+For development or single-tenant apps, accept one scope:
+
+```ts
+const resolveScope = ({ scopeId }) => {
+  if (scopeId !== "default") {
+    return {
+      ok: false as const,
+      status: 403,
+      body: { error: "single_scope_only" },
+    };
+  }
+
+  return {
+    ok: true as const,
+    scope: { scopeId },
+  };
+};
+```
+
+## Multi-tenant example
+
+```ts
+const resolveScope = async ({ scopeId, request }) => {
+  const session = await verifySession(request.headers.get("Authorization"));
+  if (!session) {
+    return { ok: false as const, status: 401, body: { error: "unauthorized" } };
+  }
+
+  const membership = await db.query(
+    "SELECT tenant_id FROM memberships WHERE user_id = ? AND scope_id = ?",
+    [session.userId, scopeId]
+  );
+
+  if (!membership) {
+    return { ok: false as const, status: 403, body: { error: "forbidden" } };
+  }
+
+  return {
+    ok: true as const,
+    scope: { scopeId, tenantId: membership.tenantId, userId: session.userId },
+  };
+};
+```
+
+## Type safety
+
+The handlers are generic over `TScope`. When you use `createSyncPushHandler<TContext, TScope>`, the `scope` parameter in your callbacks will be typed as `TScope`.
+
+Next: [Idempotency](/docs/server/idempotency).
