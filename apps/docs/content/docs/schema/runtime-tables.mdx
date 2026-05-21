@@ -62,7 +62,49 @@ This table lives in the **server database** only.
 
 ## Factory functions
 
-Create these tables using factory functions from `baresync/schema`:
+Baresync provides factory functions that create Drizzle table definitions for the runtime tables. Use these in your sync contract package so both sides get the correct schema.
+
+### createSyncOutboxTable
+
+Creates the `sync_outbox` table with its unique index on pending rows.
+
+```ts
+import { createSyncOutboxTable } from "baresync/schema";
+
+export const syncOutbox = createSyncOutboxTable();
+```
+
+### createSyncCursorsTable
+
+Creates the `sync_cursors` table.
+
+```ts
+import { createSyncCursorsTable } from "baresync/schema";
+
+export const syncCursors = createSyncCursorsTable();
+```
+
+### createSyncBatchRequestsTable
+
+Creates the `sync_batch_requests` table with its idempotency index.
+
+```ts
+import { createSyncBatchRequestsTable } from "baresync/schema";
+
+export const syncBatchRequests = createSyncBatchRequestsTable();
+```
+
+### Pre-built instances
+
+Baresync also exports ready-made instances if you do not need to customize:
+
+```ts
+import { syncOutbox, syncCursors, syncBatchRequests } from "baresync/schema";
+```
+
+These are the same as calling the factory functions yourself. Use whichever style you prefer.
+
+### Typical local-schema.ts
 
 ```ts
 import { createSyncCursorsTable, createSyncOutboxTable } from "baresync/schema";
@@ -71,14 +113,10 @@ export const syncOutbox = createSyncOutboxTable();
 export const syncCursors = createSyncCursorsTable();
 ```
 
+### Typical api-schema.ts
+
 ```ts
 import { createSyncBatchRequestsTable } from "baresync/schema";
 
 export const syncBatchRequests = createSyncBatchRequestsTable();
-```
-
-Pre-built instances are also exported if you prefer:
-
-```ts
-import { syncOutbox, syncCursors, syncBatchRequests } from "baresync/schema";
 ```
