@@ -1,27 +1,14 @@
-# Baresync Docs
+# docs
 
-This is the public documentation site for Baresync, built with Waku and Fumadocs.
+This is a Tanstack Start application generated with
+[Create Fumadocs](https://github.com/fuma-nama/fumadocs).
 
-## Development
-
-```bash
-bun run dev
-```
-
-## Checks
+Run development server:
 
 ```bash
-bun run types:check
-bun run build
+npm run dev
+# or
+pnpm dev
+# or
+yarn dev
 ```
-
-From the repository root, also run:
-
-```bash
-bun x ultracite check
-bun run typecheck
-```
-
-## Content
-
-Docs live in `content/docs`. Mermaid diagrams are supported through `remarkMdxMermaid` and the local `Mermaid` MDX component in `src/components/mdx/mermaid.tsx`.

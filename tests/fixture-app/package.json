@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@repo/baresync": "workspace:*",
+    "baresync": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "drizzle-orm": "^0.45.2"
   },

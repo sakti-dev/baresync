@@ -4,26 +4,27 @@
   "type": "module",
   "sideEffects": false,
   "scripts": {
-    "dev": "waku dev",
-    "build": "waku build",
-    "start": "waku start",
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "vite preview",
+    "preview": "vite preview",
     "types:check": "fumadocs-mdx && tsc --noEmit",
     "postinstall": "fumadocs-mdx",
     "lint": "biome check",
     "format": "biome format --write"
   },
   "dependencies": {
-    "@takumi-rs/image-response": "^1.2.1",
-    "beautiful-mermaid": "^1.1.3",
-    "fumadocs-core": "16.8.12",
+    "@tanstack/react-router": "1.170.4",
+    "@tanstack/react-router-devtools": "1.167.0",
+    "@tanstack/react-start": "1.168.6",
+    "fumadocs-core": "16.9.0",
     "fumadocs-mdx": "15.0.7",
-    "fumadocs-ui": "16.8.12",
+    "fumadocs-ui": "16.9.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-server-dom-webpack": "^19.2.6",
     "tailwind-merge": "^3.6.0",
-    "waku": "1.0.0-beta.0"
+    "vite": "^8.0.13"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
@@ -31,9 +32,10 @@
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "nitro": "3.0.260429-beta",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13",
     "@biomejs/biome": "^2.4.15"
   }
 }
