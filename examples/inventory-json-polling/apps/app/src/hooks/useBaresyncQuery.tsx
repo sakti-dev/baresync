@@ -5,7 +5,6 @@ import { listen } from "@tauri-apps/api/event";
 import { createSyncClient, type SyncClient } from "baresync/tauri";
 import {
   createContext,
-  createElement,
   type ReactNode,
   useContext,
   useEffect,
@@ -82,7 +81,11 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  return createElement(SyncClientContext.Provider, { value: client }, children);
+  return (
+    <SyncClientContext.Provider value={client}>
+      {children}
+    </SyncClientContext.Provider>
+  );
 }
 
 export function useSyncClient(): SyncClient {

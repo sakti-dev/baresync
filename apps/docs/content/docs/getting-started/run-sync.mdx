@@ -13,7 +13,7 @@ The last piece connects your React app to the sync engine. You need:
 
 ## Create the sync client provider
 
-Create `apps/app/src/hooks/useBaresyncQuery.ts`:
+Create `apps/app/src/hooks/useBaresyncQuery.tsx`:
 
 ```ts
 import { INVENTORY_SCOPE_ID } from "@repo/sync-contract/constants";
@@ -23,7 +23,6 @@ import { listen } from "@tauri-apps/api/event";
 import { createSyncClient, type SyncClient } from "baresync/tauri";
 import {
   createContext,
-  createElement,
   type ReactNode,
   useContext,
   useEffect,
@@ -91,7 +90,11 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  return createElement(SyncClientContext.Provider, { value: client }, children);
+  return (
+    <SyncClientContext.Provider value={client}>
+      {children}
+    </SyncClientContext.Provider>
+  );
 }
 
 export function useSyncClient(): SyncClient {
