@@ -11,26 +11,7 @@ You've built your app, tested it locally, and now you're shipping it to real use
 
 Every time your app syncs, this is what happens:
 
-```txt
-App starts
-  → Migrations run automatically
-  → Plugin connects to SQLite
-
-User creates/edits data
-  → Your code writes to the local DB
-  → Your code calls writeLocalChange()
-  → Row is added to sync_outbox (dirty count increases)
-
-Polling tick fires (or user calls syncNow)
-  → Engine reads dirty outbox entries
-  → Engine checks server for changes since last cursor
-  → If dirty rows exist → push to server
-  → If server has changes → pull from server
-  → Successful push marks outbox entries as synced
-  → Successful pull updates the cursor
-  → GC removes soft-deleted rows that are already synced
-  → Dirty count returns to 0
-```
+<SyncLifecycleDiagram />
 
 Most of this is automatic. Your job is to configure it correctly, verify it's working, and fix it when it breaks.
 

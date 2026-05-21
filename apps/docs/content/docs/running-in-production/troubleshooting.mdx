@@ -86,61 +86,7 @@ Your server threw an unhandled error.
 
 ## Diagnostic flowchart: "My data isn't syncing"
 
-When a user reports that changes aren't appearing, follow this order:
-
-### Step 1: Check local state
-
-```ts
-const state = await client.getState();
-```
-
-- **`local_dirty_count > 0`** → Local changes exist but haven't been pushed. Continue to step 2.
-- **`local_dirty_count === 0`** → Local changes were pushed. Continue to step 3.
-
-### Step 2: Check if push is reaching the server
-
-Call `syncNow()` manually and check the result:
-
-```ts
-const result = await client.syncNow();
-console.log(result);
-```
-
-- **`result.push` exists with `tables_synced`** → Push succeeded. The server has the data.
-- **`result.push` exists with `rejected_tables`** → Server rejected some tables. Check server logs.
-- **`result.push` is missing** → Push didn't run. The engine decided no push was needed, or it errored.
-- **Throws an error** → Check the error type above.
-
-### Step 3: Check if pull is working on the other device
-
-On the device that should receive the data:
-
-```ts
-const state = await client.getState();
-console.log(state.last_server_watermark);
-```
-
-If the watermark is old, call `syncNow()` and check if `result.pull.rows_received > 0`.
-
-### Step 4: Check the server
-
-Hit the server's state endpoint (if you have one) or query the database directly:
-
-```bash
-sqlite3 /path/to/server.db "SELECT COUNT(*) FROM categories WHERE scope_id = 'merchant-123'"
-```
-
-If the row exists on the server but doesn't appear on the client, the pull isn't advancing.
-
-### Step 5: Nuclear option
-
-If nothing above helps:
-
-```ts
-await client.fullResync();
-```
-
-This clears the cursor and re-pulls everything. If the data still doesn't appear, it doesn't exist on the server.
+<TroubleshootingDiagram />
 
 ## Common failure patterns
 

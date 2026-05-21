@@ -21,29 +21,7 @@ Given a local SQLite database and a configured scope, the engine:
 
 ## Architecture
 
-```txt
-┌─────────────┐    commands     ┌──────────────┐    HTTP     ┌──────────┐
-│  JS Client   │ ──────────────→ │ Tauri Plugin  │ ──────────→ │  Server   │
-│  SyncClient  │ ←────────────── │ (Rust)        │ ←────────── │  Routes   │
-└─────────────┘    events        └──────────────┘             └──────────┘
-                                    │
-                                    ▼
-                               ┌──────────┐
-                               │ Engine    │
-                               │ ─ status  │
-                               │ ─ push    │
-                               │ ─ pull    │
-                               │ ─ gc      │
-                               └──────────┘
-                                    │
-                                    ▼
-                               ┌──────────┐
-                               │ SQLite   │
-                               │ ─ tables │
-                               │ ─ outbox │
-                               │ ─ cursors│
-                               └──────────┘
-```
+<SyncEngineDiagram />
 
 ## Key runtime tables
 
