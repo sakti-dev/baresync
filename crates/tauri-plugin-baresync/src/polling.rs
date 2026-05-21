@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Notify};
-use tokio::time::{Instant, Duration};
+use tokio::time::{Duration, Instant};
+
+use crate::commands::{PluginEvent, PluginEventSink};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PollingStatus {
@@ -14,6 +16,21 @@ pub struct PollingStatus {
 pub struct PollingState {
     pub paused: bool,
     pub last_sync_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PollingSyncOutcome {
+    pub data_changed: bool,
+    pub status_changed: bool,
+}
+
+impl PollingSyncOutcome {
+    pub fn completed(data_changed: bool) -> Self {
+        Self {
+            data_changed,
+            status_changed: true,
+        }
+    }
 }
 
 pub enum ControlMsg {
@@ -42,14 +59,14 @@ pub async fn polling_loop<F, Fut>(
     scope_id: String,
     interval_secs: u64,
     sync_fn: F,
+    event_sink: Arc<dyn PluginEventSink>,
     notify: Arc<Notify>,
     mut control_rx: mpsc::Receiver<ControlMsg>,
     sync_in_progress: Arc<AtomicBool>,
     state: Arc<tokio::sync::Mutex<PollingState>>,
-)
-where
+) where
     F: Fn(String) -> Fut,
-    Fut: std::future::Future<Output = Result<(), String>>,
+    Fut: std::future::Future<Output = Result<PollingSyncOutcome, String>>,
 {
     let interval = Duration::from_secs(interval_secs);
     let mut next_tick = Instant::now() + interval;
@@ -72,7 +89,14 @@ where
                     continue;
                 }
 
-                let _ = sync_fn(scope_id.clone()).await;
+                if let Ok(outcome) = sync_fn(scope_id.clone()).await {
+                    if outcome.data_changed {
+                        event_sink.emit(PluginEvent::DataChanged);
+                    }
+                    if outcome.status_changed {
+                        event_sink.emit(PluginEvent::SyncStatusChanged);
+                    }
+                }
                 end_sync(&sync_in_progress);
 
                 mark_sync_completed(&state).await;
@@ -93,7 +117,14 @@ where
                     continue;
                 }
 
-                let _ = sync_fn(scope_id.clone()).await;
+                if let Ok(outcome) = sync_fn(scope_id.clone()).await {
+                    if outcome.data_changed {
+                        event_sink.emit(PluginEvent::DataChanged);
+                    }
+                    if outcome.status_changed {
+                        event_sink.emit(PluginEvent::SyncStatusChanged);
+                    }
+                }
                 end_sync(&sync_in_progress);
 
                 mark_sync_completed(&state).await;
@@ -135,7 +166,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::{PluginEvent, PluginEventSink};
     use std::sync::atomic::AtomicUsize;
+
+    #[derive(Clone, Default)]
+    struct RecordingEventSink {
+        events: Arc<std::sync::Mutex<Vec<PluginEvent>>>,
+    }
+
+    impl RecordingEventSink {
+        fn events(&self) -> Vec<PluginEvent> {
+            self.events
+                .lock()
+                .expect("event sink mutex poisoned")
+                .clone()
+        }
+    }
+
+    impl PluginEventSink for RecordingEventSink {
+        fn emit(&self, event: PluginEvent) {
+            self.events
+                .lock()
+                .expect("event sink mutex poisoned")
+                .push(event);
+        }
+    }
 
     #[tokio::test]
     async fn timer_triggers_sync_and_resets() {
@@ -145,10 +200,11 @@ mod tests {
             let count = sync_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(true))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -161,6 +217,7 @@ mod tests {
             "test-scope".to_string(),
             1,
             sync_fn,
+            event_sink.clone(),
             notify.clone(),
             rx,
             sync_in_progress,
@@ -174,6 +231,10 @@ mod tests {
         assert!(sync_count.load(Ordering::Relaxed) >= 1);
         let st = state.lock().await;
         assert!(st.last_sync_at.is_some());
+        assert_eq!(
+            event_sink.events(),
+            vec![PluginEvent::DataChanged, PluginEvent::SyncStatusChanged]
+        );
     }
 
     #[tokio::test]
@@ -184,10 +245,11 @@ mod tests {
             let count = sync_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(true))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -200,6 +262,7 @@ mod tests {
             "test-scope".to_string(),
             300,
             sync_fn,
+            event_sink.clone(),
             notify.clone(),
             rx,
             sync_in_progress,
@@ -214,6 +277,10 @@ mod tests {
         handle.await.unwrap();
 
         assert!(sync_count.load(Ordering::Relaxed) >= 1);
+        assert_eq!(
+            event_sink.events(),
+            vec![PluginEvent::DataChanged, PluginEvent::SyncStatusChanged]
+        );
     }
 
     #[tokio::test]
@@ -224,10 +291,11 @@ mod tests {
             let count = sync_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(true))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -240,6 +308,7 @@ mod tests {
             "test-scope".to_string(),
             1,
             sync_fn,
+            event_sink,
             notify.clone(),
             rx,
             sync_in_progress,
@@ -266,10 +335,11 @@ mod tests {
             let count = sync_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(false))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -282,6 +352,7 @@ mod tests {
             "test-scope".to_string(),
             1,
             sync_fn,
+            event_sink,
             notify.clone(),
             rx,
             sync_in_progress,
@@ -310,10 +381,11 @@ mod tests {
             async move {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(false))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -326,6 +398,7 @@ mod tests {
             "test-scope".to_string(),
             1,
             sync_fn,
+            event_sink,
             notify.clone(),
             rx,
             sync_in_progress,
@@ -352,10 +425,11 @@ mod tests {
             let count = sync_count_clone.clone();
             async move {
                 count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(PollingSyncOutcome::completed(false))
             }
         };
 
+        let event_sink = Arc::new(RecordingEventSink::default());
         let notify = Arc::new(Notify::new());
         let sync_in_progress = Arc::new(AtomicBool::new(false));
         let state = Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -368,6 +442,7 @@ mod tests {
             "test-scope".to_string(),
             1,
             sync_fn,
+            event_sink,
             notify.clone(),
             rx,
             sync_in_progress,

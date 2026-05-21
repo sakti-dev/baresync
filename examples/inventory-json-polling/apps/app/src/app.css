@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "DM Serif Display", Georgia, serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-cream-50: #fdfcfa;
+  --color-cream-100: #f7f4ec;
+  --color-cream-200: #f0ebe0;
+  --color-cream-300: #e6dccb;
+
+  --color-wood-500: #6d5f53;
+  --color-wood-700: #3d3428;
+  --color-wood-900: #1f1a16;
+
+  --color-forest-50: #eaf5f1;
+  --color-forest-100: #d0ebe2;
+  --color-forest-500: #1f6b57;
+  --color-forest-600: #185a48;
+  --color-forest-700: #124839;
+
+  --color-terra-500: #c4623a;
+  --color-terra-600: #a8512f;
+
+  --color-amber-500: #d4920a;
+  --color-amber-100: #fef3cd;
+}
+
+@layer base {
+  html,
+  body {
+    background:
+      radial-gradient(
+        circle at top left,
+        rgba(31, 107, 87, 0.12),
+        transparent 28%
+      ),
+      linear-gradient(180deg, #fbf8f1 0%, #f4efe6 100%);
+    @apply min-h-screen bg-cream-100 text-wood-900 font-sans;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-sync {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility animate-fade-up {
+  animation: fade-up 0.6s ease-out both;
+}
+
+@utility animate-pulse-sync {
+  animation: pulse-sync 2s ease-in-out infinite;
+}
+
+@utility animate-stagger-in {
+  animation: stagger-in 0.35s ease-out both;
+}

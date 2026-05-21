@@ -6,7 +6,9 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { defineSyncContract, syncSchema } from "../contract";
+import { createSyncCursorsTable, createSyncOutboxTable } from "../local-schema";
 import { apiSyncColumns, localSyncColumns } from "../row-state";
+import { createSyncBatchRequestsTable } from "../server-schema";
 import { defineSyncedTable, syncedTable } from "../synced-table";
 
 const categories = sqliteTable("categories", {
@@ -58,6 +60,57 @@ describe("sync column helpers", () => {
     expect(columns).toContain("created_at");
     expect(columns).toContain("updated_at");
     expect(columns).toContain("sync_updated_at");
+  });
+});
+
+describe("sync framework table helpers", () => {
+  it("creates the canonical local outbox table", () => {
+    const outbox = createSyncOutboxTable();
+    const config = getTableConfig(outbox);
+    const columns = config.columns.map((column) => column.name);
+    const indexes = config.indexes.map((index) => index.config.name);
+
+    expect(config.name).toBe("sync_outbox");
+    expect(columns).toEqual([
+      "id",
+      "table_name",
+      "row_id",
+      "operation",
+      "payload",
+      "scope_id",
+      "changed_at",
+      "synced_at",
+    ]);
+    expect(indexes).toContain("sync_outbox_pending_row_unique");
+  });
+
+  it("creates the canonical local cursors table", () => {
+    const cursors = createSyncCursorsTable();
+    const config = getTableConfig(cursors);
+    const columns = config.columns.map((column) => column.name);
+
+    expect(config.name).toBe("sync_cursors");
+    expect(columns).toEqual(["id", "scope_id", "last_cursor", "updated_at"]);
+  });
+
+  it("creates the canonical server idempotency table", () => {
+    const requests = createSyncBatchRequestsTable();
+    const config = getTableConfig(requests);
+    const columns = config.columns.map((column) => column.name);
+    const indexes = config.indexes.map((index) => index.config.name);
+
+    expect(config.name).toBe("sync_batch_requests");
+    expect(columns).toEqual([
+      "id",
+      "client_id",
+      "idempotency_key",
+      "request_hash",
+      "status",
+      "response_body",
+      "created_at",
+      "completed_at",
+    ]);
+    expect(indexes).toContain("sync_batch_requests_client_idemp_idx");
   });
 });
 

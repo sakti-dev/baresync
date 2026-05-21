@@ -31,16 +31,40 @@ pub struct BatchResult {
 }
 
 pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError> {
+    Ok(run_sql_execution(pool, query).await?.rows)
+}
+
+#[derive(Debug)]
+pub struct SqlExecutionResult {
+    pub rows: Vec<SqlRow>,
+    pub rows_affected: u64,
+}
+
+pub async fn run_sql_with_metadata(
+    pool: &SqlitePool,
+    query: SqlQuery,
+) -> Result<SqlExecutionResult, SyncError> {
+    run_sql_execution(pool, query).await
+}
+
+async fn run_sql_execution(
+    pool: &SqlitePool,
+    query: SqlQuery,
+) -> Result<SqlExecutionResult, SyncError> {
     let mut q = sqlx::query(&query.sql);
     for param in &query.params {
         q = bind_value(q, param);
     }
 
     if query.method == "run" {
-        q.execute(pool)
+        let result = q
+            .execute(pool)
             .await
             .map_err(|e| SyncError::Database(format!("Query failed: {}", e)))?;
-        return Ok(vec![]);
+        return Ok(SqlExecutionResult {
+            rows: vec![],
+            rows_affected: result.rows_affected(),
+        });
     }
 
     let rows = q
@@ -68,7 +92,10 @@ pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, 
         })
         .collect();
 
-    Ok(result)
+    Ok(SqlExecutionResult {
+        rows: result,
+        rows_affected: 0,
+    })
 }
 
 pub async fn run_sql_batch(
@@ -205,6 +232,49 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(verify[0].values[0], Value::Number(1.into()));
+    }
+
+    #[tokio::test]
+    async fn run_sql_with_metadata_reports_rows_affected_for_writes_and_reads() {
+        let pool = test_pool_with_table().await;
+
+        let insert = run_sql_with_metadata(
+            &pool,
+            SqlQuery {
+                sql: "INSERT INTO items (id, name, count) VALUES ('3', 'thing', 7)".to_string(),
+                params: vec![],
+                method: "run".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(insert.rows_affected, 1);
+        assert!(insert.rows.is_empty());
+
+        let select = run_sql_with_metadata(
+            &pool,
+            SqlQuery {
+                sql: "SELECT id, name FROM items WHERE id = '3'".to_string(),
+                params: vec![],
+                method: "all".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(select.rows_affected, 0);
+        assert_eq!(select.rows.len(), 1);
+
+        let noop = run_sql_with_metadata(
+            &pool,
+            SqlQuery {
+                sql: "UPDATE items SET name = 'missing' WHERE id = 'missing'".to_string(),
+                params: vec![],
+                method: "run".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(noop.rows_affected, 0);
     }
 
     #[tokio::test]

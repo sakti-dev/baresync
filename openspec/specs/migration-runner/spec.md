@@ -65,6 +65,20 @@ The `crates/baresync-core/src/migrations.rs` module SHALL define `EmbeddedMigrat
 - **WHEN** `run_migrations` is called with `&[EmbeddedMigration { name: "0001_init", sql: "CREATE TABLE ..." }]`
 - **THEN** the migration SHALL execute and be recorded
 
+### Requirement: Migration directory execution
+
+The `crates/baresync-core/src/migrations.rs` module SHALL export `run_migration_files(pool, config, dir)` that collects `.sql` files from a directory, reads each file, and applies them with the same tracking, ordering, statement splitting, and transaction semantics as embedded migrations.
+
+#### Scenario: Directory migrations apply in filename order
+
+- **WHEN** a migration directory contains `0002_insert.sql` and `0001_create.sql`
+- **THEN** `run_migration_files` SHALL execute `0001_create` before `0002_insert`
+
+#### Scenario: Directory migration records use file stems
+
+- **WHEN** `run_migration_files` applies `0001_create_items.sql`
+- **THEN** `__drizzle_migrations.hash` SHALL store `0001_create_items`
+
 ### Requirement: Migration status query
 
 The `crates/baresync-core/src/migrations.rs` module SHALL export `get_migration_status(pool)` that returns the list of applied migration hashes and timestamps.

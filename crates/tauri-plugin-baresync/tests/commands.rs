@@ -1,29 +1,144 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::drizzle_proxy::{SqlQuery, SqlStatement};
 use baresync_core::engine::SyncContractTables;
+use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::migrations::EmbeddedMigration;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri_plugin_baresync::commands::{
     get_db_info_with_state, get_migration_status_with_state, get_sync_local_state_with_state,
-    handle_window_focus_for_state, purge_synced_outbox_with_state,
-    run_garbage_collection_with_state, run_migrations_with_state, run_sql_batch_with_state,
-    run_sql_with_state, start_polling_with_state, stop_polling_with_state, PluginState,
+    handle_window_focus_for_state, pause_polling_with_state, purge_synced_outbox_with_state,
+    resume_polling_with_state, run_garbage_collection_with_state, run_migrations_with_state,
+    run_sql_batch_with_state, run_sql_with_state, start_polling_with_state,
+    stop_polling_with_state, sync_full_resync_with_state, sync_now_with_state,
+    sync_pull_with_state, sync_push_with_state, PluginEvent, PluginEventSink, PluginState,
 };
 use tauri_plugin_baresync::polling::PollingState;
 use tokio::sync::Notify;
 
+#[derive(Clone, Default)]
+struct RecordingEventSink {
+    events: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl RecordingEventSink {
+    async fn events(&self) -> Vec<String> {
+        self.events
+            .lock()
+            .expect("event sink mutex poisoned")
+            .clone()
+    }
+}
+
+impl PluginEventSink for RecordingEventSink {
+    fn emit(&self, event: PluginEvent) {
+        let mut guard = self.events.lock().expect("event sink mutex poisoned");
+        guard.push(match event {
+            PluginEvent::DataChanged => "baresync://data-changed".to_string(),
+            PluginEvent::SyncStatusChanged => "baresync://sync-status-changed".to_string(),
+        });
+    }
+}
+
+#[derive(Clone)]
+struct RecordingTransport {
+    push_response: Value,
+    status_response: Value,
+    pull_response: Value,
+}
+
+impl RecordingTransport {
+    fn new(push_response: Value, status_response: Value, pull_response: Value) -> Self {
+        Self {
+            push_response,
+            status_response,
+            pull_response,
+        }
+    }
+}
+
+impl SyncHttpTransport for RecordingTransport {
+    fn send_push_request(&self, _api_url: String, _envelope: Value) -> SyncTransportFuture {
+        let response = self.push_response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn send_status_request(&self, _api_url: String, _body: Value) -> SyncTransportFuture {
+        let response = self.status_response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn send_pull_request(&self, _api_url: String, _body: Value) -> SyncTransportFuture {
+        let response = self.pull_response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+}
+
+fn pull_response_with_rows(rows: Vec<Value>) -> Value {
+    Value::Object(
+        serde_json::json!({
+            "cursor": "sync:phase14",
+            "hasMore": false,
+            "serverTime": "2026-05-20T00:00:00.000Z",
+            "tables": [{
+                "table": "items",
+                "changedRows": rows,
+                "deletedIds": []
+            }]
+        })
+        .as_object()
+        .cloned()
+        .unwrap_or_default(),
+    )
+}
+
+fn push_response_with_table_ack() -> Value {
+    serde_json::json!({
+        "tables": [{
+            "table": "items",
+            "acceptedCreatedIds": ["item-1"],
+            "acceptedUpdatedIds": [],
+            "acceptedDeletedIds": [],
+            "rejected": []
+        }],
+        "serverTime": "2026-05-20T00:00:00.000Z",
+    })
+}
+
+fn status_response(has_changes: bool) -> Value {
+    if has_changes {
+        serde_json::json!({
+            "changedTables": ["items"],
+            "hasChanges": true,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-20T00:00:00.000Z",
+        })
+    } else {
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "sync:phase14",
+            "serverTime": "2026-05-20T00:00:00.000Z",
+        })
+    }
+}
+
 struct TestCommandState {
     state: PluginState,
+    event_sink: RecordingEventSink,
 }
 
 impl TestCommandState {
     async fn new() -> Self {
+        Self::new_with_transport(baresync_core::http::default_transport()).await
+    }
+
+    async fn new_with_transport(transport: Arc<dyn SyncHttpTransport>) -> Self {
         let db_path = temp_db_path();
         let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
             .unwrap()
@@ -34,12 +149,14 @@ impl TestCommandState {
             .connect_with(options)
             .await
             .unwrap();
+        let event_sink = RecordingEventSink::default();
 
         let state = PluginState {
             pool: Arc::new(pool),
             sync_config: SyncEngineConfig {
                 api_url: "http://127.0.0.1:9/sync".to_string(),
                 scope_id: "scope-1".to_string(),
+                transport,
                 ..Default::default()
             },
             contract_tables: SyncContractTables {
@@ -55,7 +172,9 @@ impl TestCommandState {
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         deleted_at TEXT,
-                        is_synced INTEGER NOT NULL DEFAULT 0
+                        is_synced INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT,
+                        updated_at TEXT
                     );
                     --> statement-breakpoint
                     CREATE TABLE IF NOT EXISTS sync_outbox (
@@ -83,6 +202,7 @@ impl TestCommandState {
                     );
                 ",
             }]),
+            migrations_dir: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
@@ -93,9 +213,10 @@ impl TestCommandState {
             })),
             poll_interval_secs: 30,
             poll_on_background: false,
+            event_sink: Arc::new(event_sink.clone()),
         };
 
-        Self { state }
+        Self { state, event_sink }
     }
 }
 
@@ -182,6 +303,278 @@ async fn db_proxy_commands_use_shared_test_state() {
     let info = get_db_info_with_state(&harness.state).await.unwrap();
     assert_eq!(info.db_path, harness.state.db_path.display().to_string());
     assert!(info.size_bytes > 0);
+}
+
+#[tokio::test]
+async fn db_proxy_commands_emit_data_changed_for_writes_only() {
+    let harness = TestCommandState::new().await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        .execute(&*harness.state.pool)
+        .await
+        .unwrap();
+
+    run_sql_with_state(
+        &harness.state,
+        SqlQuery {
+            sql: "INSERT INTO db_proxy_items (id, name) VALUES ('item-1', 'Coffee')".to_string(),
+            params: vec![],
+            method: "run".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(events, vec!["baresync://data-changed".to_string()]);
+}
+
+#[tokio::test]
+async fn db_proxy_commands_do_not_emit_data_changed_for_reads_or_zero_row_writes() {
+    let harness = TestCommandState::new().await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        .execute(&*harness.state.pool)
+        .await
+        .unwrap();
+
+    run_sql_with_state(
+        &harness.state,
+        SqlQuery {
+            sql: "SELECT id, name FROM db_proxy_items".to_string(),
+            params: vec![],
+            method: "all".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    run_sql_batch_with_state(
+        &harness.state,
+        vec![SqlStatement {
+            sql: "UPDATE db_proxy_items SET name = 'Coffee' WHERE id = 'missing'".to_string(),
+            params: vec![],
+        }],
+    )
+    .await
+    .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert!(events.is_empty());
+}
+
+#[tokio::test]
+async fn db_proxy_batch_commands_emit_data_changed_for_nonzero_rows_only() {
+    let harness = TestCommandState::new().await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        .execute(&*harness.state.pool)
+        .await
+        .unwrap();
+
+    run_sql_batch_with_state(
+        &harness.state,
+        vec![
+            SqlStatement {
+                sql: "INSERT INTO db_proxy_items (id, name) VALUES (?1, ?2)".to_string(),
+                params: vec![
+                    Value::String("item-1".to_string()),
+                    Value::String("Coffee".to_string()),
+                ],
+            },
+            SqlStatement {
+                sql: "INSERT INTO db_proxy_items (id, name) VALUES (?1, ?2)".to_string(),
+                params: vec![
+                    Value::String("item-2".to_string()),
+                    Value::String("Tea".to_string()),
+                ],
+            },
+        ],
+    )
+    .await
+    .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(events, vec!["baresync://data-changed".to_string()]);
+}
+
+#[tokio::test]
+async fn sync_pull_emits_data_changed_when_rows_are_applied() {
+    let transport = Arc::new(RecordingTransport::new(
+        serde_json::json!({ "tables": [], "serverTime": "2026-05-20T00:00:00.000Z" }),
+        status_response(false),
+        pull_response_with_rows(vec![serde_json::json!({
+            "id": "item-1",
+            "name": "Pulled Item",
+            "deletedAt": null
+        })]),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+
+    sync_pull_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(
+        events,
+        vec![
+            "baresync://data-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn sync_push_emits_data_changed_when_rows_are_accepted() {
+    let transport = Arc::new(RecordingTransport::new(
+        push_response_with_table_ack(),
+        status_response(false),
+        pull_response_with_rows(Vec::new()),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+
+    sqlx::query(
+        "INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('item-1', 'Coffee', NULL, 0)",
+    )
+    .execute(&*harness.state.pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
+         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
+    )
+    .execute(&*harness.state.pool)
+    .await
+    .unwrap();
+
+    sync_push_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(
+        events,
+        vec![
+            "baresync://data-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn sync_now_emits_data_changed_when_push_changes_local_rows() {
+    let transport = Arc::new(RecordingTransport::new(
+        push_response_with_table_ack(),
+        status_response(false),
+        pull_response_with_rows(Vec::new()),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+
+    sqlx::query("INSERT INTO items (id, name, deleted_at, is_synced, created_at, updated_at) VALUES ('item-1', 'Coffee', NULL, 0, '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:00.000Z')")
+        .execute(&*harness.state.pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
+         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
+    )
+    .execute(&*harness.state.pool)
+    .await
+    .unwrap();
+
+    sync_now_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(
+        events,
+        vec![
+            "baresync://data-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn sync_full_resync_emits_data_changed_when_pull_and_push_change_rows() {
+    let transport = Arc::new(RecordingTransport::new(
+        push_response_with_table_ack(),
+        status_response(false),
+        pull_response_with_rows(vec![serde_json::json!({
+            "id": "item-1",
+            "name": "Pulled Item",
+            "deletedAt": null
+        })]),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+    sqlx::query(
+        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
+         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
+    )
+    .execute(&*harness.state.pool)
+    .await
+    .unwrap();
+
+    sync_full_resync_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(
+        events,
+        vec![
+            "baresync://data-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn manual_sync_completion_emits_sync_status_changed_even_without_data_changes() {
+    let transport = Arc::new(RecordingTransport::new(
+        serde_json::json!({ "tables": [], "serverTime": "2026-05-20T00:00:00.000Z" }),
+        status_response(false),
+        pull_response_with_rows(Vec::new()),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+
+    sync_pull_with_state(&harness.state, "scope-1".to_string())
+        .await
+        .unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(events, vec!["baresync://sync-status-changed".to_string()]);
+}
+
+#[tokio::test]
+async fn polling_controls_emit_sync_status_changed_for_pause_resume_and_stop() {
+    let harness = TestCommandState::new().await;
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    *harness.state.poll_control_tx.lock().await = Some(tx);
+    *harness.state.poll_task_handle.lock().await = Some(tokio::spawn(async move {
+        drop(rx);
+    }));
+
+    pause_polling_with_state(&harness.state).await.unwrap();
+    resume_polling_with_state(&harness.state).await.unwrap();
+    stop_polling_with_state(&harness.state).await.unwrap();
+
+    let events = harness.event_sink.events().await;
+    assert_eq!(
+        events,
+        vec![
+            "baresync://sync-status-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+            "baresync://sync-status-changed".to_string(),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -333,10 +726,11 @@ async fn background_lifecycle_events_pause_and_resume_polling() {
         let count = sync_count_clone.clone();
         async move {
             count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            Ok(())
+            Ok(tauri_plugin_baresync::polling::PollingSyncOutcome::completed(true))
         }
     };
 
+    let event_sink = harness.state.event_sink.clone();
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let notify = harness.state.poll_notify.clone();
     let sync_in_progress = harness.state.sync_in_progress.clone();
@@ -346,6 +740,7 @@ async fn background_lifecycle_events_pause_and_resume_polling() {
         "scope-1".to_string(),
         1,
         sync_fn,
+        event_sink,
         notify,
         rx,
         sync_in_progress,
@@ -357,10 +752,7 @@ async fn background_lifecycle_events_pause_and_resume_polling() {
     handle_window_focus_for_state(&harness.state, false);
 
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert_eq!(
-        sync_count.load(std::sync::atomic::Ordering::Relaxed),
-        0
-    );
+    assert_eq!(sync_count.load(std::sync::atomic::Ordering::Relaxed), 0);
 
     handle_window_focus_for_state(&harness.state, true);
 

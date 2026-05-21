@@ -2,7 +2,7 @@
 
 TBD. Host-side polling lifecycle coverage for the Tauri plugin sync loop.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Background sync loop
 The plugin SHALL run an optional background tokio task that periodically calls `sync_now` for a given `scope_id`.
@@ -121,3 +121,42 @@ The plugin builder SHALL accept polling-related configuration.
 #### Scenario: Default poll interval
 - **WHEN** the builder is used without setting `poll_interval_secs`
 - **THEN** the default interval SHALL be 30 seconds
+
+### Requirement: Plugin data change event
+
+The plugin SHALL emit `baresync://data-changed` when sync or SQL activity changes local observable data.
+
+#### Scenario: Pull-applied rows emit data changed
+
+- **WHEN** a polling or manual sync pull applies one or more changed rows locally
+- **THEN** the plugin SHALL emit `baresync://data-changed`
+
+#### Scenario: Push-cleared outbox emits data changed
+
+- **WHEN** a polling or manual sync push accepts one or more local rows and clears local outbox or sync metadata
+- **THEN** the plugin SHALL emit `baresync://data-changed`
+
+#### Scenario: No-op sync does not emit data changed
+
+- **WHEN** a polling or manual sync completes without applying rows or clearing accepted outbox rows
+- **THEN** the plugin SHALL NOT emit `baresync://data-changed`
+
+### Requirement: Plugin sync status event
+
+The plugin SHALL emit `baresync://sync-status-changed` when polling or sync status changes independently of local data changes.
+
+#### Scenario: Sync completion emits status changed
+
+- **WHEN** a polling or manual sync completes successfully
+- **THEN** the plugin SHALL emit `baresync://sync-status-changed`
+- **AND** consumers SHALL be able to refetch polling status without refetching all local data queries
+
+#### Scenario: Pause and resume emit status changed
+
+- **WHEN** polling is paused or resumed through commands or app lifecycle handling
+- **THEN** the plugin SHALL emit `baresync://sync-status-changed`
+
+#### Scenario: Stop polling emits status changed
+
+- **WHEN** polling is stopped
+- **THEN** the plugin SHALL emit `baresync://sync-status-changed`

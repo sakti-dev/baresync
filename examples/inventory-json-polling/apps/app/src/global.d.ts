@@ -1,4 +1,1 @@
-interface InventorySqlRow {
-  columns: string[];
-  values: unknown[];
-}
+/// <reference types="vite/client" />

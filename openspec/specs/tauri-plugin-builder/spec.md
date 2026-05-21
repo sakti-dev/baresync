@@ -1,4 +1,8 @@
-## MODIFIED Requirements
+## Purpose
+
+Tauri plugin builder configuration and command behavior for Baresync apps.
+
+## Requirements
 
 ### Requirement: DB proxy commands
 
@@ -14,11 +18,45 @@ The plugin SHALL expose `run_sql`, `run_sql_batch`, and `get_db_info` Tauri comm
 - **WHEN** the JS client calls `invoke("run_sql_batch", { statements })`
 - **THEN** the plugin SHALL execute all statements in a transaction and return the batch result
 
-## ADDED Requirements
+#### Scenario: run_sql write with affected rows emits data changed
+
+- **WHEN** `run_sql` executes a `method: "run"` query successfully and SQLite reports `rows_affected > 0`
+- **THEN** the plugin SHALL emit `baresync://data-changed`
+- **AND** the command response shape SHALL remain compatible with existing callers
+
+#### Scenario: run_sql write without affected rows does not emit data changed
+
+- **WHEN** `run_sql` executes a `method: "run"` query successfully and SQLite reports `rows_affected = 0`
+- **THEN** the plugin SHALL NOT emit `baresync://data-changed`
+- **AND** the command response shape SHALL remain compatible with existing callers
+
+#### Scenario: run_sql read does not emit data changed
+
+- **WHEN** `run_sql` executes a read query method that returns rows
+- **THEN** the plugin SHALL NOT emit `baresync://data-changed`
+
+#### Scenario: run_sql_batch emits data changed only with affected rows
+
+- **WHEN** `run_sql_batch` completes successfully
+- **THEN** the plugin SHALL emit `baresync://data-changed` only if the returned batch result has `rows_affected > 0`
+
+### Requirement: Automatic migration startup
+
+The plugin SHALL run configured migrations during plugin setup before exposing managed command state to JS.
+
+#### Scenario: setup runs migrations
+
+- **WHEN** the plugin is registered with embedded migrations or `migrations_dir`
+- **THEN** setup SHALL connect to SQLite, apply all pending migrations, and only then manage `PluginState`
+
+#### Scenario: setup migration failure stops startup
+
+- **WHEN** a configured migration fails during plugin setup
+- **THEN** setup SHALL return an error instead of exposing a partially initialized plugin state
 
 ### Requirement: run_migrations command
 
-The plugin SHALL expose a `run_migrations` Tauri command that calls `baresync-core` migration runner using the plugin's pool and embedded migrations.
+The plugin SHALL expose a `run_migrations` Tauri command that calls `baresync-core` migration runner using the plugin's pool and configured migrations.
 
 #### Scenario: run_migrations through plugin
 
@@ -41,12 +79,12 @@ The plugin SHALL expose a `get_migration_status` Tauri command that returns the 
 
 ### Requirement: Builder accepts migrations directory
 
-The `Builder` SHALL accept a `migrations_dir` method that configures the path to SQL migration files for embedding.
+The `Builder` SHALL accept a `migrations_dir` method that configures a path to SQL migration files loaded by the Rust plugin.
 
 #### Scenario: Builder with migrations
 
 - **WHEN** `Builder::new().api_base_url("...").migrations_dir("./drizzle").build()` is called
-- **THEN** the plugin SHALL embed and register the migrations from the specified directory
+- **THEN** the plugin SHALL register the directory and apply its `.sql` migrations in filename order during setup and explicit migration commands
 
 ### Requirement: Polling config
 
@@ -119,6 +157,20 @@ The Tauri plugin command surface SHALL be testable from host Rust tests without 
 #### Scenario: Avoid mandatory device dependencies
 - **WHEN** `cargo test -p tauri-plugin-baresync --test commands` runs in normal development or CI
 - **THEN** the tests SHALL pass without Android, adb, a WebView, desktop driver infrastructure, or network access
+
+### Requirement: Host-testable event emission
+
+The plugin command logic SHALL support testing emitted events from host Rust tests without launching a full Tauri app or WebView.
+
+#### Scenario: Host test records emitted events
+
+- **WHEN** a Rust host test constructs plugin command state with an in-memory event recorder
+- **THEN** command logic SHALL record emitted `baresync://data-changed` and `baresync://sync-status-changed` events in that recorder
+
+#### Scenario: Tauri app emits through app handle
+
+- **WHEN** the plugin is registered in a Tauri app
+- **THEN** emitted plugin events SHALL be delivered through the Tauri event system
 
 ### Requirement: Consumer plugin registration contract
 The Tauri plugin builder integration SHALL document the required configuration a consumer app must provide for production-like sync behavior.

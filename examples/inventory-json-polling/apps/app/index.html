@@ -4,70 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory</title>
-    <script type="module" src="/src/main.ts"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    >
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Baresync example</p>
-        <h1>Inventory</h1>
-        <p class="lede">
-          Single-scope inventory for a Tauri app and a Hono server.
-        </p>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Sync</h2>
-          <button id="sync-now" type="button">Sync now</button>
-        </div>
-        <dl class="stats">
-          <div>
-            <dt>Dirty rows</dt>
-            <dd id="dirty-count">-</dd>
-          </div>
-          <div>
-            <dt>Server cursor</dt>
-            <dd id="watermark">-</dd>
-          </div>
-          <div>
-            <dt>Needs baseline</dt>
-            <dd id="needs-baseline">-</dd>
-          </div>
-          <div>
-            <dt>Polling</dt>
-            <dd id="polling-status">-</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <h2>Seed a row</h2>
-          <button id="seed-row" type="button">Create sample record</button>
-        </div>
-        <p class="hint">
-          The app writes to local SQLite and adds an outbox row for the sync
-          engine.
-        </p>
-      </section>
-
-      <section class="columns">
-        <article class="panel">
-          <h2>Locations</h2>
-          <ul id="locations-list"></ul>
-        </article>
-        <article class="panel">
-          <h2>Items</h2>
-          <ul id="items-list"></ul>
-        </article>
-        <article class="panel">
-          <h2>Stock counts</h2>
-          <ul id="counts-list"></ul>
-        </article>
-      </section>
-
-      <p id="status" class="status">Loading…</p>
-    </main>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

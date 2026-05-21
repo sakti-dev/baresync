@@ -1,7 +1,7 @@
 use std::env;
-use std::future::Future;
 #[cfg(target_os = "android")]
 use std::fs;
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -15,8 +15,8 @@ use tauri::{command, generate_context, generate_handler, State};
 pub mod protobuf_generated;
 
 use protobuf_generated::{
-    CategoriesChanges, CategoriesRow, ProductsChanges, ProductsRow, SyncPullBatchResponse,
-    SyncPullBatchRequest, SyncPushBatchRequest, SyncPushBatchResponse, SyncStatusRequest,
+    CategoriesChanges, CategoriesRow, ProductsChanges, ProductsRow, SyncPullBatchRequest,
+    SyncPullBatchResponse, SyncPushBatchRequest, SyncPushBatchResponse, SyncStatusRequest,
     SyncStatusResponse, SyncTableAck,
 };
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
@@ -369,11 +369,7 @@ impl SyncHttpTransport for FixtureProtobufTransport {
         })
     }
 
-    fn send_pull_request(
-        &self,
-        api_url: String,
-        body: Value,
-    ) -> SyncTransportFuture {
+    fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         box_transport(async move {
             let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
             let request = pull_request_from_value(&body);
@@ -549,7 +545,9 @@ pub fn run() {
                 .db_path(fixture_db_path())
                 .contract_tables(fixture_contract_tables())
                 .migrations(fixture_migrations())
-                .transport(fixture_transport().unwrap_or_else(baresync_core::http::default_transport))
+                .transport(
+                    fixture_transport().unwrap_or_else(baresync_core::http::default_transport),
+                )
                 .build(),
         )
         .invoke_handler(generate_handler![

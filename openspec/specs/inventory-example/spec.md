@@ -2,7 +2,7 @@
 
 Canonical fullstack inventory example for Baresync.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Canonical inventory example workspace
 
@@ -111,3 +111,118 @@ The example SHALL continue to keep inventory-specific row validation, row defaul
 - **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/index.ts`
 - **THEN** sync route handler setup SHALL continue to pass repository methods to the existing Baresync server handlers
 - **AND** scope authorization SHALL remain outside the Drizzle repository helper
+
+### Requirement: Inventory example uses React Query for local reads
+
+The inventory app SHALL use React Query for local Drizzle reads and sync state queries instead of interval polling.
+
+#### Scenario: Inventory reads use React Query helper
+
+- **WHEN** a contributor reads `examples/inventory-json-polling/apps/app/src/App.tsx`
+- **THEN** locations, items, and stock count reads SHALL be fetched through the app's Baresync query hook
+- **AND** those reads SHALL use stable inventory query keys
+
+#### Scenario: Sync state uses React Query
+
+- **WHEN** the sync panel reads local sync state or polling status
+- **THEN** the app SHALL fetch that state through React Query
+- **AND** it SHALL NOT rely on `setInterval` for routine refresh
+
+### Requirement: Inventory example invalidates queries from plugin events
+
+The inventory app SHALL listen to plugin events through its sync client provider and invalidate React Query keys instead of blindly polling.
+
+#### Scenario: Data changed invalidates inventory and sync state
+
+- **WHEN** the app receives `baresync://data-changed`
+- **THEN** the sync client provider SHALL invalidate inventory data query keys
+- **AND** it SHALL invalidate sync state query keys
+
+#### Scenario: Sync status changed invalidates only sync state
+
+- **WHEN** the app receives `baresync://sync-status-changed`
+- **THEN** the sync client provider SHALL invalidate sync state query keys
+- **AND** it SHALL NOT invalidate inventory table query keys only for a status event
+
+#### Scenario: Event bridge is provider-owned
+
+- **WHEN** a contributor reads the inventory app root component
+- **THEN** the app SHALL NOT require a separate `useBaresyncEventBridge` call
+- **AND** event listener lifecycle SHALL be owned by `SyncClientProvider`
+
+### Requirement: Presentational inventory tables
+
+Inventory table components SHALL receive data and rendering configuration rather than Drizzle query builders.
+
+#### Scenario: App does not pass query builders to table components
+
+- **WHEN** a contributor reads `examples/inventory-json-polling/apps/app/src/App.tsx`
+- **THEN** table components SHALL be passed rows, loading state, errors, delete handlers, and column definitions
+- **AND** table components SHALL NOT receive Drizzle query builders
+
+#### Scenario: DataTable renders provided rows
+
+- **WHEN** `DataTable` receives rows from a parent component
+- **THEN** it SHALL render those rows without importing Drizzle query hooks or constructing SQL queries
+
+### Requirement: Inventory example uses JS local write helpers
+
+The inventory example SHALL use public JS sync client local write helpers for local row mutations that need sync outbox entries.
+
+#### Scenario: Seed flow writes through transaction helper
+
+- **WHEN** the inventory example creates sample location, item, and stock count rows
+- **THEN** those row mutations SHALL run inside one `client.writeTransaction(db, callback)` call
+- **AND** each row mutation SHALL be paired with exactly one `writeLocalChange` or `enqueueChange` call in that transaction
+
+#### Scenario: Soft delete writes through transaction helper
+
+- **WHEN** the inventory example soft-deletes one row from the UI
+- **THEN** the row update and matching outbox enqueue SHALL run inside one `client.writeTransaction(db, callback)` call
+- **AND** the outbox operation SHALL be `"update"`
+
+### Requirement: Inventory example does not teach raw outbox insertion
+
+The inventory example UI and write helpers SHALL NOT require components to import or insert into `syncOutbox` directly.
+
+#### Scenario: Components use sync client write helpers
+
+- **WHEN** a reader inspects inventory React components
+- **THEN** local mutations SHALL use `client.writeLocalChange` or `client.enqueueChange`
+- **AND** components SHALL NOT construct `sync_outbox` rows directly
+
+#### Scenario: Sync bookkeeping is delegated
+
+- **WHEN** a reader inspects inventory local write code
+- **THEN** sync bookkeeping such as `tableName`, `scopeId`, `changedAt`, and outbox id SHALL be delegated to the JS sync client helper
+
+### Requirement: Inventory app DB module groups schema tables
+
+The inventory app SHALL keep its Tauri Drizzle database setup in `examples/inventory-json-polling/apps/app/src/lib/db.ts` and export schema table objects through a single `TABLE` object.
+
+#### Scenario: DB module exports table registry
+
+- **WHEN** a contributor reads `src/lib/db.ts`
+- **THEN** the module SHALL export `TABLE` containing `locations`, `items`, `stockCounts`, `syncCursors`, and `syncOutbox`
+- **AND** the Drizzle database schema SHALL be created from `TABLE`
+
+#### Scenario: App code uses table registry
+
+- **WHEN** app code imports schema table objects
+- **THEN** it SHALL import `TABLE` from `src/lib/db.ts`
+- **AND** table references SHALL make schema origin clear through `TABLE.<name>`
+
+### Requirement: Inventory app embeds migrations from directory
+
+The inventory app SHALL discover local SQLite migration SQL files from `src-tauri/migrations` at Rust build time and pass embedded migrations to the Baresync plugin.
+
+#### Scenario: Build script discovers migrations
+
+- **WHEN** a `.sql` file is added under `examples/inventory-json-polling/apps/app/src-tauri/migrations`
+- **THEN** the app build script SHALL discover the file and include it in the generated embedded migration manifest
+
+#### Scenario: React app does not run migrations explicitly
+
+- **WHEN** the inventory React app starts
+- **THEN** it SHALL start polling without first invoking a `run_migrations` command
+- **AND** local migrations SHALL have been applied by the plugin setup path

@@ -4,12 +4,12 @@ use baresync_core::migrations::EmbeddedMigration;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri_plugin_baresync::commands::{
     get_polling_status_with_state, handle_window_focus_for_state, run_migrations_with_state,
-    start_polling_with_state, stop_polling_with_state, PluginState,
+    start_polling_with_state, stop_polling_with_state, NoopPluginEventSink, PluginState,
 };
 use tauri_plugin_baresync::polling::PollingState;
 use tokio::sync::Notify;
@@ -51,7 +51,9 @@ impl SimulationHarness {
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         deleted_at TEXT,
-                        is_synced INTEGER NOT NULL DEFAULT 0
+                        is_synced INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT,
+                        updated_at TEXT
                     );
                     --> statement-breakpoint
                     CREATE TABLE IF NOT EXISTS sync_outbox (
@@ -79,6 +81,7 @@ impl SimulationHarness {
                     );
                 ",
             }]),
+            migrations_dir: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
@@ -89,6 +92,7 @@ impl SimulationHarness {
             })),
             poll_interval_secs: 1,
             poll_on_background: false,
+            event_sink: Arc::new(NoopPluginEventSink),
         };
 
         Self { state }
@@ -113,9 +117,7 @@ async fn background_polling_simulation_pauses_and_resumes_in_rust() {
     run_migrations_with_state(&harness.state).await.unwrap();
 
     assert_eq!(
-        get_polling_status_with_state(&harness.state)
-            .await
-            .unwrap(),
+        get_polling_status_with_state(&harness.state).await.unwrap(),
         tauri_plugin_baresync::polling::PollingStatus {
             running: false,
             paused: false,
@@ -145,9 +147,7 @@ async fn background_polling_simulation_pauses_and_resumes_in_rust() {
         true
     );
 
-    let paused_status = get_polling_status_with_state(&harness.state)
-        .await
-        .unwrap();
+    let paused_status = get_polling_status_with_state(&harness.state).await.unwrap();
     tokio::time::sleep(Duration::from_millis(1200)).await;
     assert_eq!(
         get_polling_status_with_state(&harness.state)
@@ -159,17 +159,13 @@ async fn background_polling_simulation_pauses_and_resumes_in_rust() {
 
     handle_window_focus_for_state(&harness.state, true);
     tokio::time::sleep(Duration::from_millis(1300)).await;
-    let resumed_status = get_polling_status_with_state(&harness.state)
-        .await
-        .unwrap();
+    let resumed_status = get_polling_status_with_state(&harness.state).await.unwrap();
     assert!(!resumed_status.paused);
     assert!(resumed_status.last_sync_at.is_some());
 
     stop_polling_with_state(&harness.state).await.unwrap();
     assert_eq!(
-        get_polling_status_with_state(&harness.state)
-            .await
-            .unwrap(),
+        get_polling_status_with_state(&harness.state).await.unwrap(),
         tauri_plugin_baresync::polling::PollingStatus {
             running: false,
             paused: false,
@@ -183,8 +179,11 @@ async fn background_polling_simulation_keeps_existing_task_idempotent() {
     let harness = SimulationHarness::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    let sync_fn = |_scope_id: String| async move { Ok(()) };
+    let sync_fn = |_scope_id: String| async move {
+        Ok(tauri_plugin_baresync::polling::PollingSyncOutcome::completed(false))
+    };
     let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let event_sink = harness.state.event_sink.clone();
     let notify = harness.state.poll_notify.clone();
     let sync_in_progress = harness.state.sync_in_progress.clone();
     let state = harness.state.poll_state.clone();
@@ -193,6 +192,7 @@ async fn background_polling_simulation_keeps_existing_task_idempotent() {
         "scope-1".to_string(),
         1_000,
         sync_fn,
+        event_sink,
         notify,
         rx,
         sync_in_progress,
@@ -208,9 +208,7 @@ async fn background_polling_simulation_keeps_existing_task_idempotent() {
 
     stop_polling_with_state(&harness.state).await.unwrap();
     assert_eq!(
-        get_polling_status_with_state(&harness.state)
-            .await
-            .unwrap(),
+        get_polling_status_with_state(&harness.state).await.unwrap(),
         tauri_plugin_baresync::polling::PollingStatus {
             running: false,
             paused: false,

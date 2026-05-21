@@ -7,8 +7,19 @@ import {
   type SyncEncoding,
   syncSchema,
 } from "./contract.js";
+import {
+  createSyncCursorsTable,
+  createSyncOutboxTable,
+  syncCursors,
+  syncLocalSchema,
+  syncOutbox,
+} from "./local-schema.js";
 import { apiSyncColumns, localSyncColumns } from "./row-state.js";
-import { syncBatchRequests, syncServerSchema } from "./server-schema.js";
+import {
+  createSyncBatchRequestsTable,
+  syncBatchRequests,
+  syncServerSchema,
+} from "./server-schema.js";
 import {
   defineSyncedTable,
   type ScopeMapping,
@@ -18,6 +29,9 @@ import {
 
 export {
   apiSyncColumns,
+  createSyncBatchRequestsTable,
+  createSyncCursorsTable,
+  createSyncOutboxTable,
   DEFAULT_SYNC_ENCODING,
   defineSyncContract,
   defineSyncedTable,
@@ -29,7 +43,10 @@ export {
   type SyncEncoding,
   type SyncedTableDefinition,
   syncBatchRequests,
+  syncCursors,
   syncedTable,
+  syncLocalSchema,
+  syncOutbox,
   syncSchema,
   syncServerSchema,
 };

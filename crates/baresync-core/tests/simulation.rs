@@ -5,10 +5,10 @@ use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::pull;
 use baresync_core::push::{self, PendingTablePush};
 use baresync_core::schema;
-use sqlx::SqlitePool;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
+use sqlx::SqlitePool;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -21,11 +21,7 @@ struct RecordingTransport {
 }
 
 impl RecordingTransport {
-    fn new(
-        push_response: Value,
-        status_response: Value,
-        pull_response: Value,
-    ) -> Self {
+    fn new(push_response: Value, status_response: Value, pull_response: Value) -> Self {
         Self {
             calls: Arc::new(Mutex::new(Vec::new())),
             push_response,
@@ -35,14 +31,14 @@ impl RecordingTransport {
     }
 
     fn calls(&self) -> Vec<(String, Value)> {
-        self.calls.lock().expect("recording transport poisoned").clone()
+        self.calls
+            .lock()
+            .expect("recording transport poisoned")
+            .clone()
     }
 }
 
-fn response_with_table_ack(
-    table: &str,
-    rejected: Vec<serde_json::Value>,
-) -> serde_json::Value {
+fn response_with_table_ack(table: &str, rejected: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({
         "tables": [{
             "table": table,
@@ -167,13 +163,16 @@ async fn seed_outbox_row(pool: &SqlitePool) {
         .bind("categories")
         .bind("cat-local-1")
         .bind("insert")
-        .bind(serde_json::to_string(&serde_json::json!({
-            "id": "cat-local-1",
-            "merchantId": "merchant-1",
-            "name": "Local Category",
-            "createdAt": "2026-05-19T13:00:00.000Z",
-            "updatedAt": "2026-05-19T13:00:00.000Z"
-        })).unwrap())
+        .bind(
+            serde_json::to_string(&serde_json::json!({
+                "id": "cat-local-1",
+                "merchantId": "merchant-1",
+                "name": "Local Category",
+                "createdAt": "2026-05-19T13:00:00.000Z",
+                "updatedAt": "2026-05-19T13:00:00.000Z"
+            }))
+            .unwrap(),
+        )
         .bind("merchant-1")
         .bind("2026-05-19T13:00:00.000Z")
         .execute(pool)
@@ -294,7 +293,14 @@ async fn sync_now_pushes_without_initial_pull_when_server_is_clean() {
     assert_eq!(result.mode, baresync_core::engine::SyncNowMode::PushOnly);
     assert!(result.pull.is_none());
     assert!(result.push.is_some());
-    assert_eq!(transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(), vec!["status", "push"]);
+    assert_eq!(
+        transport
+            .calls()
+            .iter()
+            .map(|(kind, _)| kind)
+            .collect::<Vec<_>>(),
+        vec!["status", "push"]
+    );
 }
 
 #[tokio::test]
@@ -330,7 +336,11 @@ async fn sync_now_pulls_changed_tables_without_push_when_local_is_clean() {
     assert!(result.pull.is_some());
     assert!(result.push.is_none());
     assert_eq!(
-        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        transport
+            .calls()
+            .iter()
+            .map(|(kind, _)| kind)
+            .collect::<Vec<_>>(),
         vec!["status", "pull"]
     );
     let pull_request = &transport.calls()[1].1;
@@ -372,7 +382,11 @@ async fn sync_now_pulls_then_pushes_when_both_sides_changed() {
     assert!(result.pull.is_some());
     assert!(result.push.is_some());
     assert_eq!(
-        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        transport
+            .calls()
+            .iter()
+            .map(|(kind, _)| kind)
+            .collect::<Vec<_>>(),
         vec!["status", "pull", "push"]
     );
 }
@@ -447,7 +461,11 @@ async fn sync_now_reconciles_rejected_tables_after_push() {
 
     assert_eq!(result.mode, baresync_core::engine::SyncNowMode::PushOnly);
     assert_eq!(
-        transport.calls().iter().map(|(kind, _)| kind).collect::<Vec<_>>(),
+        transport
+            .calls()
+            .iter()
+            .map(|(kind, _)| kind)
+            .collect::<Vec<_>>(),
         vec!["status", "push", "pull"]
     );
     let pull_request = &transport.calls()[2].1;

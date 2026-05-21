@@ -9,12 +9,29 @@ use baresync_core::push::PushResult;
 
 use sqlx::SqlitePool;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tauri::{command, AppHandle, Manager, RunEvent, Runtime, State, WindowEvent};
 use tokio::sync::{mpsc, Notify};
 
 use crate::polling::{self, ControlMsg, PollingState, PollingStatus};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginEvent {
+    DataChanged,
+    SyncStatusChanged,
+}
+
+pub trait PluginEventSink: Send + Sync {
+    fn emit(&self, event: PluginEvent);
+}
+
+#[derive(Default)]
+pub struct NoopPluginEventSink;
+
+impl PluginEventSink for NoopPluginEventSink {
+    fn emit(&self, _event: PluginEvent) {}
+}
 
 pub struct PluginState {
     pub pool: Arc<SqlitePool>,
@@ -22,6 +39,7 @@ pub struct PluginState {
     pub contract_tables: SyncContractTables,
     pub db_path: PathBuf,
     pub embedded_migrations: Arc<Vec<EmbeddedMigration>>,
+    pub migrations_dir: Option<PathBuf>,
     pub poll_notify: Arc<Notify>,
     pub sync_in_progress: Arc<AtomicBool>,
     pub poll_control_tx: tokio::sync::Mutex<Option<mpsc::Sender<ControlMsg>>>,
@@ -29,6 +47,7 @@ pub struct PluginState {
     pub poll_state: Arc<tokio::sync::Mutex<PollingState>>,
     pub poll_interval_secs: u64,
     pub poll_on_background: bool,
+    pub event_sink: Arc<dyn PluginEventSink>,
 }
 
 fn make_engine(
@@ -46,9 +65,13 @@ pub async fn run_sql_with_state(
     state: &PluginState,
     query: SqlQuery,
 ) -> Result<Vec<drizzle_proxy::SqlRow>, String> {
-    drizzle_proxy::run_sql(&state.pool, query)
+    let result = drizzle_proxy::run_sql_with_metadata(&state.pool, query)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected > 0 {
+        state.event_sink.emit(PluginEvent::DataChanged);
+    }
+    Ok(result.rows)
 }
 
 #[command]
@@ -67,9 +90,13 @@ pub async fn run_sql_batch_with_state(
     state: &PluginState,
     statements: Vec<SqlStatement>,
 ) -> Result<BatchResult, String> {
-    drizzle_proxy::run_sql_batch(&state.pool, statements)
+    let result = drizzle_proxy::run_sql_batch(&state.pool, statements)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if result.rows_affected > 0 {
+        state.event_sink.emit(PluginEvent::DataChanged);
+    }
+    Ok(result)
 }
 
 #[command]
@@ -103,7 +130,13 @@ pub async fn run_migrations_with_state(state: &PluginState) -> Result<(), String
     let config = MigrationConfig::strict();
     migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(dir) = &state.migrations_dir {
+        migrations::run_migration_files(&state.pool, &config, dir)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[command]
@@ -131,10 +164,21 @@ pub async fn sync_now(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<SyncNowResult, String> {
-    let engine = make_engine(&state, scope_id).await;
+    sync_now_with_state(&state, scope_id).await
+}
+
+pub async fn sync_now_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<SyncNowResult, String> {
+    let engine = make_engine(state, scope_id).await;
     let result = engine.sync_now(1000).await.map_err(|e| e.to_string());
-    if result.is_ok() {
-        notify_polling_sync_completed(&state).await;
+    if let Ok(sync_result) = &result {
+        if sync_now_result_has_data_changed(sync_result) {
+            state.event_sink.emit(PluginEvent::DataChanged);
+        }
+        state.event_sink.emit(PluginEvent::SyncStatusChanged);
+        notify_polling_sync_completed(state).await;
     }
     result
 }
@@ -144,10 +188,21 @@ pub async fn sync_push(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<PushResult, String> {
-    let engine = make_engine(&state, scope_id).await;
+    sync_push_with_state(&state, scope_id).await
+}
+
+pub async fn sync_push_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<PushResult, String> {
+    let engine = make_engine(state, scope_id).await;
     let result = engine.push().await.map_err(|e| e.to_string());
-    if result.is_ok() {
-        notify_polling_sync_completed(&state).await;
+    if let Ok(push_result) = &result {
+        if !push_result.tables_synced.is_empty() {
+            state.event_sink.emit(PluginEvent::DataChanged);
+        }
+        state.event_sink.emit(PluginEvent::SyncStatusChanged);
+        notify_polling_sync_completed(state).await;
     }
     result
 }
@@ -157,10 +212,21 @@ pub async fn sync_pull(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<PullResult, String> {
-    let engine = make_engine(&state, scope_id).await;
+    sync_pull_with_state(&state, scope_id).await
+}
+
+pub async fn sync_pull_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<PullResult, String> {
+    let engine = make_engine(state, scope_id).await;
     let result = engine.pull(1000).await.map_err(|e| e.to_string());
-    if result.is_ok() {
-        notify_polling_sync_completed(&state).await;
+    if let Ok(pull_result) = &result {
+        if pull_result.rows_received > 0 {
+            state.event_sink.emit(PluginEvent::DataChanged);
+        }
+        state.event_sink.emit(PluginEvent::SyncStatusChanged);
+        notify_polling_sync_completed(state).await;
     }
     result
 }
@@ -170,13 +236,24 @@ pub async fn sync_full_resync(
     state: State<'_, PluginState>,
     scope_id: String,
 ) -> Result<SyncNowResult, String> {
-    let engine = make_engine(&state, scope_id).await;
+    sync_full_resync_with_state(&state, scope_id).await
+}
+
+pub async fn sync_full_resync_with_state(
+    state: &PluginState,
+    scope_id: String,
+) -> Result<SyncNowResult, String> {
+    let engine = make_engine(state, scope_id).await;
     let result = engine
         .sync_full_resync(1000)
         .await
         .map_err(|e| e.to_string());
-    if result.is_ok() {
-        notify_polling_sync_completed(&state).await;
+    if let Ok(sync_result) = &result {
+        if sync_now_result_has_data_changed(sync_result) {
+            state.event_sink.emit(PluginEvent::DataChanged);
+        }
+        state.event_sink.emit(PluginEvent::SyncStatusChanged);
+        notify_polling_sync_completed(state).await;
     }
     result
 }
@@ -239,17 +316,11 @@ pub async fn run_garbage_collection(
 }
 
 #[command]
-pub async fn start_polling(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<(), String> {
+pub async fn start_polling(state: State<'_, PluginState>, scope_id: String) -> Result<(), String> {
     start_polling_with_state(&state, scope_id).await
 }
 
-pub async fn start_polling_with_state(
-    state: &PluginState,
-    scope_id: String,
-) -> Result<(), String> {
+pub async fn start_polling_with_state(state: &PluginState, scope_id: String) -> Result<(), String> {
     {
         let handle_guard = state.poll_task_handle.lock().await;
         if handle_guard.is_some() {
@@ -273,7 +344,15 @@ pub async fn start_polling_with_state(
             let mut cfg = config.clone();
             cfg.scope_id = scope;
             let engine = SyncEngine::new((*pool).clone(), cfg, tables).await;
-            engine.sync_now(1000).await.map(|_| ()).map_err(|e| e.to_string())
+            engine
+                .sync_now(1000)
+                .await
+                .map(|result| {
+                    polling::PollingSyncOutcome::completed(sync_now_result_has_data_changed(
+                        &result,
+                    ))
+                })
+                .map_err(|e| e.to_string())
         }
     };
 
@@ -281,6 +360,7 @@ pub async fn start_polling_with_state(
         scope_id,
         interval_secs,
         sync_fn,
+        state.event_sink.clone(),
         notify,
         rx,
         sync_in_progress,
@@ -314,6 +394,7 @@ pub async fn stop_polling_with_state(state: &PluginState) -> Result<(), String> 
         st.paused = false;
         st.last_sync_at = None;
     }
+    state.event_sink.emit(PluginEvent::SyncStatusChanged);
     Ok(())
 }
 
@@ -327,6 +408,7 @@ pub async fn pause_polling_with_state(state: &PluginState) -> Result<(), String>
     if let Some(tx) = guard.as_ref() {
         let _ = tx.send(ControlMsg::Pause).await;
     }
+    state.event_sink.emit(PluginEvent::SyncStatusChanged);
     Ok(())
 }
 
@@ -340,6 +422,7 @@ pub async fn resume_polling_with_state(state: &PluginState) -> Result<(), String
     if let Some(tx) = guard.as_ref() {
         let _ = tx.send(ControlMsg::Resume).await;
     }
+    state.event_sink.emit(PluginEvent::SyncStatusChanged);
     Ok(())
 }
 
@@ -348,9 +431,7 @@ pub async fn get_polling_status(state: State<'_, PluginState>) -> Result<Polling
     get_polling_status_with_state(&state).await
 }
 
-pub async fn get_polling_status_with_state(
-    state: &PluginState,
-) -> Result<PollingStatus, String> {
+pub async fn get_polling_status_with_state(state: &PluginState) -> Result<PollingStatus, String> {
     let handle_guard = state.poll_task_handle.lock().await;
     let st = state.poll_state.lock().await;
     Ok(PollingStatus {
@@ -365,6 +446,17 @@ async fn notify_polling_sync_completed(state: &PluginState) {
     if let Some(tx) = guard.as_ref() {
         let _ = tx.send(ControlMsg::SyncCompleted).await;
     }
+}
+
+fn sync_now_result_has_data_changed(result: &SyncNowResult) -> bool {
+    result
+        .pull
+        .as_ref()
+        .is_some_and(|pull| pull.rows_received > 0)
+        || result
+            .push
+            .as_ref()
+            .is_some_and(|push| !push.tables_synced.is_empty())
 }
 
 fn schedule_control_msg(state: &PluginState, msg: ControlMsg) {

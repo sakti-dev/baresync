@@ -5,6 +5,8 @@ use tauri::{command, generate_context, generate_handler, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, PluginState};
 
+include!(concat!(env!("OUT_DIR"), "/inventory_migrations.rs"));
+
 fn inventory_db_path() -> String {
     let base = env::var("INVENTORY_DB_PATH").unwrap_or_else(|_| {
         let mut path = std::env::temp_dir();
@@ -29,13 +31,6 @@ fn inventory_contract_tables() -> baresync_core::engine::SyncContractTables {
         ],
         local_only_columns: vec!["is_synced".to_string()],
     }
-}
-
-fn inventory_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {
-    vec![baresync_core::migrations::EmbeddedMigration {
-        name: "0001_init_inventory_schema",
-        sql: include_str!("../migrations/0001_init_inventory_schema.sql"),
-    }]
 }
 
 #[command]

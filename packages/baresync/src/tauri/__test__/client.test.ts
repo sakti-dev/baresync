@@ -1,5 +1,27 @@
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { createSyncClient } from "../client.js";
+
+const testItems = sqliteTable("items", {
+  id: text("id").primaryKey(),
+});
+
+function createRecordingTx() {
+  const inserted: Array<{ table: unknown; values: Record<string, unknown> }> =
+    [];
+  const tx = {
+    insert(table: unknown) {
+      return {
+        values(values: Record<string, unknown>) {
+          inserted.push({ table, values });
+          return Promise.resolve({ rowsAffected: 1 });
+        },
+      };
+    },
+  };
+
+  return { inserted, tx };
+}
 
 describe("createSyncClient", () => {
   it("returns client with all methods", () => {
@@ -19,6 +41,9 @@ describe("createSyncClient", () => {
     expect(client).toHaveProperty("pausePolling");
     expect(client).toHaveProperty("resumePolling");
     expect(client).toHaveProperty("getPollingStatus");
+    expect(client).toHaveProperty("writeTransaction");
+    expect(client).toHaveProperty("writeLocalChange");
+    expect(client).toHaveProperty("enqueueChange");
     expect(typeof client.syncNow).toBe("function");
     expect(typeof client.push).toBe("function");
     expect(typeof client.pull).toBe("function");
@@ -29,6 +54,9 @@ describe("createSyncClient", () => {
     expect(typeof client.pausePolling).toBe("function");
     expect(typeof client.resumePolling).toBe("function");
     expect(typeof client.getPollingStatus).toBe("function");
+    expect(typeof client.writeTransaction).toBe("function");
+    expect(typeof client.writeLocalChange).toBe("function");
+    expect(typeof client.enqueueChange).toBe("function");
   });
 
   it("syncNow calls invoke with sync_now command", async () => {
@@ -313,5 +341,131 @@ describe("createSyncClient", () => {
     await expect(client.pausePolling()).rejects.toBe(error);
     await expect(client.resumePolling()).rejects.toBe(error);
     await expect(client.getPollingStatus()).rejects.toBe(error);
+  });
+
+  it("writeTransaction resolves callback result and uses provided transaction", async () => {
+    const tx = { kind: "tx" } as const;
+    type TestTx = typeof tx;
+    const db = {
+      transaction<T>(callback: (tx: TestTx) => Promise<T>) {
+        return callback(tx);
+      },
+    };
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    const result = await client.writeTransaction(db, (callbackTx) => {
+      expect(callbackTx).toBe(tx);
+      return Promise.resolve("committed");
+    });
+
+    expect(result).toBe("committed");
+  });
+
+  it("writeTransaction propagates callback errors unchanged", async () => {
+    const error = new Error("rollback me");
+    const db = {
+      transaction<T>(callback: (tx: unknown) => Promise<T>) {
+        return callback({ kind: "tx" });
+      },
+    };
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await expect(
+      client.writeTransaction(db, () => Promise.reject(error))
+    ).rejects.toBe(error);
+  });
+
+  it("enqueueChange derives table name, configured scope, timestamp, and outbox id", async () => {
+    const { inserted, tx } = createRecordingTx();
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await client.enqueueChange(tx, {
+      operation: "insert",
+      rowId: "item-1",
+      table: testItems,
+    });
+
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.values).toMatchObject({
+      operation: "insert",
+      rowId: "item-1",
+      scopeId: "outlet-1",
+      tableName: "items",
+    });
+    expect(inserted[0]?.values.id).toEqual(expect.stringContaining("insert"));
+    expect(inserted[0]?.values.id).toEqual(expect.stringContaining("items"));
+    expect(inserted[0]?.values.id).toEqual(expect.stringContaining("item-1"));
+    expect(
+      new Date(inserted[0]?.values.changedAt as string).toString()
+    ).not.toBe("Invalid Date");
+    expect(inserted[0]?.values.syncedAt).toBeUndefined();
+  });
+
+  it("writeLocalChange runs the single-row write and then enqueues one outbox row", async () => {
+    const events: string[] = [];
+    const { inserted, tx } = createRecordingTx();
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await client.writeLocalChange(tx, {
+      operation: "update",
+      rowId: "item-1",
+      table: testItems,
+      write(writeTx) {
+        expect(writeTx).toBe(tx);
+        events.push("write");
+      },
+    });
+
+    expect(events).toEqual(["write"]);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]?.values).toMatchObject({
+      operation: "update",
+      rowId: "item-1",
+      scopeId: "outlet-1",
+      tableName: "items",
+    });
+  });
+
+  it("supports bulk flows by enqueueing once per affected row", async () => {
+    const { inserted, tx } = createRecordingTx();
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    for (const rowId of ["item-1", "item-2"]) {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId,
+        table: testItems,
+      });
+    }
+
+    expect(inserted.map((entry) => entry.values.rowId)).toEqual([
+      "item-1",
+      "item-2",
+    ]);
   });
 });

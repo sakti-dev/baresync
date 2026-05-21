@@ -1,19 +1,34 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::SyncHttpTransport;
-use baresync_core::migrations::EmbeddedMigration;
+use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tauri::{
     plugin::{Builder as TauriPluginBuilder, TauriPlugin},
-    Manager, Runtime,
+    AppHandle, Emitter, Manager, Runtime,
 };
 use tokio::sync::Notify;
 
-use crate::commands::PluginState;
+use crate::commands::{PluginEvent, PluginEventSink, PluginState};
 use crate::config::PluginConfig;
 use crate::polling::PollingState;
+
+#[derive(Clone)]
+struct TauriAppEventSink<R: Runtime> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> PluginEventSink for TauriAppEventSink<R> {
+    fn emit(&self, event: PluginEvent) {
+        let name = match event {
+            PluginEvent::DataChanged => "baresync://data-changed",
+            PluginEvent::SyncStatusChanged => "baresync://sync-status-changed",
+        };
+        let _ = self.app.emit(name, ());
+    }
+}
 
 pub struct Builder {
     api_base_url: Option<String>,
@@ -23,6 +38,7 @@ pub struct Builder {
     db_path: Option<String>,
     contract_tables: Option<SyncContractTables>,
     embedded_migrations: Vec<EmbeddedMigration>,
+    migrations_dir: Option<PathBuf>,
     transport: Option<Arc<dyn SyncHttpTransport>>,
     poll_interval_secs: Option<u64>,
     poll_on_background: Option<bool>,
@@ -38,6 +54,7 @@ impl Builder {
             db_path: None,
             contract_tables: None,
             embedded_migrations: Vec::new(),
+            migrations_dir: None,
             transport: None,
             poll_interval_secs: None,
             poll_on_background: None,
@@ -79,6 +96,11 @@ impl Builder {
         self
     }
 
+    pub fn migrations_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.migrations_dir = Some(dir.into());
+        self
+    }
+
     pub fn transport(mut self, transport: Arc<dyn SyncHttpTransport>) -> Self {
         self.transport = Some(transport);
         self
@@ -111,6 +133,7 @@ impl Builder {
         };
 
         let embedded_migrations = self.embedded_migrations;
+        let migrations_dir = self.migrations_dir;
         let transport = self.transport;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
@@ -135,12 +158,31 @@ impl Builder {
                     ..Default::default()
                 };
 
+                let migration_config = MigrationConfig::strict();
+                tauri::async_runtime::block_on(async {
+                    migrations::run_migrations(&pool, &migration_config, &embedded_migrations)
+                        .await
+                        .map_err(|e| -> Box<dyn std::error::Error> {
+                            format!("Failed to run embedded migrations: {}", e).into()
+                        })?;
+                    if let Some(dir) = &migrations_dir {
+                        migrations::run_migration_files(&pool, &migration_config, dir)
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error> {
+                                format!("Failed to run migrations from {}: {}", dir.display(), e)
+                                    .into()
+                            })?;
+                    }
+                    Ok::<(), Box<dyn std::error::Error>>(())
+                })?;
+
                 app.manage(PluginState {
                     pool: Arc::new(pool),
                     sync_config,
                     contract_tables: config.contract_tables.clone(),
                     db_path: PathBuf::from(&config.db_path),
                     embedded_migrations: Arc::new(embedded_migrations),
+                    migrations_dir: migrations_dir.clone(),
                     poll_notify: Arc::new(Notify::new()),
                     sync_in_progress: Arc::new(AtomicBool::new(false)),
                     poll_control_tx: tokio::sync::Mutex::new(None),
@@ -151,6 +193,7 @@ impl Builder {
                     })),
                     poll_interval_secs: config.poll_interval_secs,
                     poll_on_background: config.poll_on_background,
+                    event_sink: Arc::new(TauriAppEventSink { app: app.clone() }),
                 });
 
                 Ok(())

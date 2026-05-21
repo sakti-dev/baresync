@@ -96,7 +96,7 @@ export const db = createTauriDrizzleDatabase({
 
 Validation checks:
 
-- Call `run_migrations` before normal app reads and writes.
+- Register migrations through the plugin builder; setup runs pending migrations before JS commands can use `PluginState`.
 - Call `get_migration_status` and confirm the expected migration hashes are present.
 - Call `get_db_info` and confirm the path is the intended app-owned SQLite file.
 - Run a basic Drizzle proxy read through the configured `invoke`, such as selecting one row from a known table.

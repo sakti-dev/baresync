@@ -85,6 +85,38 @@ pub async fn run_migrations(
     config: &MigrationConfig,
     migrations: &[EmbeddedMigration],
 ) -> Result<(), SyncError> {
+    ensure_migration_table(pool).await?;
+
+    for migration in migrations {
+        apply_migration(pool, config, migration.name, migration.sql).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn run_migration_files(
+    pool: &SqlitePool,
+    config: &MigrationConfig,
+    dir: impl AsRef<Path>,
+) -> Result<(), SyncError> {
+    ensure_migration_table(pool).await?;
+
+    let migrations = collect_migration_files(dir).map_err(SyncError::Migration)?;
+    for migration in migrations {
+        let sql = fs::read_to_string(&migration.path).map_err(|e| {
+            SyncError::Migration(format!(
+                "Failed to read migration file {}: {}",
+                migration.path.display(),
+                e
+            ))
+        })?;
+        apply_migration(pool, config, &migration.name, &sql).await?;
+    }
+
+    Ok(())
+}
+
+async fn ensure_migration_table(pool: &SqlitePool) -> Result<(), SyncError> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS __drizzle_migrations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,61 +130,61 @@ pub async fn run_migrations(
         SyncError::Migration(format!("Failed to create migration tracking table: {}", e))
     })?;
 
-    for migration in migrations {
-        let applied: bool = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM __drizzle_migrations WHERE hash = $1",
-        )
-        .bind(migration.name)
-        .fetch_one(pool)
-        .await
-        .map(|c| c > 0)
-        .map_err(|e| SyncError::Migration(format!("Failed to check migration status: {}", e)))?;
+    Ok(())
+}
 
-        if applied {
-            continue;
-        }
-
-        let mut tx = pool.begin().await.map_err(|e| {
-            SyncError::Migration(format!("Failed to begin migration transaction: {}", e))
-        })?;
-
-        for statement in migration.sql.split("--> statement-breakpoint") {
-            let stmt = statement.trim();
-            if !stmt.is_empty() {
-                if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
-                    let msg = e.to_string();
-                    if !config.strict
-                        && (msg.contains("already exists") || msg.contains("duplicate column"))
-                    {
-                        continue;
-                    }
-                    return Err(SyncError::Migration(format!(
-                        "Migration {} failed: {}",
-                        migration.name, e
-                    )));
-                }
-            }
-        }
-
-        sqlx::query("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ($1, $2)")
-            .bind(migration.name)
-            .bind(chrono_now_ms())
-            .execute(&mut *tx)
+async fn apply_migration(
+    pool: &SqlitePool,
+    config: &MigrationConfig,
+    name: &str,
+    sql: &str,
+) -> Result<(), SyncError> {
+    let applied: bool =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM __drizzle_migrations WHERE hash = $1")
+            .bind(name)
+            .fetch_one(pool)
             .await
+            .map(|c| c > 0)
             .map_err(|e| {
-                SyncError::Migration(format!(
-                    "Failed to record migration {}: {}",
-                    migration.name, e
-                ))
+                SyncError::Migration(format!("Failed to check migration status: {}", e))
             })?;
 
-        tx.commit().await.map_err(|e| {
-            SyncError::Migration(format!(
-                "Failed to commit migration {}: {}",
-                migration.name, e
-            ))
-        })?;
+    if applied {
+        return Ok(());
     }
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        SyncError::Migration(format!("Failed to begin migration transaction: {}", e))
+    })?;
+
+    for statement in sql.split("--> statement-breakpoint") {
+        let stmt = statement.trim();
+        if !stmt.is_empty() {
+            if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
+                let msg = e.to_string();
+                if !config.strict
+                    && (msg.contains("already exists") || msg.contains("duplicate column"))
+                {
+                    continue;
+                }
+                return Err(SyncError::Migration(format!(
+                    "Migration {} failed: {}",
+                    name, e
+                )));
+            }
+        }
+    }
+
+    sqlx::query("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ($1, $2)")
+        .bind(name)
+        .bind(chrono_now_ms())
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| SyncError::Migration(format!("Failed to record migration {}: {}", name, e)))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| SyncError::Migration(format!("Failed to commit migration {}: {}", name, e)))?;
 
     Ok(())
 }
@@ -229,6 +261,46 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn migration_files_apply_in_filename_order() {
+        let dir = std::env::temp_dir().join(format!(
+            "baresync-migration-file-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("0002_insert_item.sql"),
+            "INSERT INTO items (id, name) VALUES ('item-1', 'Coffee')",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("0001_create_items.sql"),
+            "CREATE TABLE items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+        )
+        .unwrap();
+
+        let pool = test_pool().await;
+        run_migration_files(&pool, &MigrationConfig::strict(), &dir)
+            .await
+            .unwrap();
+
+        let name: String = sqlx::query_scalar("SELECT name FROM items WHERE id = 'item-1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "Coffee");
+
+        let status = get_migration_status(&pool).await.unwrap();
+        assert_eq!(status.len(), 2);
+        assert_eq!(status[0].hash, "0001_create_items");
+        assert_eq!(status[1].hash, "0002_insert_item");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

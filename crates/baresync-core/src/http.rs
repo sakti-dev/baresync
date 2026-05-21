@@ -11,11 +11,7 @@ pub trait SyncHttpTransport: Send + Sync {
 
     fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture;
 
-    fn send_pull_request(
-        &self,
-        api_url: String,
-        body: Value,
-    ) -> SyncTransportFuture;
+    fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture;
 }
 
 #[derive(Debug, Default)]
@@ -48,9 +44,8 @@ impl SyncHttpTransport for JsonHttpTransport {
                 return Err(classify_http_error(status.as_u16(), &body));
             }
 
-            serde_json::from_str(&body).map_err(|e| {
-                SyncError::Encoding(format!("Failed to parse push response: {}", e))
-            })
+            serde_json::from_str(&body)
+                .map_err(|e| SyncError::Encoding(format!("Failed to parse push response: {}", e)))
         })
     }
 
@@ -76,17 +71,12 @@ impl SyncHttpTransport for JsonHttpTransport {
                 return Err(classify_http_error(status.as_u16(), &body));
             }
 
-            serde_json::from_str(&body).map_err(|e| {
-                SyncError::Encoding(format!("Failed to parse status response: {}", e))
-            })
+            serde_json::from_str(&body)
+                .map_err(|e| SyncError::Encoding(format!("Failed to parse status response: {}", e)))
         })
     }
 
-    fn send_pull_request(
-        &self,
-        api_url: String,
-        body: Value,
-    ) -> SyncTransportFuture {
+    fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         Box::pin(async move {
             let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
             let client = reqwest::Client::new();
@@ -108,9 +98,8 @@ impl SyncHttpTransport for JsonHttpTransport {
                 return Err(classify_http_error(status.as_u16(), &body));
             }
 
-            serde_json::from_str(&body).map_err(|e| {
-                SyncError::Encoding(format!("Failed to parse pull response: {}", e))
-            })
+            serde_json::from_str(&body)
+                .map_err(|e| SyncError::Encoding(format!("Failed to parse pull response: {}", e)))
         })
     }
 }

@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Local SQLite runtime and Drizzle proxy behavior for Baresync Tauri apps.
+
+## Requirements
 
 ### Requirement: SQLite pool connection with standard configuration
 
@@ -115,6 +119,27 @@ The function SHALL return a Drizzle `BetterSQLite3Database` instance using the `
 - **WHEN** a Drizzle query is executed on the returned database instance
 - **THEN** the corresponding Tauri command (`run_sql` or `run_sql_batch`) is invoked with the serialized query
 
+#### Scenario: Database helper supports Tauri invoke directly
+
+- **WHEN** a Tauri app passes `@tauri-apps/api/core` `invoke` to `createTauriDrizzleDatabase`
+- **THEN** the helper SHALL accept it without requiring an app-local type assertion
+
+### Requirement: Drizzle proxy transaction support for local writes
+
+The local database JS helper SHALL support Drizzle sqlite-proxy transactions as the transaction mechanism used by JS local write helpers.
+
+#### Scenario: Transaction executes through proxy commands
+
+- **WHEN** a consumer calls `db.transaction(callback)` on the database returned by `createTauriDrizzleDatabase`
+- **THEN** Drizzle SHALL execute transaction control statements through the configured Tauri SQL command path
+- **AND** statements inside the callback SHALL use the same transaction boundary
+
+#### Scenario: Local write helpers can receive transaction object
+
+- **WHEN** `client.writeTransaction(db, callback)` calls the callback
+- **THEN** the transaction object provided to the callback SHALL be usable with normal Drizzle insert, update, select, and delete builders
+- **AND** it SHALL be accepted by `client.writeLocalChange` and `client.enqueueChange`
+
 ### Requirement: Tauri plugin DB command wrappers
 
 The `crates/tauri-plugin-baresync` crate SHALL expose Tauri commands `run_sql`, `run_sql_batch`, and `get_db_info` that delegate to `baresync-core` functions.
@@ -123,8 +148,6 @@ The `crates/tauri-plugin-baresync` crate SHALL expose Tauri commands `run_sql`, 
 
 - **WHEN** the `run_sql` Tauri command is invoked with a `SqlQuery` parameter
 - **THEN** the command delegates to `baresync-core::drizzle_proxy::run_sql` and returns the result
-
-## MODIFIED Requirements
 
 ### Requirement: Client identity persistence table
 
