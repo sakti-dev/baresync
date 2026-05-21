@@ -1,6 +1,62 @@
 ---
-title: Db Info
-description: TODO
+title: DB Info
+description: Check the local database file size and path.
 ---
 
-TODO: Write this page.
+# DB Info
+
+The `getDbInfo` command returns metadata about the local SQLite database file.
+
+## Usage
+
+```ts
+const info = await client.getDbInfo();
+```
+
+## Return shape
+
+```ts
+interface DbInfo {
+  db_path: string;
+  size_bytes: number;
+  size_formatted: string;
+}
+```
+
+| Field | Description |
+|---|---|
+| `db_path` | Absolute path to the SQLite file |
+| `size_bytes` | File size in bytes |
+| `size_formatted` | Human-readable size (e.g. `"1.2 MB"`, `"340 KB"`) |
+
+## Use cases
+
+### Monitoring database growth
+
+```ts
+const info = await client.getDbInfo();
+if (info.size_bytes > 50 * 1024 * 1024) {
+  console.warn(`Database is ${info.size_formatted} — consider running garbage collection`);
+}
+```
+
+### Verifying the database path
+
+```ts
+const info = await client.getDbInfo();
+console.log(`Database at: ${info.db_path}`);
+```
+
+### Health check
+
+Use `getDbInfo` alongside `getMigrationStatus` and `getState` to build a diagnostics panel:
+
+```ts
+const [info, migrations, state] = await Promise.all([
+  client.getDbInfo(),
+  client.getMigrationStatus(),
+  client.getState(),
+]);
+```
+
+Next: [Debugging](/docs/local-database/debugging).

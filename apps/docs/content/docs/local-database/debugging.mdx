@@ -1,6 +1,130 @@
 ---
 title: Debugging
-description: TODO
+description: Inspect the local SQLite database, outbox, cursors, and sync state.
 ---
 
-TODO: Write this page.
+# Debugging
+
+When sync isn't behaving as expected, the local database has everything you need to diagnose the issue. Here are the key queries and tools.
+
+## Check sync state
+
+```ts
+const state = await client.getState();
+// {
+//   local_dirty_count: 3,        // 3 rows waiting in outbox
+//   last_server_watermark: "sync:1747894800000:items:item-99",
+//   needs_baseline_sync: false,
+// }
+```
+
+- `local_dirty_count > 0` — the outbox has pending writes that haven't been pushed
+- `needs_baseline_sync: true` — no cursor stored yet, first sync hasn't happened
+- `last_server_watermark` is empty — same as needs_baseline_sync
+
+## Query the outbox directly
+
+Since `syncOutbox` is in your `TABLE` registry, you can query it:
+
+```ts
+import { db, TABLE } from "./lib/db";
+import { eq, isNull } from "drizzle-orm";
+
+// All pending (unsynced) outbox entries
+const pending = await db.select().from(TABLE.syncOutbox).where(isNull(TABLE.syncOutbox.syncedAt));
+
+// Count per table
+const items = pending.filter((e) => e.tableName === "items");
+
+console.log(`${items.length} pending item changes in outbox`);
+```
+
+### Outbox columns
+
+| Column | Description |
+|---|---|
+| `id` | UUID of the outbox entry |
+| `table_name` | Which table the change belongs to |
+| `row_id` | The primary key of the changed row |
+| `operation` | `"insert"`, `"update"`, or `"delete"` |
+| `payload` | JSON snapshot of the row at outbox time (nullable) |
+| `scope_id` | The sync scope this change belongs to |
+| `changed_at` | ISO timestamp when the entry was created |
+| `synced_at` | ISO timestamp when the entry was confirmed synced (null = pending) |
+
+## Query cursors
+
+```ts
+const cursors = await db.select().from(TABLE.syncCursors);
+// [{ scopeId: "merchant-1", lastCursor: "sync:...", updatedAt: "..." }]
+```
+
+If no rows exist, the engine has never synced. If `lastCursor` is empty, the next `syncNow` will trigger a baseline pull.
+
+## Check migration status
+
+```ts
+const migrations = await client.getMigrationStatus();
+// [{ hash: "0001_create_items", created_at: 1747894800000 }, ...]
+```
+
+If a migration is missing from this list, it either hasn't run or failed. Check the app logs for migration errors.
+
+## Database file info
+
+```ts
+const info = await client.getDbInfo();
+// { db_path: "/path/to/baresync.db", size_bytes: 524288, size_formatted: "512 KB" }
+```
+
+A rapidly growing database may indicate:
+- Soft-deleted rows accumulating (run `runGarbageCollection`)
+- Synced outbox entries not being purged (run `purgeSyncedOutbox`)
+
+## Inspect a specific table
+
+```ts
+import { db, TABLE } from "./lib/db";
+
+// All rows including soft-deleted
+const allItems = await db.select().from(TABLE.items);
+
+// Only active (non-deleted, synced)
+const activeItems = await db.select().from(TABLE.items)
+  .where(eq(TABLE.items.isSynced, true));
+```
+
+### Key columns to check
+
+| Column | What it tells you |
+|---|---|
+| `is_synced` | `true` = confirmed by server, `false` = pending or locally modified |
+| `deleted_at` | Non-null = soft-deleted, waiting for GC |
+| `updated_at` | When the row was last modified |
+
+## Manual sync trigger
+
+If polling isn't running or you want to force a sync:
+
+```ts
+await client.syncNow();
+```
+
+Check the result mode:
+
+```ts
+const result = await client.syncNow();
+console.log(result.mode); // "push_only" | "pull_only" | "full_sync" | "full_resync" | "no_op"
+```
+
+If mode is always `no_op`, the engine thinks nothing needs syncing. Check `local_dirty_count` and `hasChanges` to confirm.
+
+## Common issues
+
+| Symptom | Check |
+|---|---|
+| Changes not syncing | `local_dirty_count` in getState — if 0, writes aren't going through `writeLocalChange` |
+| Same data re-downloaded | Cursor may have been reset — check `sync_cursors` table |
+| Database locked errors | Only one connection is allowed — make sure you're not opening a second SQLite connection |
+| Migrations not running | Check `getMigrationStatus` — missing migrations mean startup failed silently |
+| Outbox growing forever | Push may be failing — check network and server logs |

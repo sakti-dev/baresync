@@ -1,6 +1,137 @@
 ---
 title: Migrations
-description: TODO
+description: How Baresync runs SQL migrations at app startup.
 ---
 
-TODO: Write this page.
+# Migrations
+
+Baresync runs SQL migrations at plugin startup to create and update the local SQLite schema. Migrations run before any sync or query operations.
+
+## How it works
+
+1. Plugin connects to the SQLite database
+2. Creates `__drizzle_migrations` tracking table (if not exists)
+3. Runs **embedded migrations** (compiled into the binary) in strict mode
+4. Runs **file-based migrations** (from a directory) in strict mode (if configured)
+5. Skips any migration whose hash is already recorded in `__drizzle_migrations`
+
+## Embedded migrations
+
+Embedded migrations are Rust constants compiled into your app binary. They always run first.
+
+```rust
+use baresync_core::migrations::EmbeddedMigration;
+
+let migrations = vec![
+    EmbeddedMigration {
+        name: "0001_create_items",
+        sql: "CREATE TABLE items (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            deleted_at TEXT,
+            is_synced INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    },
+];
+
+builder.migrations(migrations)
+```
+
+### Where the SQL comes from
+
+In practice, you generate these from your Baresync sync contract:
+
+```bash
+bunx baresync generate --config baresync.config.ts
+```
+
+The generator produces:
+- `local-schema.ts` — `syncOutbox` and `syncCursors` Drizzle table definitions
+- `local-synced-schema.ts` — Drizzle table definitions for each synced table (with `localSyncColumns`)
+- `migrations.ts` — `EmbeddedMigration` array with `CREATE TABLE` SQL for all tables
+
+You then include the generated migrations in your Rust `lib.rs`:
+
+```rust
+// Typically auto-generated or copy-pasted from the TS generator output
+builder.migrations(vec![
+    EmbeddedMigration { name: "0001_sync_outbox", sql: "CREATE TABLE IF NOT EXISTS sync_outbox (...)" },
+    EmbeddedMigration { name: "0002_sync_cursors", sql: "CREATE TABLE IF NOT EXISTS sync_cursors (...)" },
+    EmbeddedMigration { name: "0003_items", sql: "CREATE TABLE IF NOT EXISTS items (...)" },
+])
+```
+
+## File-based migrations
+
+For app-specific tables that aren't part of the sync contract, use file-based migrations:
+
+```rust
+builder.migrations_dir("migrations")
+```
+
+This reads all `.sql` files from the `migrations/` directory, sorted by filename:
+
+```txt
+migrations/
+  0001_create_user_preferences.sql
+  0002_add_theme_column.sql
+  0003_create_search_index.sql
+```
+
+File-based migrations run after embedded migrations. They use the same tracking table and skip logic.
+
+## Statement breakpoints
+
+A migration SQL file can contain multiple statements separated by `--> statement-breakpoint`:
+
+```sql
+CREATE TABLE categories (id TEXT PRIMARY KEY, name TEXT NOT NULL)
+--> statement-breakpoint
+CREATE TABLE products (id TEXT PRIMARY KEY, name TEXT NOT NULL, category_id TEXT)
+```
+
+Each statement runs individually within a single transaction. If any statement fails in strict mode, the entire migration rolls back.
+
+## Strict vs tolerant mode
+
+The plugin runs all migrations in **strict mode** by default:
+
+| Mode | Behavior on error |
+|---|---|
+| **Strict** | Any error rolls back the entire migration and stops startup |
+| **Tolerant** | Skips "already exists" and "duplicate column" errors |
+
+Strict mode is recommended for production. Tolerant mode is useful during development when you may re-run migrations against an existing database.
+
+## Migration tracking
+
+Applied migrations are recorded in `__drizzle_migrations`:
+
+```sql
+SELECT hash, created_at FROM __drizzle_migrations ORDER BY id;
+```
+
+| Column | Value |
+|---|---|
+| `hash` | The migration name (e.g. `"0001_create_items"`) |
+| `created_at` | Unix timestamp in milliseconds |
+
+A migration is skipped if its `hash` is already in this table. This makes migrations idempotent — running them twice is safe.
+
+## Checking migration status
+
+From JS:
+
+```ts
+const status = await client.getMigrationStatus();
+// [{ hash: "0001_create_items", created_at: 1747894800000 }, ...]
+```
+
+## Re-running a failed migration
+
+If a migration fails in strict mode, it is **not** recorded in `__drizzle_migrations`. After fixing the SQL, restart the app — the migration will be attempted again.
+
+Next: [DB Info](/docs/local-database/db-info).

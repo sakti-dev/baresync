@@ -1,6 +1,109 @@
 ---
 title: Transactions
-description: TODO
+description: Batch writes and outbox-aware transactions in Baresync.
 ---
 
-TODO: Write this page.
+# Transactions
+
+Baresync offers two ways to batch writes: the sync client's `writeTransaction` (recommended for synced data) and Drizzle's `db.batch` (for raw SQL batches).
+
+## writeTransaction (synced writes)
+
+Use this for any write to a synced table. It wraps your writes in a SQLite transaction and creates outbox entries so the sync engine picks them up.
+
+```ts
+import { useSyncClient } from "./hooks/useBaresyncQuery";
+import { db, TABLE } from "./lib/db";
+
+const client = useSyncClient();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: "loc-1",
+    table: TABLE.locations,
+    write: (writeTx) =>
+      writeTx.insert(TABLE.locations).values({
+        id: "loc-1",
+        name: "Warehouse A",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: "item-1",
+    table: TABLE.items,
+    write: (writeTx) =>
+      writeTx.insert(TABLE.items).values({
+        id: "item-1",
+        locationId: "loc-1",
+        name: "Widget",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+### What happens
+
+1. `writeTransaction` calls `db.transaction()` — Drizzle sends a `run_sql_batch` to Rust
+2. Each `writeLocalChange` performs the Drizzle write **and** inserts an outbox entry
+3. If any write fails, the entire transaction rolls back — no partial writes, no orphan outbox entries
+
+### writeLocalChange options
+
+```ts
+interface WriteLocalChangeOptions<TTx> {
+  // "insert" for new rows, "update" for changes to existing rows
+  operation: "insert" | "update";
+
+  // The row ID — used to link the outbox entry to the row
+  rowId: string;
+
+  // The Drizzle table definition
+  table: AnySQLiteTable;
+
+  // The Drizzle write operation (insert, update, etc.)
+  write: (tx: TTx) => Promise<unknown> | unknown;
+}
+```
+
+The `write` callback receives the transaction context. Use it to perform the actual Drizzle operation.
+
+## db.batch (raw SQL batches)
+
+Use this for non-synced writes or bulk operations that don't need outbox tracking.
+
+```ts
+await db.batch([
+  db.insert(TABLE.userPreferences).values({ id: "pref-1", theme: "dark" }),
+  db.insert(TABLE.userPreferences).values({ id: "pref-2", theme: "light" }),
+]);
+```
+
+`db.batch` sends all statements in a single `run_sql_batch` call. They run inside a Rust transaction — if any fails, all roll back.
+
+### When to use db.batch vs writeTransaction
+
+| Scenario | Use |
+|---|---|
+| Writing to synced tables | `client.writeTransaction` + `writeLocalChange` |
+| Writing to local-only tables | `db.batch` or individual `db.insert`/`db.update` |
+| Bulk import (no sync needed) | `db.batch` |
+
+## Atomicity guarantees
+
+Both `writeTransaction` and `db.batch` are atomic:
+
+- All statements run in a single SQLite transaction
+- If any statement fails, the entire batch rolls back
+- No partial state is visible to other queries
+
+## Read-after-write consistency
+
+Because Baresync uses a single SQLite connection with WAL mode, reads after a committed write always see the new data. You don't need to wait for an event — the data is immediately available.
+
+Next: [Migrations](/docs/local-database/migrations).

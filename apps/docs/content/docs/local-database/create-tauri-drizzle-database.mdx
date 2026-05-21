@@ -1,6 +1,130 @@
 ---
 title: Create Tauri Drizzle Database
-description: TODO
+description: Set up the Drizzle ORM proxy that routes queries through Tauri IPC to Rust.
 ---
 
-TODO: Write this page.
+# Create Tauri Drizzle Database
+
+`createTauriDrizzleDatabase` creates a Drizzle ORM database instance that routes all SQL through Tauri's `invoke` to the Rust plugin. You use it like a normal Drizzle SQLite database — selects, inserts, updates, deletes all work.
+
+## Basic setup
+
+```ts
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { items, locations } from "@your-app/sync-contract/local-synced-schema";
+import { syncOutbox, syncCursors } from "@your-app/sync-contract/local-schema";
+
+const TABLE = { items, locations, syncOutbox, syncCursors };
+
+const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
+```
+
+## Config options
+
+```ts
+interface TauriDrizzleDatabaseConfig {
+  // Your Drizzle schema — all table definitions grouped in one object.
+  // Required for Drizzle's query builder to produce correct SQL.
+  schema: Record<string, unknown>;
+
+  // The Tauri invoke function. Required in a Tauri app.
+  // For testing outside Tauri, pass a mock.
+  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+  // Custom command names (rarely needed).
+  // Defaults to "run_sql" and "run_sql_batch".
+  commands?: {
+    runSql?: string;
+    runSqlBatch?: string;
+  };
+
+  // Error callback — receives the error and the query context (sql, params, method).
+  // Useful for logging or telemetry. The error is still thrown after this.
+  onQueryError?: (
+    error: unknown,
+    query: { sql: string; params: unknown[]; method: string }
+  ) => void;
+}
+```
+
+## How it works
+
+`createTauriDrizzleDatabase` uses Drizzle's `sqlite-proxy` driver. Every query is serialized to `{ sql, params, method }` and sent via `invoke("run_sql", { query })` to the Rust side.
+
+```txt
+db.select().from(TABLE.items)
+  │
+  ▼ Drizzle generates: SELECT "id", "name", ... FROM "items"
+  │
+  ▼ invoke("run_sql", { query: { sql, params: [], method: "all" } })
+  │
+  ▼ Rust: sqlx::query(sql).bind(params).fetch_all()
+  │
+  ▼ Returns: [{ columns: ["id", "name", ...], values: ["item-1", "Widget", ...] }]
+  │
+  ▼ Drizzle proxy maps columns + values back to typed objects
+```
+
+## Queries
+
+```ts
+// Select
+const rows = await db.select().from(TABLE.items);
+
+// Select with filter
+import { eq } from "drizzle-orm";
+const item = await db.select().from(TABLE.items).where(eq(TABLE.items.id, "item-1"));
+
+// Insert
+await db.insert(TABLE.items).values({ id: "item-1", name: "Widget", ... });
+
+// Update
+await db.update(TABLE.items).set({ name: "Updated" }).where(eq(TABLE.items.id, "item-1"));
+
+// Delete (hard delete — prefer soft delete for synced tables)
+await db.delete(TABLE.items).where(eq(TABLE.items.id, "item-1"));
+```
+
+## Batch queries
+
+`db.batch()` sends multiple statements in a single transaction:
+
+```ts
+await db.batch([
+  db.insert(TABLE.locations).values({ id: "loc-1", name: "Warehouse" }),
+  db.insert(TABLE.items).values({ id: "item-1", locationId: "loc-1", name: "Widget" }),
+]);
+```
+
+This calls `invoke("run_sql_batch", { statements })` which runs all statements inside a single Rust transaction. If any statement fails, the entire batch rolls back.
+
+## Error handling
+
+```ts
+const db = createTauriDrizzleDatabase({
+  schema: TABLE,
+  invoke,
+  onQueryError: (error, { sql, params, method }) => {
+    console.error(`Query failed [${method}]:`, sql, params, error);
+  },
+});
+```
+
+The `onQueryError` callback fires before the error is thrown. It does not suppress the error.
+
+## Testing without Tauri
+
+Pass a mock `invoke` for unit tests:
+
+```ts
+const mockDb = createTauriDrizzleDatabase({
+  schema: TABLE,
+  invoke: async (cmd, args) => {
+    if (cmd === "run_sql") return [];
+    return { last_insert_id: 0, rows_affected: 0 };
+  },
+});
+```
+
+Next: [Table Registry Pattern](/docs/local-database/table-registry-pattern).
