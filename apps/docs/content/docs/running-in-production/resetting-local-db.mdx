@@ -13,7 +13,7 @@ Sometimes your local state gets out of sync with the server: a corrupted cursor,
 |---|---|
 | Sync pulls the same data repeatedly | Cursor may be stale. Try `fullResync()`. |
 | `needs_baseline_sync` is always `true` after syncing | Cursor isn't being saved. Check DB write permissions. Then `fullResync()`. |
-| Dirty count never reaches `0` | Outbox entries are stuck. Check server logs for push rejection. Then `purge_synced_outbox` + `fullResync()`. |
+| Dirty count never reaches `0` | Pending outbox entries are stuck. Check server logs for push rejection, fix the rejection, then run `syncNow()` or `fullResync()` if the cursor is stale. |
 | Migration error on startup | Bad migration SQL. Fix the migration, delete the DB file, restart. |
 | Wrong `scope_id` data mixed in | Incorrect scope was used. Delete DB and start fresh. |
 
@@ -22,8 +22,6 @@ Sometimes your local state gets out of sync with the server: a corrupted cursor,
 `fullResync()` clears the cursor and re-pulls everything from the server. It does **not** delete your local data. It's safe — your rows stay in the DB, and the server sends a fresh snapshot:
 
 ```ts
-await client.syncNow({ mode: "full_resync" });
-// Or from the SyncClient:
 await client.fullResync();
 ```
 
@@ -51,20 +49,20 @@ This deletes outbox entries that were synced more than 7 days ago. Returns the c
 
 When to use this: your DB is growing large and you want to reclaim space. This is a housekeeping operation, not a fix.
 
+Do not use this to clear pending rows. Pending rows have `synced_at = NULL`; deleting them loses local changes before they reach the server.
+
 ## Level 3: Delete the DB file (clean slate)
 
-If resync doesn't fix the problem, or you have a migration error that prevents startup, delete the database file and let Baresync recreate it:
+If resync doesn't fix the problem, or you have a migration error that prevents startup, delete the database file and let Baresync recreate it.
 
-```ts
-// In your app's reset/settings screen:
-import { invoke } from "@tauri-apps/api/core";
-import { appDataDir } from "@tauri-apps/api/path";
-import { remove } from "@tauri-apps/api/fs";
+Do not delete the file while the plugin has an open SQLite connection. In production, implement this as an app-level reset flow:
 
-const dbPath = await appDataDir() + "baresync.db";
-await remove(dbPath);
-// Restart the app — migrations run from scratch, then full resync
-```
+1. Ask the user to confirm that unsynced local changes may be lost.
+2. Stop polling.
+3. Persist a "reset local database on next launch" flag.
+4. Restart the app.
+5. Before registering the Baresync plugin, delete the DB file plus its WAL/SHM files.
+6. Register the plugin and let migrations run from scratch.
 
 What happens on restart:
 
@@ -79,12 +77,12 @@ This is the nuclear option. You lose all local-only data (rows that were never p
 
 SQLite uses a Write-Ahead Log (WAL) file alongside the main database. If the DB is corrupted, the WAL file may also be stale:
 
-```ts
-const base = await appDataDir();
-await remove(base + "baresync.db");
-await remove(base + "baresync.db-wal");
-await remove(base + "baresync.db-shm");
-// Restart the app
+Delete all three files during the pre-plugin reset step:
+
+```txt
+baresync.db
+baresync.db-wal
+baresync.db-shm
 ```
 
 Only needed if the DB file is genuinely corrupted (SQLite errors on open). Under normal operation, SQLite cleans up WAL and SHM files on close.
@@ -102,10 +100,9 @@ function SyncSettings({ client }: { client: SyncClient }) {
   };
 
   const handleFullReset = async () => {
-    const base = await appDataDir();
-    await remove(base + "baresync.db");
-    await remove(base + "baresync.db-wal");
-    window.location.reload();
+    await client.stopPolling();
+    await requestLocalDatabaseResetOnNextLaunch();
+    await relaunchApp();
   };
 
   return (
@@ -130,6 +127,8 @@ function SyncSettings({ client }: { client: SyncClient }) {
   );
 }
 ```
+
+`requestLocalDatabaseResetOnNextLaunch()` and `relaunchApp()` are app-specific. Many apps implement them as Tauri commands so the reset can happen before Baresync opens SQLite again.
 
 ## What NOT to do
 

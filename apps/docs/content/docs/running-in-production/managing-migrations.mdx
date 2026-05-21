@@ -12,9 +12,9 @@ Baresync uses SQL migrations to set up and evolve your local SQLite schema. Migr
 1. The plugin reads your migration files (embedded or from a directory)
 2. It checks the `__drizzle_migrations` table for already-applied migrations
 3. It runs any new migrations in order, one at a time
-4. Each successful migration is recorded with its hash
+4. Each successful migration is recorded in the `hash` column
 
-A migration is **new** if its name doesn't exist in `__drizzle_migrations`. Migrations are never re-run.
+A migration is **new** if its name doesn't exist in `__drizzle_migrations.hash`. Migrations are never re-run.
 
 ## Migration formats
 
@@ -23,19 +23,24 @@ A migration is **new** if its name doesn't exist in `__drizzle_migrations`. Migr
 Compiled into your binary. No files to ship:
 
 ```rust
-const migrations: &[EmbeddedMigration] = &[
-    EmbeddedMigration {
-        name: "0001_create_tables",
-        sql: include_str!("../migrations/0001_create_tables.sql"),
-    },
-    EmbeddedMigration {
-        name: "0002_add_indexes",
-        sql: include_str!("../migrations/0002_add_indexes.sql"),
-    },
-];
+use baresync_core::migrations::EmbeddedMigration;
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 
-baresync::Builder::new()
-    .migrations(migrations)
+fn app_migrations() -> Vec<EmbeddedMigration> {
+    vec![
+        EmbeddedMigration {
+            name: "0001_create_tables",
+            sql: include_str!("../migrations/0001_create_tables.sql"),
+        },
+        EmbeddedMigration {
+            name: "0002_add_indexes",
+            sql: include_str!("../migrations/0002_add_indexes.sql"),
+        },
+    ]
+}
+
+BaresyncBuilder::new()
+    .migrations(app_migrations())
 ```
 
 ### Directory migrations (useful during development)
@@ -43,7 +48,7 @@ baresync::Builder::new()
 Read from `.sql` files at runtime, sorted by filename:
 
 ```rust
-baresync::Builder::new()
+BaresyncBuilder::new()
     .migrations_dir("/path/to/migrations")
 ```
 
@@ -87,20 +92,15 @@ ALTER TABLE categories ADD COLUMN description TEXT;
 
 That's it. Baresync runs it once and records it.
 
-## Strict vs tolerant mode
+## Strict migration behavior
 
-The `MigrationConfig` has a `strict` flag:
+Baresync's Tauri plugin runs migrations in strict mode. Any SQL error fails the migration and prevents the migration from being recorded.
 
-| Mode | Behavior |
-|---|---|
-| **Strict** (default) | Any error fails the migration |
-| **Tolerant** | Skips "already exists" and "duplicate column" errors |
-
-Tolerant mode is useful if you need to re-run a migration that partially succeeded before the recording step. Baresync uses strict mode by default.
+The lower-level Rust migration API has a tolerant mode for specialized recovery or tests, but the production plugin builder uses strict mode. Treat migration SQL as immutable once released.
 
 ## Checking migration status
 
-From JS, you can check which migrations have been applied:
+If your app exposes the migration status command, you can check which migrations have been applied:
 
 ```ts
 const status = await invoke("get_migration_status");
@@ -109,7 +109,7 @@ const status = await invoke("get_migration_status");
 
 This shows what the engine has recorded, not what's pending. If a migration name doesn't appear in the list, it hasn't run yet.
 
-You can also force-run migrations:
+If your app exposes the migration command, you can also ask the plugin to run pending migrations:
 
 ```ts
 await invoke("run_migrations");

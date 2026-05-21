@@ -89,8 +89,8 @@ Use this to detect unexpected DB growth. If the file keeps growing even when syn
 Here's a React component that shows sync health in your UI:
 
 ```tsx
-import { useState, useEffect } from "react";
-import type { SyncClient } from "@repo/sync-contract";
+import type { SyncClient } from "baresync/tauri";
+import { useEffect, useState } from "react";
 
 type SyncHealth = "synced" | "pending" | "offline" | "error";
 

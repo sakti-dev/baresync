@@ -38,7 +38,9 @@ When your users have many pending changes, the engine doesn't send them all at o
 The client's `max_push_bytes` controls the target chunk size:
 
 ```rust
-baresync::Builder::new()
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+BaresyncBuilder::new()
     .max_push_bytes(131_072)  // 128 KB — more chunks, smaller payloads
     .max_push_rows(500)       // cap rows per chunk
 ```
@@ -49,7 +51,7 @@ baresync::Builder::new()
 | Default (256 KB) | Balance between request count and size | Most apps |
 | Large chunks (512 KB–1 MB) | Fewer requests, each one is larger | Fast, reliable network; large data volumes |
 
-The server's `maxBytes` must be **larger** than the client's `max_push_bytes`. If they're equal, any chunk that's slightly over the target gets rejected. A 4:1 ratio is safe (e.g., 256 KB client, 1 MB server; or 256 KB client, 2 MB server).
+The server's max push body size must be larger than the client's `max_push_bytes`. Baresync's defaults use a 256 KB client target and a 2 MB server limit, which gives the client enough room to split chunks before the server rejects them. If you customize both sides, keep at least a 4:1 server-to-client ratio.
 
 ### Row-level limit
 
@@ -64,14 +66,14 @@ The `poll_interval_secs` controls how often the engine checks for changes:
 | 5–10 seconds | Very low | High | Development only |
 | 30 seconds | 30 seconds max | Moderate | Default for most apps |
 | 60 seconds | 1 minute max | Low | Infrequently-changing data |
-| Disabled (0) | Manual only | None | Apps that use push notifications to trigger sync |
+| No polling loop | Manual or notification-triggered | None while idle | Apps that call `syncNow()` after user actions or push notifications |
 
 ### Polling and battery
 
-On mobile, polling when the app is backgrounded drains battery. Set `poll_on_background` to `false` (the default) to pause polling when the window loses focus:
+On mobile, polling when the app is backgrounded drains battery. Keep `poll_on_background` set to `false` (the default) to pause polling when the window loses focus:
 
 ```rust
-baresync::Builder::new()
+BaresyncBuilder::new()
     .poll_interval_secs(30)
     .poll_on_background(false)  // pauses when backgrounded
 ```
@@ -82,9 +84,9 @@ Polling automatically resumes when the window regains focus.
 
 If you need sub-second sync latency, don't set `poll_interval_secs` to 1. Instead, use push notifications:
 
-1. Set `poll_interval_secs(0)` to disable auto-polling
-2. When your server detects a change, send a push notification to the client
-3. On receiving the notification, call `client.syncNow()`
+1. Do not call `client.startPolling()` during app startup.
+2. When your server detects a change, send a push notification to the client.
+3. On receiving the notification, call `client.syncNow()`.
 
 This gives you instant sync without constant polling.
 
@@ -104,6 +106,8 @@ This prevents soft-deleted rows from accumulating indefinitely.
 Over time, the `sync_outbox` table grows as entries are marked synced but not deleted. Purge them periodically:
 
 ```ts
+import { invoke } from "@tauri-apps/api/core";
+
 await invoke("purge_synced_outbox", {
   olderThan: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
 });
@@ -131,7 +135,7 @@ You don't need to change these. They're set when the plugin opens the database c
 The server uses `getWriteChunkSize()` to split incoming push rows into safe SQLite write chunks, respecting the SQLite bind parameter limit:
 
 ```ts
-import { getWriteChunkSize } from "@repo/sync-contract/server";
+import { getWriteChunkSize } from "baresync/server";
 
 const chunkSize = getWriteChunkSize({
   columnCount: 10,    // columns per row
@@ -148,7 +152,7 @@ If your tables have many columns, the chunk size automatically decreases to stay
 The `sync_batch_requests` table records every push for idempotency. Over time, old entries accumulate. Clean them up:
 
 ```ts
-import { cleanupSyncBatchRequests } from "@repo/sync-contract/server";
+import { cleanupSyncBatchRequests } from "baresync/server";
 
 const result = await cleanupSyncBatchRequests({
   db: sqliteDb,
@@ -167,10 +171,10 @@ Run this on a server-side cron job or after every N requests.
 
 Before going to production:
 
-- [ ] Client `max_push_bytes` is well below server `maxBytes` (4:1 ratio recommended)
-- [ ] `poll_interval_secs` is 30 or higher (not 5 or 10)
+- [ ] Client `max_push_bytes` is below the server max body size; 4:1 or more is a good buffer
+- [ ] Polling interval matches product needs; 30 seconds is a good default, and very short intervals are limited to development or active foreground workflows
 - [ ] `poll_on_background` is `false` on mobile
 - [ ] Synced outbox purge is scheduled (daily or weekly)
-- [ ] Server has `cleanupSyncBatchRequests` running (daily cron or post-request)
+- [ ] Server has `cleanupSyncBatchRequests` running on a scheduled or batched cleanup path
 - [ ] DB file is in a writable directory with sufficient disk space
 - [ ] `getState()` is called periodically to catch stuck sync early

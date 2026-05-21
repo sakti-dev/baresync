@@ -12,9 +12,11 @@ Baresync has two layers of configuration: the **Tauri plugin** (controls runtime
 When you register the plugin in your Tauri app's `main.rs`, you use the builder pattern. Every option has a sensible default, so most apps only set a few:
 
 ```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
 tauri::Builder::default()
     .plugin(
-        baresync::Builder::new()
+        BaresyncBuilder::new()
             .api_base_url("https://api.example.com")
             .db_path("baresync.db")
             .poll_interval_secs(30)
@@ -29,9 +31,9 @@ tauri::Builder::default()
 | Method | Type | Default | Purpose |
 |---|---|---|---|
 | `.api_base_url(url)` | `String` | `""` (required) | Your sync server's base URL. All sync endpoints are relative to this. |
-| `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative to the app's data directory, or absolute. |
+| `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative paths use the process working directory; absolute app-owned paths are safer in production. |
 | `.encoding(enc)` | `String` | `"json"` | Sync encoding: `"json"` or `"protobuf"`. Must match the server. |
-| `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes. Set to `0` to disable auto-polling. |
+| `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes after your app calls `startPolling()`. Do not call `startPolling()` if your app is manual-sync only. |
 | `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
 | `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
 | `.max_push_rows(rows)` | `usize` | `2000` | Maximum rows per push chunk. Works with `max_push_bytes` — whichever limit is hit first. |
@@ -42,36 +44,52 @@ tauri::Builder::default()
 
 ## Server configuration
 
-The server limits are set when you create the sync service:
+If you use Baresync's server handler helpers, the push handler validates incoming requests with Baresync's default API limits: 2 MB per push body and 2000 total rows per push.
 
 ```ts
-const { createSyncService } = await import("@repo/sync-contract/server");
+import { createSyncPushHandler } from "baresync/server";
 
-const service = createSyncService({
-  db: sqliteDb,
-  contract: syncContract,
-  limits: {
-    maxBytes: 2 * 1024 * 1024,
-    maxRows: 2000,
-  },
+const pushHandler = createSyncPushHandler({
+  applyPushChanges,
+  encoding: "json",
+  idempotency: { db },
+  resolveScope,
+  upsertOrder: ["categories", "products"],
 });
 ```
 
-### Server limits
+If you build your own server pipeline, use `validatePushEnvelope()` and pass the limits explicitly:
+
+```ts
+import { decodeSyncRequest, validatePushEnvelope } from "baresync/server";
+
+const decoded = await decodeSyncRequest({
+  encoding: "json",
+  kind: "push",
+  request,
+});
+
+validatePushEnvelope(decoded, {
+  maxBytes: 2 * 1024 * 1024,
+  maxRows: 2000,
+});
+```
+
+### Recommended server limits
 
 | Setting | Default | Purpose |
 |---|---|---|
 | `maxBytes` | 2 MB | Maximum push body size. Rejects with `413` if exceeded. |
 | `maxRows` | 2000 | Maximum total rows in a push. Rejects with `413` if exceeded. |
 
-The client's `max_push_bytes` should be **smaller** than the server's `maxBytes`. This gives the client room to split chunks before the server rejects them. A good ratio is client target = server max / 8 (e.g., 256 KB client, 2 MB server).
+The client's `max_push_bytes` should be smaller than the server's `maxBytes`. The defaults are intentionally conservative: 256 KB client target and 2 MB server max.
 
 ## Environment-specific settings
 
 ### Development
 
 ```rust
-baresync::Builder::new()
+BaresyncBuilder::new()
     .api_base_url("http://localhost:3000")
     .db_path(":memory:")  // fresh DB on every restart
     .poll_interval_secs(10)  // fast feedback loop
@@ -81,7 +99,7 @@ baresync::Builder::new()
 ### Production
 
 ```rust
-baresync::Builder::new()
+BaresyncBuilder::new()
     .api_base_url("https://api.example.com")
     .db_path("baresync.db")
     .poll_interval_secs(30)
@@ -93,10 +111,10 @@ baresync::Builder::new()
 ### Testing
 
 ```rust
-baresync::Builder::new()
+BaresyncBuilder::new()
     .api_base_url("http://localhost:18080")
     .db_path(":memory:")
-    .poll_interval_secs(0)  // disable polling, call syncNow() manually
+    .poll_interval_secs(30) // only used if your test calls startPolling()
     .transport(mock_transport)  // record calls for assertions
 ```
 
@@ -105,12 +123,14 @@ baresync::Builder::new()
 When you create a `SyncClient` in your frontend, you set the scope and encoding:
 
 ```ts
-import { createSyncClient } from "@repo/sync-contract";
+import { invoke } from "@tauri-apps/api/core";
+import { createSyncClient } from "baresync/tauri";
 
 const client = createSyncClient({
   apiUrl: "https://api.example.com",
   encoding: "json",
   scopeId: "merchant-123",
+  invoke,
 });
 ```
 
@@ -125,7 +145,7 @@ const client = createSyncClient({
 
 **Mismatched encoding** — plugin says `"json"`, server says `"protobuf"`. Sync fails with encoding errors. Ensure all three layers (plugin, client, server) use the same encoding.
 
-**DB path without directory** — `db_path("baresync.db")` creates the file in the current working directory, which may not be writable. On mobile, use the app's data directory. On desktop, use `app_data_dir/baresync.db`.
+**DB path without a predictable app directory** — `db_path("baresync.db")` is relative to the process working directory. For production, resolve an app-owned data path explicitly, especially on mobile.
 
 **Polling too fast** — `poll_interval_secs(1)` creates unnecessary load. 30 seconds is a good default. If you need faster updates, consider a push notification that calls `syncNow()` instead.
 

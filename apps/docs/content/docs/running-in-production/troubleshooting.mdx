@@ -94,8 +94,8 @@ When a user reports that changes aren't appearing, follow this order:
 const state = await client.getState();
 ```
 
-- **`dirty_count > 0`** → Local changes exist but haven't been pushed. Continue to step 2.
-- **`dirty_count === 0`** → Local changes were pushed. Continue to step 3.
+- **`local_dirty_count > 0`** → Local changes exist but haven't been pushed. Continue to step 2.
+- **`local_dirty_count === 0`** → Local changes were pushed. Continue to step 3.
 
 ### Step 2: Check if push is reaching the server
 
@@ -180,10 +180,11 @@ See [Performance](./performance) for tuning `max_push_bytes`, `max_push_rows`, a
 Bad migration SQL. The engine logs the error. Fix the SQL, delete the DB file, and restart:
 
 ```ts
-import { remove } from "@tauri-apps/api/fs";
-await remove(dbPath);
-window.location.reload();
+await requestLocalDatabaseResetOnNextLaunch();
+await relaunchApp();
 ```
+
+The reset should delete the DB before the plugin opens SQLite again. See [Resetting Local DB](./resetting-local-db).
 
 ### "`needs_baseline_sync` stays `true` after syncing"
 
@@ -199,7 +200,7 @@ Check:
 If the API-based diagnosis above isn't enough, you can query Baresync's internal tables directly through Drizzle. This is for debugging only — don't build features on these tables:
 
 ```ts
-import { syncOutbox, syncCursors } from "@repo/sync-contract/schema";
+import { syncCursors, syncOutbox } from "@repo/sync-contract/local-schema";
 
 // Check pending outbox entries
 const pending = await db
