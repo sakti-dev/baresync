@@ -1,6 +1,93 @@
 ---
 title: Error Handling
-description: TODO
+description: What errors look like, where they come from, and how to recover.
 ---
 
-TODO: Write this page.
+# Error Handling
+
+The JS client does not wrap or transform errors. Every method rejects with whatever error the Tauri plugin or the Drizzle transaction produces.
+
+## Error sources
+
+| Source | When | Shape |
+|---|---|---|
+| Tauri IPC | Network failure, plugin not registered, command panic | Varies — typically a string or structured error from the Rust side |
+| Drizzle / SQLite | Schema mismatch, constraint violation, locked database | Drizzle `SqliteError` |
+| Server | Auth expired, rate limited, validation error | HTTP error response forwarded by the plugin |
+
+## No Tauri runtime
+
+If you call any sync command without providing an `invoke` function and you are not in a Tauri window:
+
+```ts
+const client = createSyncClient({
+  apiUrl: "http://127.0.0.1:18181",
+  encoding: "json",
+  scopeId: "test",
+});
+await client.syncNow();
+// Error: Tauri IPC is not available. Cannot invoke "sync_now".
+```
+
+This is intentional. It catches accidental use outside Tauri early.
+
+## Handling sync command errors
+
+```ts
+try {
+  await client.syncNow();
+} catch (error) {
+  // Log, show toast, retry, etc.
+  console.error("Sync failed:", error);
+}
+```
+
+The client does not retry on its own. If you want retry logic, wrap the call:
+
+```ts
+async function syncWithRetry(maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await client.syncNow();
+      return;
+    } catch (error) {
+      if (attempt === maxAttempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+```
+
+## Handling write errors
+
+Write errors come from Drizzle/SQLite, not from sync:
+
+```ts
+try {
+  await client.writeTransaction(db, async (tx) => {
+    await client.writeLocalChange(tx, {
+      operation: "insert",
+      rowId: id,
+      table: TABLE.locations,
+      write: (writeTx) =>
+        writeTx.insert(TABLE.locations).values({ id, ...values }),
+    });
+  });
+} catch (error) {
+  // Constraint violation, schema mismatch, etc.
+}
+```
+
+If the `write` callback fails, the outbox entry is not inserted — they are in the same transaction.
+
+## Polling errors
+
+If a polling cycle fails, the plugin emits a `baresync://sync-status-changed` event. The polling loop continues — it does not stop on failure. Check `getPollingStatus()` to see if polling is still running.
+
+## What not to do
+
+- **Do not catch and swallow errors silently.** At minimum, log them.
+- **Do not retry indefinitely without backoff.** If the server is down, retrying every second will not help.
+- **Do not assume errors are strings.** The Tauri plugin may return structured error objects.
+
+Next: [Testing](/docs/js-client/testing).

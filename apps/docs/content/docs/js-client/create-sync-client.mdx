@@ -1,6 +1,130 @@
 ---
 title: Create Sync Client
-description: TODO
+description: Construct a sync client with your server URL, encoding, scope, and invoke function.
 ---
 
-TODO: Write this page.
+# Create Sync Client
+
+`createSyncClient` builds a `SyncClient` instance that your app uses for every sync operation. You typically create one client per scope and hold it in a React context.
+
+## Import
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+```
+
+## Config
+
+```ts
+const client = createSyncClient({
+  apiUrl: "http://127.0.0.1:18181",
+  encoding: "json",
+  scopeId: "outlet-1",
+  invoke,
+});
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `apiUrl` | `string` | Yes | Your server's base URL (used by the Tauri plugin for HTTP requests) |
+| `encoding` | `"json" \| "protobuf"` | Yes | Wire encoding for sync payloads |
+| `scopeId` | `string` | Yes | The scope this client syncs under (must match a scope in your sync contract) |
+| `invoke` | `(cmd, args?) => Promise<unknown>` | No | Tauri IPC function. Defaults to a stub that throws outside Tauri runtime |
+
+### apiUrl
+
+The plugin uses this URL when making HTTP requests to your server. It is not used by the JS client directly.
+
+### encoding
+
+Set to `"json"` unless you have configured protobuf encoding in your sync contract. See [Define Protobuf Sync Config](/docs/generator/define-protobuf-sync-config) for protobuf setup.
+
+### scopeId
+
+Must match one of the scope IDs in your `sync.config.ts`. All sync commands from this client will use this scope.
+
+### invoke
+
+In a Tauri app, pass `invoke` from `@tauri-apps/api/core`:
+
+```ts
+import { invoke } from "@tauri-apps/api/core";
+
+const client = createSyncClient({
+  apiUrl: "http://127.0.0.1:18181",
+  encoding: "json",
+  scopeId: "outlet-1",
+  invoke,
+});
+```
+
+If you omit `invoke`, the client throws with a descriptive error when you call any command. This is intentional — it prevents silent failures if the client is accidentally used outside a Tauri window.
+
+## Return type
+
+`createSyncClient` returns a `SyncClient` object with these methods:
+
+```ts
+interface SyncClient {
+  enqueueChange<TTx>(tx: TTx, options: LocalChangeOptions): Promise<void>;
+  fullResync(): Promise<unknown>;
+  getPollingStatus(): Promise<PollingStatus>;
+  getState(): Promise<SyncLocalState>;
+  pausePolling(): Promise<unknown>;
+  pull(): Promise<unknown>;
+  push(): Promise<unknown>;
+  resumePolling(): Promise<unknown>;
+  startPolling(): Promise<unknown>;
+  stopPolling(): Promise<unknown>;
+  syncNow(): Promise<unknown>;
+  writeLocalChange<TTx>(tx: TTx, options: WriteLocalChangeOptions<TTx>): Promise<void>;
+  writeTransaction<TTx, TResult>(db: SyncDatabase<TTx>, callback: (tx: TTx) => Promise<TResult>): Promise<TResult>;
+}
+```
+
+## Singleton pattern
+
+Create the client once and share it via React context:
+
+```tsx
+import { createContext, useState, type ReactNode } from "react";
+import { createSyncClient, type SyncClient } from "baresync/tauri";
+import { invoke } from "@tauri-apps/api/core";
+
+const SyncClientContext = createContext<SyncClient | null>(null);
+
+export function SyncClientProvider({ children }: { children: ReactNode }) {
+  const [client] = useState(() =>
+    createSyncClient({
+      apiUrl: "http://127.0.0.1:18181",
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke,
+    })
+  );
+
+  return (
+    <SyncClientContext.Provider value={client}>
+      {children}
+    </SyncClientContext.Provider>
+  );
+}
+
+export function useSyncClient(): SyncClient {
+  const client = useContext(SyncClientContext);
+  if (!client) {
+    throw new Error("useSyncClient must be used within SyncClientProvider");
+  }
+  return client;
+}
+```
+
+`useState` with an initializer ensures the client is created once per mount.
+
+## Common mistakes
+
+- **Creating a new client on every render.** Use `useState` or `useRef` with an initializer.
+- **Passing the wrong scopeId.** The scope must match what your server expects. Check `sync.config.ts`.
+- **Forgetting to pass `invoke`.** The default stub only works in tests with a mock. In a real app, always pass Tauri's `invoke`.
+
+Next: [Sync Commands](/docs/js-client/sync-commands).

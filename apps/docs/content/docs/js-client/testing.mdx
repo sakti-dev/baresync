@@ -1,6 +1,143 @@
 ---
 title: Testing
-description: TODO
+description: Mock the invoke function to test components that use the sync client.
 ---
 
-TODO: Write this page.
+# Testing
+
+The sync client is designed for testability. Pass a custom `invoke` function to control what each Tauri command returns.
+
+## Create a mock client
+
+```ts
+import { createSyncClient, type SyncClient } from "baresync/tauri";
+
+function createMockClient(overrides?: {
+  state?: Record<string, unknown>;
+  pollingStatus?: Record<string, unknown>;
+}): SyncClient {
+  const results: Record<string, unknown> = {
+    sync_now: { ok: true },
+    sync_push: { ok: true },
+    sync_pull: { ok: true },
+    sync_full_resync: { ok: true },
+    get_sync_local_state: overrides?.state ?? {
+      local_dirty_count: 0,
+      last_server_watermark: "",
+      needs_baseline_sync: false,
+    },
+    start_polling: { ok: true },
+    stop_polling: { ok: true },
+    pause_polling: { ok: true },
+    resume_polling: { ok: true },
+    get_polling_status: overrides?.pollingStatus ?? {
+      running: true,
+      paused: false,
+      last_sync_at: "2026-05-22T00:00:00.000Z",
+    },
+  };
+
+  return createSyncClient({
+    apiUrl: "http://localhost:0",
+    encoding: "json",
+    scopeId: "test",
+    invoke: (cmd) => Promise.resolve(results[cmd]),
+  });
+}
+```
+
+## Test a component that uses syncNow
+
+```ts
+const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+const client = createSyncClient({
+  apiUrl: "http://localhost:0",
+  encoding: "json",
+  scopeId: "test",
+  invoke: (cmd, args) => {
+    calls.push({ cmd, args });
+    return Promise.resolve({});
+  },
+});
+
+await client.syncNow();
+expect(calls).toEqual([{ cmd: "sync_now", args: { scopeId: "test" } }]);
+```
+
+## Test write helpers
+
+The write helpers (`writeLocalChange`, `enqueueChange`) do not use `invoke` — they insert directly into `sync_outbox` through the Drizzle transaction. Mock the transaction object:
+
+```ts
+const inserted: Array<{ table: unknown; values: Record<string, unknown> }> = [];
+const mockTx = {
+  insert(table: unknown) {
+    return {
+      values(values: Record<string, unknown>) {
+        inserted.push({ table, values });
+        return Promise.resolve({ rowsAffected: 1 });
+      },
+    };
+  },
+};
+
+const client = createSyncClient({
+  apiUrl: "http://localhost:0",
+  encoding: "json",
+  scopeId: "test",
+  invoke: () => Promise.resolve({}),
+});
+
+await client.enqueueChange(mockTx, {
+  operation: "insert",
+  rowId: "item-1",
+  table: testItems,
+});
+
+expect(inserted).toHaveLength(1);
+expect(inserted[0]?.values).toMatchObject({
+  operation: "insert",
+  rowId: "item-1",
+  scopeId: "test",
+  tableName: "items",
+});
+```
+
+## Test error scenarios
+
+```ts
+const error = { code: "AUTH_EXPIRED", message: "session expired" };
+const client = createSyncClient({
+  apiUrl: "http://localhost:0",
+  encoding: "json",
+  scopeId: "test",
+  invoke: () => Promise.reject(error),
+});
+
+await expect(client.syncNow()).rejects.toBe(error);
+```
+
+Rejected values pass through unchanged — no wrapping, no transformation.
+
+## Test polling status
+
+```ts
+const client = createSyncClient({
+  apiUrl: "http://localhost:0",
+  encoding: "json",
+  scopeId: "test",
+  invoke: (cmd) => {
+    if (cmd === "get_polling_status") {
+      return Promise.resolve({
+        running: true,
+        paused: false,
+        last_sync_at: "2026-05-22T12:00:00.000Z",
+      });
+    }
+    return Promise.resolve({});
+  },
+});
+
+const status = await client.getPollingStatus();
+expect(status.running).toBe(true);
+```

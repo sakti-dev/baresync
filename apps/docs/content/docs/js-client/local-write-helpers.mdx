@@ -1,6 +1,113 @@
 ---
 title: Local Write Helpers
-description: TODO
+description: writeTransaction, writeLocalChange, and enqueueChange for atomic writes with outbox tracking.
 ---
 
-TODO: Write this page.
+# Local Write Helpers
+
+Every local write that needs to sync must go through the client's write helpers. These ensure the row mutation and the outbox entry are atomic — if the write succeeds, the sync engine will eventually push it.
+
+## writeTransaction
+
+```ts
+const result = await client.writeTransaction(db, async (tx) => {
+  // do writes with tx
+  return "done";
+});
+```
+
+Opens a Drizzle transaction on your database. Use this as the outer wrapper for any write that involves sync-tracked tables.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `db` | `SyncDatabase<TTx>` | Your Drizzle database instance |
+| `callback` | `(tx: TTx) => Promise<T>` | The transaction body |
+
+`writeTransaction` is a thin wrapper around `db.transaction(callback)`. It exists so you do not need to import both the client and the database — the client handles both.
+
+## writeLocalChange
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: id,
+    table: TABLE.locations,
+    write: (writeTx) =>
+      writeTx.insert(TABLE.locations).values({
+        id,
+        scopeId: "outlet-1",
+        name: "Back room",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+Performs two things atomically:
+
+1. Runs your `write` callback (the actual insert or update)
+2. Inserts a row into `sync_outbox` with the table name, row ID, operation, and scope
+
+| Option | Type | Description |
+|---|---|---|
+| `operation` | `"insert" \| "update"` | The type of change |
+| `rowId` | `string` | The primary key of the affected row |
+| `table` | `AnySQLiteTable` | The Drizzle table definition |
+| `write` | `(tx: TTx) => Promise<unknown>` | The mutation to perform |
+
+### Operation types
+
+- `"insert"` — use for new rows
+- `"update"` — use for updates and soft-deletes
+
+There is no `"delete"` operation on `writeLocalChange`. Soft-delete by setting `deletedAt` and `isSynced: false` with `"update"`.
+
+### How the outbox ID is generated
+
+The outbox entry ID follows the pattern:
+
+```txt
+outbox-{operation}-{tableName}-{rowId}-{randomUUID}
+```
+
+This makes outbox entries traceable to their source mutation while remaining unique.
+
+## enqueueChange
+
+```ts
+await client.enqueueChange(tx, {
+  operation: "update",
+  rowId: row.id,
+  table: TABLE.items,
+});
+```
+
+Records an outbox entry **without** performing a write. Use this when you have already mutated the row and only need the outbox tracking.
+
+This is the lower-level primitive that `writeLocalChange` uses internally. You typically use it for [bulk mutations](/docs/js-client/bulk-mutations) where you perform a single bulk write and then enqueue one outbox entry per affected row.
+
+## The outbox table
+
+Both `writeLocalChange` and `enqueueChange` insert into `sync_outbox`:
+
+| Column | Description |
+|---|---|
+| `id` | Unique outbox entry ID |
+| `table_name` | Drizzle table name (derived from the table config) |
+| `row_id` | The affected row's primary key |
+| `operation` | `"insert"` or `"update"` |
+| `scope_id` | The client's scopeId |
+| `changed_at` | ISO timestamp when the entry was created |
+| `synced_at` | `null` until the sync engine processes it |
+
+The table has a unique index on `(table_name, row_id)` where `synced_at IS NULL`, so only one pending outbox entry exists per row at a time.
+
+## Common mistakes
+
+- **Writing directly to the database without the helpers.** The sync engine will not know about the change and it will never be pushed.
+- **Using `writeLocalChange` outside `writeTransaction`.** The outbox entry and the write must be in the same transaction to be atomic.
+- **Forgetting to set `isSynced: false` on updates.** The sync engine uses `isSynced` to detect dirty rows. If you forget it, the row may not appear as needing sync.
+
+Next: [Bulk Mutations](/docs/js-client/bulk-mutations).

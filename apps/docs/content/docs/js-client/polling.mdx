@@ -1,6 +1,111 @@
 ---
 title: Polling
-description: TODO
+description: Start, stop, pause, and resume automatic sync cycles.
 ---
 
-TODO: Write this page.
+# Polling
+
+Polling runs the sync engine on a fixed interval so local changes are pushed and server changes are pulled without user action.
+
+## Start polling
+
+```ts
+await client.startPolling();
+```
+
+Starts the polling loop. The plugin runs a full push-then-pull cycle every N seconds (configured in your Tauri plugin builder). Call this once when your app mounts — typically inside a `useEffect`:
+
+```ts
+useEffect(() => {
+  client.startPolling();
+  return () => {
+    client.stopPolling().catch(() => {});
+  };
+}, [client]);
+```
+
+## Stop polling
+
+```ts
+await client.stopPolling();
+```
+
+Stops the polling loop entirely. Unlike `pausePolling`, calling `stopPolling` tears down the timer. You need to call `startPolling` again to resume.
+
+Note: `stopPolling` does **not** pass `scopeId`. It stops all polling for the current scope.
+
+## Pause and resume
+
+```ts
+await client.pausePolling();
+await client.resumePolling();
+```
+
+`pausePolling` keeps the timer alive but skips sync cycles. Use this during long-running local operations where you do not want sync to interfere (for example, a bulk import).
+
+`resumePolling` resumes the cycle from where it left off.
+
+## Polling status
+
+```ts
+const status = await client.getPollingStatus();
+```
+
+Returns:
+
+```ts
+interface PollingStatus {
+  last_sync_at: string | null;
+  paused: boolean;
+  running: boolean;
+}
+```
+
+| Field | Description |
+|---|---|
+| `last_sync_at` | ISO timestamp of the last completed sync cycle |
+| `paused` | `true` if polling is paused |
+| `running` | `true` if the polling loop is active |
+
+Note: `getPollingStatus` does **not** pass `scopeId` — it returns status for the current scope.
+
+## React hook example
+
+```ts
+import { useQuery } from "@tanstack/react-query";
+import { useSyncClient } from "./useBaresyncQuery";
+
+export function useSyncState() {
+  const client = useSyncClient();
+  const query = useQuery({
+    queryKey: ["sync-state"],
+    queryFn: async () => {
+      const [localState, pollingStatus] = await Promise.all([
+        client.getState(),
+        client.getPollingStatus().catch(() => null),
+      ]);
+      return { localState, pollingStatus };
+    },
+  });
+
+  return {
+    localState: query.data?.localState ?? null,
+    pollingStatus: query.data?.pollingStatus ?? null,
+    loading: query.isPending,
+  };
+}
+```
+
+Invalidate the `["sync-state"]` query key when `baresync://sync-status-changed` or `baresync://data-changed` fires.
+
+## Command-to-invoke mapping
+
+| Method | Command | Passes scopeId |
+|---|---|---|
+| `startPolling()` | `start_polling` | Yes |
+| `stopPolling()` | `stop_polling` | No |
+| `pausePolling()` | `pause_polling` | No |
+| `resumePolling()` | `resume_polling` | No |
+| `getPollingStatus()` | `get_polling_status` | No |
+
+Next: [Local Write Helpers](/docs/js-client/local-write-helpers).

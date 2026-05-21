@@ -1,6 +1,80 @@
 ---
 title: Bulk Mutations
-description: TODO
+description: Update multiple rows in one transaction with one outbox entry per row.
 ---
 
-TODO: Write this page.
+# Bulk Mutations
+
+When a single action affects multiple rows (for example, deleting all items in a location), use a bulk pattern: perform one bulk write, then enqueue one outbox entry per affected row.
+
+## The pattern
+
+```ts
+import { db, TABLE } from "./lib/db";
+import { eq } from "drizzle-orm";
+
+await client.writeTransaction(db, async (tx) => {
+  const rows = await tx
+    .select({ id: TABLE.items.id })
+    .from(TABLE.items)
+    .where(eq(TABLE.items.locationId, locationId));
+
+  await tx
+    .update(TABLE.items)
+    .set({ deletedAt: timestamp, isSynced: false, updatedAt: timestamp })
+    .where(eq(TABLE.items.locationId, locationId));
+
+  for (const row of rows) {
+    await client.enqueueChange(tx, {
+      table: TABLE.items,
+      rowId: row.id,
+      operation: "update",
+    });
+  }
+});
+```
+
+Step by step:
+
+1. **Query** the affected row IDs
+2. **Mutate** all rows in one bulk statement
+3. **Enqueue** one outbox entry per row using `enqueueChange`
+
+## Why not writeLocalChange?
+
+`writeLocalChange` does the write and the outbox insert for a single row. For bulk operations, you have already performed the write as a single SQL statement — you only need the outbox tracking. `enqueueChange` is the right tool here.
+
+## Bulk insert
+
+```ts
+const ids = [crypto.randomUUID(), crypto.randomUUID()];
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  for (const id of ids) {
+    await client.writeLocalChange(tx, {
+      operation: "insert",
+      rowId: id,
+      table: TABLE.locations,
+      write: (writeTx) =>
+        writeTx.insert(TABLE.locations).values({
+          id,
+          scopeId: "outlet-1",
+          name: `Location ${id.slice(0, 4)}`,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }),
+    });
+  }
+});
+```
+
+For inserts, each row needs its own `writeLocalChange` call because the values differ per row.
+
+## Row limits
+
+The sync engine batches outbox entries when pushing. The default batch size is controlled by `DEFAULT_MAX_PUSH_ROWS` (2000). If your bulk operation creates more outbox entries than this, the engine will split them across multiple push requests.
+
+You do not need to worry about this in your write code — just enqueue all entries and let the engine handle batching.
+
+Next: [Error Handling](/docs/js-client/error-handling).

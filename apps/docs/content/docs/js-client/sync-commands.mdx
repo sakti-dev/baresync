@@ -1,6 +1,105 @@
 ---
 title: Sync Commands
-description: TODO
+description: push, pull, syncNow, fullResync, and getState.
 ---
 
-TODO: Write this page.
+# Sync Commands
+
+The sync client exposes four commands that trigger sync cycles and one that reads local state. Each maps to a single Tauri plugin command.
+
+## syncNow
+
+```ts
+await client.syncNow();
+```
+
+Runs a full push-then-pull cycle once. Use this for manual sync triggers, for example after a user taps a "Sync now" button.
+
+## push
+
+```ts
+await client.push();
+```
+
+Pushes pending local changes (from `sync_outbox`) to the server. Does not pull.
+
+Use when you want to guarantee local writes are sent before doing something else (like navigating away).
+
+## pull
+
+```ts
+await client.pull();
+```
+
+Pulls server changes down to the local database. Does not push.
+
+Use when you know the server has new data and want it immediately (for example, after receiving a push notification).
+
+## fullResync
+
+```ts
+await client.fullResync();
+```
+
+Drops local sync state and re-pulls everything from scratch. Use this when:
+
+- The local database is corrupted or has diverged
+- The user has been offline for a long time and you want a clean baseline
+- You are debugging sync issues
+
+Do not call this on every app launch — it is expensive.
+
+## getState
+
+```ts
+const state = await client.getState();
+```
+
+Returns local sync state:
+
+```ts
+interface SyncLocalState {
+  local_dirty_count: number;
+  last_server_watermark: string;
+  needs_baseline_sync: boolean;
+}
+```
+
+| Field | Description |
+|---|---|
+| `local_dirty_count` | Number of unpushed outbox entries |
+| `last_server_watermark` | The cursor from the last successful pull |
+| `needs_baseline_sync` | `true` if no pull has ever completed |
+
+### Displaying sync status
+
+```ts
+const state = await client.getState();
+if (state.needs_baseline_sync) {
+  // Show "Setting up..." or trigger fullResync
+} else if (state.local_dirty_count > 0) {
+  // Show "Syncing..." or a badge with the count
+} else {
+  // Show "Up to date"
+}
+```
+
+## Command-to-invoke mapping
+
+Each method calls a specific Tauri command with `{ scopeId }`:
+
+| Method | Command |
+|---|---|
+| `syncNow()` | `sync_now` |
+| `push()` | `sync_push` |
+| `pull()` | `sync_pull` |
+| `fullResync()` | `sync_full_resync` |
+| `getState()` | `get_sync_local_state` |
+
+All commands pass `{ scopeId }` as the argument.
+
+## Errors
+
+All commands reject with whatever error the Tauri plugin returns. The client does not wrap or transform errors. See [Error Handling](/docs/js-client/error-handling) for common error shapes.
+
+Next: [Polling](/docs/js-client/polling).

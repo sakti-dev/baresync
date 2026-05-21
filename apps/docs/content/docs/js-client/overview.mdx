@@ -1,6 +1,42 @@
 ---
 title: Overview
-description: TODO
+description: The JS sync client — what it does and where it lives.
 ---
 
-TODO: Write this page.
+# JS Client Overview
+
+The JS client is a thin wrapper that your React (or SolidJS) code uses to talk to the Tauri plugin's sync engine. It does **not** make HTTP requests itself — it calls Tauri `invoke` commands, which the plugin then routes to the sync engine.
+
+## Package
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+```
+
+The `"baresync/tauri"` sub-path exports the client and its types.
+
+## What the client does
+
+| Responsibility | Method | How |
+|---|---|---|
+| Trigger sync | `syncNow`, `push`, `pull`, `fullResync` | Invokes plugin commands |
+| Control polling | `startPolling`, `stopPolling`, `pausePolling`, `resumePolling` | Invokes plugin commands |
+| Read state | `getState`, `getPollingStatus` | Invokes plugin commands |
+| Write local data | `writeTransaction`, `writeLocalChange`, `enqueueChange` | Inserts into `sync_outbox` via Drizzle |
+| Abstract transport | `invoke` config option | Swap Tauri IPC for a test mock |
+
+## What the client does not do
+
+- Make HTTP requests to your server — that is the Tauri plugin's job
+- Handle conflict resolution — the server decides
+- Manage your React Query cache — you do that with Tauri events
+
+## Next steps
+
+- [Create Sync Client](/docs/js-client/create-sync-client) — config and construction
+- [Sync Commands](/docs/js-client/sync-commands) — push, pull, fullResync, getState
+- [Polling](/docs/js-client/polling) — start, stop, pause, resume, status
+- [Local Write Helpers](/docs/js-client/local-write-helpers) — writeTransaction, writeLocalChange, enqueueChange
+- [Bulk Mutations](/docs/js-client/bulk-mutations) — multi-row patterns
+- [Error Handling](/docs/js-client/error-handling) — what errors look like and how to recover
+- [Testing](/docs/js-client/testing) — mocking invoke for unit tests
