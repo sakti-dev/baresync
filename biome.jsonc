@@ -11,7 +11,8 @@
       "!!tests/fixture-app/src-tauri/gen",
       "!!**/node_modules",
       "!!**/dist",
-      "!!docs/external"
+      "!!docs/external",
+      "!!apps/docs/src/routeTree.gen.ts"
     ],
     "maxSize": 2097152
   },
