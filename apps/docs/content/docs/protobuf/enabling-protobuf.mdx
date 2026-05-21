@@ -1,0 +1,214 @@
+---
+title: Enabling Protobuf
+description: How to switch your Baresync project from JSON to protobuf — config, server handlers, and the generated schema.
+---
+
+# Enabling Protobuf
+
+Switching from JSON to protobuf means changing your sync config, regenerating artifacts, and wiring the server with the protobuf schema. This page walks through each step.
+
+## Step 1: Define a protobuf sync config
+
+Replace `defineSyncConfig()` with `defineProtobufSyncConfig()`. The only difference is that `encoding` is hardcoded to `"protobuf"` — you don't set it explicitly:
+
+```ts
+import { defineProtobufSyncConfig } from "@repo/sync-contract/generator";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+
+const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  name: text("name").notNull(),
+  deletedAt: text("deleted_at"),
+  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+const products = sqliteTable("products", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id").notNull(),
+  categoryId: text("category_id").notNull().references(() => categories.id),
+  name: text("name").notNull(),
+  priceMinorUnits: integer("price_minor_units").notNull(),
+  deletedAt: text("deleted_at"),
+  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
+export const config = defineProtobufSyncConfig({
+  packageName: "com.example.sync.v1",
+  localSyncedSchema: { categories, products },
+  apiSyncedSchema: { categories, products },
+  outputDir: "./generated/protobuf",
+  outputs: {
+    proto: "proto/sync.proto",
+    runtimeSourceTs: "runtime.ts",
+    runtimeTs: "runtime.generated.ts",
+    syncTs: "sync.generated.ts",
+    rustSyncMappers: "../src-tauri/src/protobuf_generated.rs",
+  },
+  tables: {
+    categories: {
+      table: categories,
+      scope: "merchant_id",
+    },
+    products: {
+      table: products,
+      scope: "merchant_id",
+    },
+  },
+});
+```
+
+### Key differences from JSON config
+
+- Uses `defineProtobufSyncConfig()` instead of `defineSyncConfig()`
+- Requires `outputs` with protobuf-specific output paths (`.proto`, `runtimeSourceTs`, `rustSyncMappers`)
+- The `packageName` becomes the proto package name (e.g., `com.example.sync.v1`)
+- `encoding` is not a parameter — it's always `"protobuf"`
+
+## Step 2: Generate artifacts
+
+```ts
+import { generateSyncArtifacts } from "@repo/sync-contract/generator";
+
+await generateSyncArtifacts(config);
+```
+
+This produces 7 files in your `outputDir`. See [Generated Artifacts](./generated-artifacts) for details on each.
+
+## Step 3: Wire the server with protobuf encoding
+
+Server handlers need the protobuf schema to decode requests and encode responses. Import it from the generated `sync.generated.ts`:
+
+```ts
+import { createSyncPushHandler, createSyncPullHandler, createSyncStatusHandler } from "@repo/sync-contract/server";
+import { SYNC_PROTOBUF_SCHEMA } from "./generated/protobuf/sync.generated";
+
+const pushHandler = createSyncPushHandler({
+  db: sqliteDb,
+  contract: syncContract,
+  encoding: "protobuf",
+  protobufSchema: SYNC_PROTOBUF_SCHEMA,
+  resolveScope: async ({ scopeId }) => ({ ok: true, scopeId }),
+  onPush: async (ctx) => {
+    // Your push logic
+  },
+});
+
+const pullHandler = createSyncPullHandler({
+  db: sqliteDb,
+  contract: syncContract,
+  encoding: "protobuf",
+  protobufSchema: SYNC_PROTOBUF_SCHEMA,
+  resolveScope: async ({ scopeId }) => ({ ok: true, scopeId }),
+  onPull: async (ctx) => {
+    // Your pull logic
+  },
+});
+
+const statusHandler = createSyncStatusHandler({
+  db: sqliteDb,
+  contract: syncContract,
+  encoding: "protobuf",
+  protobufSchema: SYNC_PROTOBUF_SCHEMA,
+  resolveScope: async ({ scopeId }) => ({ ok: true, scopeId }),
+});
+```
+
+### Content-Type
+
+Protobuf handlers automatically use `Content-Type: application/x-protobuf` for responses. You don't set this manually — the `encodeSyncResponse()` function handles it.
+
+### Supporting both JSON and protobuf
+
+If you need to support both encodings on the same server, create two sets of handlers on different routes:
+
+```ts
+// JSON routes
+app.post("/sync/push", jsonPushHandler);
+app.post("/sync/pull", jsonPullHandler);
+app.post("/sync/status", jsonStatusHandler);
+
+// Protobuf routes
+app.post("/sync/push", protobufPushHandler);
+app.post("/sync/pull", protobufPullHandler);
+app.post("/sync/status", protobufStatusHandler);
+```
+
+Or use a single handler that detects the `Content-Type` header and dispatches accordingly.
+
+## Step 4: Plugin configuration
+
+Set the encoding in your Tauri plugin config:
+
+```rust
+baresync::Builder::new()
+    .encoding("protobuf")
+    // ... other config
+```
+
+**Note:** As of the current release, the Rust sync engine sends JSON regardless of this setting. The `encoding` field is stored for future use when protobuf transport is implemented. The server-side protobuf path works independently — you can use it with custom transports or for server-to-server communication.
+
+## Step 5: Verify with tests
+
+Test that protobuf round-trips match JSON results:
+
+```ts
+import { encodeProtobufBody, decodeProtobufBody } from "./generated/protobuf/runtime.generated";
+import { SYNC_PROTOBUF_SCHEMA } from "./generated/protobuf/sync.generated";
+
+// Encode a status request as protobuf
+const bytes = encodeProtobufBody({
+  body: { scopeId: "merchant-1", cursor: "" },
+  kind: "status",
+  message: "request",
+});
+
+// Decode it back
+const decoded = decodeProtobufBody({
+  bytes,
+  kind: "status",
+  message: "request",
+});
+
+expect(decoded).toEqual({ scopeId: "merchant-1", cursor: "" });
+```
+
+The E2E test suite runs both JSON and protobuf contract tests to verify parity. See [Testing](../testing/overview) for details.
+
+## Field number stability
+
+Protobuf field numbers are auto-assigned from your Drizzle column definition order: first column = field 1, second = field 2, etc. **Reordering columns in your Drizzle schema changes field numbers and breaks wire compatibility.**
+
+When adding a new column, always append it to the end of the table definition:
+
+```ts
+// Safe — new column gets the next field number
+const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  // ... existing columns ...
+  description: text("description"), // new — gets highest field number
+});
+
+// Dangerous — reorders fields, breaks existing clients
+const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  description: text("description"), // moved — changes all subsequent field numbers
+  name: text("name").notNull(),
+  // ...
+});
+```
+
+The generator's diagnostic check (`SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED`) catches if field numbers collide, but it can't detect if you've silently reassigned them by reordering.
+
+## What NOT to do
+
+**Don't rename columns without bumping the proto version** — renaming `name` to `title` in Drizzle changes the field name in the proto without changing the field number. Old clients send `name`, new clients expect `title`. Use additive changes instead.
+
+**Don't remove columns** — removing a column from the Drizzle definition removes the field from the proto message. Old clients may still send data for that field number. The runtime ignores unknown fields on decode, but the semantic meaning is lost.
+
+**Don't manually edit the .proto file** — it's generated. Your changes will be overwritten on next generation. Modify the Drizzle schema instead and regenerate.

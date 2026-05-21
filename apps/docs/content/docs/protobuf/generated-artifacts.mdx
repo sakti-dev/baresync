@@ -1,0 +1,250 @@
+---
+title: Generated Artifacts
+description: What the protobuf generator produces — the .proto file, TypeScript runtime, Rust structs, and contract files.
+---
+
+# Generated Artifacts
+
+When you run `generateSyncArtifacts()` with a protobuf config, it produces 7 files. This page explains what each one is and how to use it.
+
+## The 7 generated files
+
+| File | Purpose | Do I commit this? |
+|---|---|---|
+| `proto/sync.proto` | Protobuf schema definition | Yes — used by external tools and documentation |
+| `runtime.ts` | Self-contained binary codec (1000+ lines) | Yes — copied verbatim from Baresync's runtime |
+| `runtime.generated.ts` | Barrel re-export of codec + schema | Yes — your app imports from this |
+| `sync.generated.ts` | `SYNC_PROTOBUF_SCHEMA` constant | Yes — used by server handlers |
+| `sync-table-order.ts` | Upsert and delete ordering | Yes — used by server write operations |
+| `sync-contract.json` | Full contract with field numbers | Yes — machine-readable contract |
+| `protobuf_generated.rs` | Rust prost struct definitions | Yes — used in Tauri app |
+
+All files are deterministic — regenerating with the same schema produces identical output. Commit them to version control.
+
+## `proto/sync.proto`
+
+The Protocol Buffers schema definition. Contains:
+
+```protobuf
+syntax = "proto3";
+package com.example.sync.v1;
+
+// Per-table row messages
+message CategoriesRow {
+  string id = 1;
+  string merchant_id = 2;
+  string name = 3;
+  string deleted_at = 4;
+  bool is_synced = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+// Per-table changes wrapper
+message CategoriesChanges {
+  repeated CategoriesRow changed_rows = 1;
+  repeated string deleted_ids = 2;
+}
+
+// Envelope messages
+message SyncPushBatchRequest {
+  string scope_id = 1;
+  string client_id = 2;
+  string idempotency_key = 3;
+  CategoriesChanges categories = 4;  // field number = tableIndex + 4
+  ProductsChanges products = 5;
+}
+// ... response, pull, status messages
+```
+
+### Type mapping
+
+| Drizzle column type | Protobuf type |
+|---|---|
+| `integer({ mode: "boolean" })` | `bool` |
+| `blob` / `buffer` | `bytes` |
+| `real` / `float` / `double` | `double` |
+| `integer` (default mode) | `int64` |
+| `text` (and everything else) | `string` |
+
+### Envelope field numbering
+
+The envelope messages (push, pull, status) use fixed field numbers for metadata and dynamic fields for per-table data:
+
+| Message | Field 1 | Field 2 | Field 3 | Field 4+ |
+|---|---|---|---|---|
+| `SyncPushBatchRequest` | `scope_id` | `client_id` | `idempotency_key` | Per-table changes (tableIndex + 4) |
+| `SyncPushBatchResponse` | `tables` (repeated) | `server_time` | — | — |
+| `SyncPullBatchRequest` | `scope_id` | `tables` | `cursor` | `limit` |
+| `SyncPullBatchResponse` | `has_more` | `cursor` | `server_time` | Per-table changes (tableIndex + 4) |
+| `SyncStatusRequest` | `scope_id` | `cursor` | — | — |
+| `SyncStatusResponse` | `changed_tables` | `has_changes` | `cursor` | `server_time` |
+
+**When to use this file:** If you have non-JavaScript clients (Go, Java, Python) that need to speak the sync protocol, they can use this `.proto` file with `protoc` to generate their own codecs.
+
+## `runtime.ts`
+
+A self-contained ~1000-line TypeScript file implementing a complete protobuf binary codec. Contains:
+
+- `BinaryWriter` — encodes values to protobuf binary format (varint encoding, length-delimited fields)
+- `BinaryReader` — decodes protobuf binary back to JS values
+- `encodeProtobufBody()` — high-level encoder, dispatches by message kind
+- `decodeProtobufBody()` — high-level decoder
+- Field name resolution — tolerant lookup that handles camelCase/snake_case differences
+
+### No external dependencies
+
+This file doesn't import `@repo/sync-contract` or any other package. It's fully standalone — copy it anywhere and it works. This means no `protoc` installation, no build plugins, no reflection overhead.
+
+### Direct usage
+
+```ts
+import { encodeProtobufBody, decodeProtobufBody } from "./generated/protobuf/runtime.generated";
+import { SYNC_PROTOBUF_SCHEMA } from "./generated/protobuf/sync.generated";
+
+// Encode a push request
+const bytes = encodeProtobufBody({
+  body: pushPayload,
+  kind: "push",
+  message: "request",
+  schema: SYNC_PROTOBUF_SCHEMA,
+});
+
+// Decode a push response (schema-free — fixed envelope)
+const response = decodeProtobufBody({
+  bytes: responseData,
+  kind: "push",
+  message: "response",
+});
+```
+
+### Schema-required vs schema-free messages
+
+Some messages need the schema (table descriptors) and some don't:
+
+| Message | Schema required | Why |
+|---|---|---|
+| Push request | Yes | Contains per-table fields defined by your schema |
+| Pull response | Yes | Contains per-table fields defined by your schema |
+| Pull request | No | Fixed fields: scope_id, tables, cursor, limit |
+| Push response | No | Fixed fields: repeated SyncTableAck, server_time |
+| Status request | No | Fixed fields: scope_id, cursor |
+| Status response | No | Fixed fields: changed_tables, has_changes, cursor, server_time |
+
+## `runtime.generated.ts`
+
+A small barrel file that re-exports the codec functions and the schema:
+
+```ts
+export { encodeProtobufBody, decodeProtobufBody } from "./runtime";
+export { SYNC_PROTOBUF_SCHEMA } from "./sync.generated";
+```
+
+**Import from this file in your app** — it's the public API surface. If the internal structure changes, this re-export stays stable.
+
+## `sync.generated.ts`
+
+Contains the `SYNC_PROTOBUF_SCHEMA` constant — a JSON object describing every table's fields, field numbers, and message names. This is what the codec uses to encode/decode table-specific data.
+
+```ts
+export const SYNC_PROTOBUF_SCHEMA: SyncProtobufSchema = {
+  packageName: "com.example.sync.v1",
+  tables: {
+    categories: {
+      rowMessageName: "CategoriesRow",
+      changesMessageName: "CategoriesChanges",
+      requestFieldNumber: 4,
+      fields: [
+        { fieldNumber: 1, name: "id", protobufType: "string" },
+        { fieldNumber: 2, name: "merchant_id", protobufType: "string" },
+        // ...
+      ],
+      wrapperFieldNumbers: { changedRows: 1, deletedIds: 2 },
+    },
+    // ...
+  },
+};
+```
+
+Pass this to server handlers as `protobufSchema`.
+
+## `sync-table-order.ts`
+
+Same as the JSON version — `SYNC_UPSERT_ORDER` and `SYNC_DELETE_ORDER` arrays. Table ordering follows FK dependencies (parents before children for upsert, reversed for delete).
+
+## `sync-contract.json`
+
+The machine-readable contract. The protobuf version adds `protobufFieldNumbers` to each table's column definitions:
+
+```json
+{
+  "encoding": "protobuf",
+  "protobuf": {
+    "packageName": "com.example.sync.v1"
+  },
+  "tables": {
+    "categories": {
+      "columns": [
+        { "name": "id", "protobufFieldNumber": 1, ... },
+        { "name": "merchant_id", "protobufFieldNumber": 2, ... }
+      ]
+    }
+  }
+}
+```
+
+## `protobuf_generated.rs`
+
+Generated Rust structs using `prost` derive macros:
+
+```rust
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CategoriesRow {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub merchant_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+    // ...
+}
+```
+
+### Rust type mapping
+
+| Protobuf type | Rust type |
+|---|---|
+| `bool` | `bool` |
+| `bytes` | `Vec<u8>` |
+| `double` | `f64` |
+| `int64` | `i64` |
+| `string` | `String` |
+
+**Current status:** These structs are generated and compilable, but the Rust sync engine doesn't use them yet. When protobuf transport is implemented in the engine, these structs will be used for encoding push/pull/status messages. For now, they're ready for use with custom transports or tests.
+
+Include in your Tauri app's `Cargo.toml`:
+
+```toml
+[dependencies]
+prost = "0.13"
+```
+
+## Regenerating artifacts
+
+When you change your Drizzle schema, regenerate:
+
+```ts
+await generateSyncArtifacts(config);
+```
+
+All 7 files are overwritten. Since they're deterministic, unchanged schemas produce identical output — no diff noise in your commits.
+
+### Drift detection
+
+To check if committed artifacts are stale (useful in CI):
+
+```ts
+await generateSyncArtifacts(config, { check: true });
+```
+
+This generates to a temp directory and compares against committed files. Throws `SyncDiagnosticError` if they differ.

@@ -1,0 +1,158 @@
+---
+title: Migrating from JSON
+description: How to switch an existing Baresync project from JSON to protobuf encoding without losing data or breaking clients.
+---
+
+# Migrating from JSON
+
+If you have an existing Baresync project using JSON encoding, here's how to switch to protobuf safely.
+
+## Before you start
+
+- You're currently using `defineSyncConfig()` with default (JSON) encoding
+- Your server handlers don't specify `encoding` (defaults to JSON)
+- Your plugin config doesn't set `encoding` (defaults to `"json"`)
+
+## Migration steps
+
+### Step 1: Add protobuf config alongside JSON
+
+Don't remove your JSON config yet. Create a parallel protobuf config:
+
+```ts
+import { defineSyncConfig } from "@repo/sync-contract/generator";
+import { defineProtobufSyncConfig } from "@repo/sync-contract/generator";
+
+// Keep your existing JSON config
+export const jsonConfig = defineSyncConfig({
+  packageName: "com.example.sync.v1",
+  // ... existing config
+});
+
+// Add protobuf config pointing to the same schema
+export const protobufConfig = defineProtobufSyncConfig({
+  packageName: "com.example.sync.v1",
+  localSyncedSchema: { categories, products },
+  apiSyncedSchema: { categories, products },
+  outputDir: "./generated/protobuf",
+  outputs: {
+    proto: "proto/sync.proto",
+    runtimeSourceTs: "runtime.ts",
+    runtimeTs: "runtime.generated.ts",
+    syncTs: "sync.generated.ts",
+    rustSyncMappers: "../src-tauri/src/protobuf_generated.rs",
+  },
+  tables: {
+    categories: { table: categories, scope: "merchant_id" },
+    products: { table: products, scope: "merchant_id" },
+  },
+});
+```
+
+### Step 2: Generate protobuf artifacts
+
+```ts
+await generateSyncArtifacts(protobufConfig);
+```
+
+Commit the new `generated/protobuf/` directory alongside your existing JSON artifacts.
+
+### Step 3: Add protobuf server handlers
+
+Don't replace JSON handlers — add protobuf handlers alongside them:
+
+```ts
+// Existing JSON handlers
+const jsonPush = createSyncPushHandler({
+  db,
+  contract,
+  encoding: "json",
+  resolveScope,
+  onPush,
+});
+
+// New protobuf handlers
+const protobufPush = createSyncPushHandler({
+  db,
+  contract,
+  encoding: "protobuf",
+  protobufSchema: SYNC_PROTOBUF_SCHEMA,
+  resolveScope,
+  onPush,
+});
+```
+
+### Step 4: Test protobuf parity
+
+Before routing real traffic, verify that protobuf produces the same results as JSON. The E2E tests do this automatically — both JSON and protobuf contract tests assert the same data.
+
+You can also test manually:
+
+```ts
+import { encodeProtobufBody, decodeProtobufBody } from "./generated/protobuf/runtime.generated";
+import { SYNC_PROTOBUF_SCHEMA } from "./generated/protobuf/sync.generated";
+
+// Encode as protobuf
+const protoBytes = encodeProtobufBody({
+  body: { scopeId: "merchant-1", cursor: "" },
+  kind: "status",
+  message: "request",
+});
+
+// Decode and compare with JSON equivalent
+const decoded = decodeProtobufBody({ bytes: protoBytes, kind: "status", message: "request" });
+expect(decoded).toEqual({ scopeId: "merchant-1", cursor: "" });
+```
+
+### Step 5: Route traffic to protobuf
+
+Once you're confident protobuf works, switch the plugin config:
+
+```rust
+baresync::Builder::new()
+    .encoding("protobuf")  // was "json" or omitted
+```
+
+**Reminder:** The Rust engine currently sends JSON regardless of this setting. The protobuf path works for server-to-server or custom transport scenarios. When Rust protobuf transport is implemented, this switch will take effect automatically.
+
+### Step 6: Remove JSON handlers (optional)
+
+After all clients are on protobuf, you can remove the JSON handlers and config. Or keep them for backward compatibility — there's no performance cost to having both.
+
+## Compatibility considerations
+
+### Column order matters
+
+JSON encoding uses column names as keys, so column order doesn't matter. Protobuf uses field numbers derived from column order. If your columns were defined differently in the JSON config vs the protobuf config, the field numbers will differ.
+
+**Ensure both configs use the same Drizzle table definitions** — reference the same `sqliteTable()` calls, don't copy them.
+
+### Field numbers are forever
+
+Once you've shipped a protobuf version to clients, the field numbers are locked. Adding a column is safe (it gets the next number). Reordering, renaming, or removing columns breaks the wire format.
+
+See [Enabling Protobuf > Field number stability](./enabling-protobuf#field-number-stability) for details.
+
+### Cursors are encoding-agnostic
+
+Sync cursors (`sync:timestamp:table:rowId`) are plain strings. They don't change between JSON and protobuf. A client that synced with JSON and switches to protobuf can continue from the same cursor — no baseline resync needed.
+
+### Outbox entries are encoding-agnostic
+
+The `sync_outbox` table stores row IDs and operation types, not encoded payloads. The encoding only matters when the data is sent over HTTP. Existing outbox entries from JSON sync will be sent as protobuf on the next push after switching.
+
+## Rolling back
+
+If protobuf causes issues, roll back by:
+
+1. Switch the plugin config back to `encoding("json")`
+2. Route server traffic back to JSON handlers
+3. No data migration needed — the local DB and server data are encoding-independent
+
+## Common mistakes
+
+**Different Drizzle definitions between configs** — if the protobuf config defines columns in a different order than the JSON config used, the generated field numbers won't match what the server expects. Always reference the same table objects.
+
+**Forgetting `protobufSchema` in server handlers** — protobuf handlers require the schema to decode requests. Without it, the handler can't parse incoming data and returns an error.
+
+**Mixing encoding on the same endpoint** — if a JSON client sends to a protobuf handler, you get a decode error. Use separate routes or detect `Content-Type` to dispatch correctly.

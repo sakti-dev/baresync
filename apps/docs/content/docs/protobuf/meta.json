@@ -2,10 +2,8 @@
   "title": "Protobuf",
   "pages": [
     "overview",
-    "generator-outputs",
-    "typescript-runtime",
-    "rust-mappers",
-    "server-helpers",
-    "json-compatibility"
+    "enabling-protobuf",
+    "generated-artifacts",
+    "migrating-from-json"
   ]
 }
