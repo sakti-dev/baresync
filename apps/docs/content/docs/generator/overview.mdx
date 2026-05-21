@@ -1,6 +1,45 @@
 ---
 title: Overview
-description: TODO
+description: How the Baresync generator produces sync artifacts from your schemas.
 ---
 
-TODO: Write this page.
+# Generator Overview
+
+The generator reads your paired local and API synced schemas, validates them, computes table ordering from foreign keys, and writes contract artifacts to disk.
+
+## What it produces
+
+| File | Purpose |
+|---|---|
+| `sync-contract.json` | Full contract with tables, columns, field numbers, limits, and scope mappings |
+| `sync-table-order.ts` | `SYNC_UPSERT_ORDER` and `SYNC_DELETE_ORDER` constants |
+| `sync-contract.manifest.json` | Flat manifest for build tooling |
+
+## How to run it
+
+From your sync contract package:
+
+```bash
+bun run generate
+```
+
+Or from the workspace root:
+
+```bash
+bun run --cwd packages/sync-contract generate
+```
+
+## What the generator does
+
+1. **Loads** your `sync.config.ts`
+2. **Validates** each table against the paired schemas (columns match, scope exists, PK is correct)
+3. **Computes table order** by following foreign keys (topological sort)
+4. **Runs diagnostics** — errors block generation, warnings are printed
+5. **Writes** the three output files to your `outputDir`
+
+## Next steps
+
+- [Define Sync Config](/docs/generator/define-sync-config) — how to write `sync.config.ts`
+- [CLI](/docs/generator/cli) — `baresync generate` and `baresync doctor` commands
+- [Generated Files](/docs/generator/generated-files) — what each output file contains
+- [Diagnostics](/docs/generator/diagnostics) — validation errors and warnings

@@ -1,6 +1,55 @@
 ---
 title: Diagnostics
-description: TODO
+description: Generator validation errors and warnings.
 ---
 
-TODO: Write this page.
+# Generator Diagnostics
+
+The generator runs diagnostics before writing any output. Errors block generation. Warnings are printed but do not block unless `--warnings-as-errors` is set.
+
+See [Schema Diagnostics](/docs/schema/diagnostics) for the full list of diagnostic codes, what they check, and how to fix them.
+
+## Run diagnostics only
+
+```bash
+bunx baresync doctor
+```
+
+This runs the same validation as `generate` but does not write files.
+
+## Run during generation
+
+```bash
+bunx baresync generate
+```
+
+Diagnostics run automatically. If any errors are found, generation stops.
+
+## In CI
+
+```bash
+bunx baresync generate --warnings-as-errors
+```
+
+This treats warnings as errors, causing the command to exit with a non-zero status.
+
+## Programmatic usage
+
+```ts
+import { runDiagnostics } from "baresync/generator";
+
+const diagnostics = runDiagnostics(contract);
+const errors = diagnostics.filter((d) => d.severity === "error");
+```
+
+Each diagnostic has:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `code` | `string` | Machine-readable code (e.g., `SYNC_SCHEMA_MISSING_PRIMARY_KEY`) |
+| `severity` | `"error" \| "warning" \| "info"` | Whether it blocks generation |
+| `message` | `string` | Human-readable description |
+| `table` | `string?` | Table name if applicable |
+| `column` | `string?` | Column name if applicable |
+| `why` | `string` | Why this matters |
+| `fix` | `string` | How to fix it |

@@ -1,6 +1,83 @@
 ---
 title: Synced Tables
-description: TODO
+description: How to define tables that participate in sync.
 ---
 
-TODO: Write this page.
+# Synced Tables
+
+A synced table is a Drizzle `sqliteTable` that uses either `localSyncColumns()` or `apiSyncColumns()`. Every synced table must follow a few rules.
+
+## Required columns
+
+1. **`id` as `text` primary key** — Baresync uses this for conflict detection and delta tracking.
+2. **A scope column** — partitions data so each tenant/workspace syncs independently.
+3. **`deletedAt`** — soft-delete column (nullable `text`).
+4. **`createdAt` and `updatedAt`** — timestamps as `text`.
+5. **`isSynced`** (local only) — boolean for dirty tracking.
+6. **`syncUpdatedAt`** (API only) — integer timestamp for cursor-based incremental pull.
+
+## Local synced table example
+
+```ts
+import { localSyncColumns } from "baresync/schema";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const locations = sqliteTable("locations", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  scopeId: text("scope_id").notNull(),
+  name: text("name").notNull(),
+  ...localSyncColumns(),
+});
+```
+
+## API synced table example
+
+```ts
+import { apiSyncColumns } from "baresync/schema";
+import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const locations = sqliteTable(
+  "locations",
+  {
+    id: text("id").primaryKey(),
+    scopeId: text("scope_id").notNull(),
+    name: text("name").notNull(),
+    ...apiSyncColumns(),
+  },
+  (table) => [
+    index("locations_scope_sync_idx").on(table.scopeId, table.syncUpdatedAt),
+  ]
+);
+```
+
+Note the composite index on `(scopeId, syncUpdatedAt)`. This is recommended on the API schema for efficient incremental pull queries. The generator does not create indexes automatically.
+
+## Foreign keys and table ordering
+
+Tables with foreign keys to other synced tables must be inserted in the right order. For example, `items` references `locations`:
+
+```ts
+export const items = sqliteTable("items", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  locationId: text("location_id")
+    .notNull()
+    .references(() => locations.id),
+  name: text("name").notNull(),
+  ...localSyncColumns(),
+});
+```
+
+The generator detects foreign keys and computes the correct upsert and delete order. Upsert follows dependency order (`locations` before `items`). Delete reverses it (`items` before `locations`).
+
+Foreign keys to **non-synced tables** that are `NOT NULL` will cause a generator error. Either add the referenced table to the sync contract or make the FK nullable.
+
+## Primary key rules
+
+- Must be a single `text("id")` column
+- Composite primary keys are not supported
+- Auto-increment integer keys are not supported
+
+The generator validates these rules and reports errors if violated.

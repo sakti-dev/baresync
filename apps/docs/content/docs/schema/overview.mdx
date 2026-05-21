@@ -1,6 +1,48 @@
 ---
 title: Overview
-description: TODO
+description: How Baresync schemas work.
 ---
 
-TODO: Write this page.
+# Schema Overview
+
+Baresync uses **paired Drizzle schemas** — one for the local app database and one for the server database. Both define the same synced tables but with different sync-tracking columns.
+
+The schemas live in a shared sync contract package so the app and server always agree on table names, column names, and scope fields.
+
+## The pairing
+
+| Side | Schema | Sync columns | Purpose |
+|---|---|---|---|
+| Local | `local-synced-schema.ts` | `localSyncColumns()` | Adds `isSynced` for dirty tracking |
+| API | `api-synced-schema.ts` | `apiSyncColumns()` | Adds `syncUpdatedAt` for cursor timestamps |
+
+Both sides share the same domain columns and the `deletedAt` column.
+
+## What every synced table needs
+
+- A `text("id")` primary key
+- A scope column (e.g., `scopeId`) that partitions data
+- `deletedAt` for soft-delete tracking
+- `createdAt` and `updatedAt` timestamps
+- Either `isSynced` (local) or `syncUpdatedAt` (API)
+
+## The schemas you write
+
+```txt
+packages/sync-contract/src/
+├── constants.ts              # scope ID, package name
+├── local-synced-schema.ts    # synced tables with localSyncColumns()
+├── api-synced-schema.ts      # synced tables with apiSyncColumns()
+├── local-schema.ts           # sync_outbox + sync_cursors tables
+└── api-schema.ts             # sync_batch_requests table
+```
+
+The generator reads both synced schemas, validates them, computes table ordering from foreign keys, and outputs contract artifacts.
+
+## Next steps
+
+- [Synced Tables](/docs/schema/synced-tables) — how to define a synced table
+- [Local Sync Columns](/docs/schema/local-sync-columns) — what `localSyncColumns()` adds
+- [API Sync Columns](/docs/schema/api-sync-columns) — what `apiSyncColumns()` adds
+- [Runtime Tables](/docs/schema/runtime-tables) — outbox, cursors, batch requests
+- [Table Helpers](/docs/schema/table-helpers) — factory functions for runtime tables

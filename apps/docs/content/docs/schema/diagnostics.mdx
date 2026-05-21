@@ -1,6 +1,64 @@
 ---
 title: Diagnostics
-description: TODO
+description: How the generator validates your schemas before producing output.
 ---
 
-TODO: Write this page.
+# Schema Diagnostics
+
+Before the generator writes any output, it runs a diagnostic pass on your sync contract. If any errors are found, generation is aborted and the errors are printed.
+
+## Run diagnostics
+
+```bash
+bunx baresync doctor
+```
+
+Or with a specific config path:
+
+```bash
+bunx baresync doctor --config packages/sync-contract/sync.config.ts
+```
+
+## Error diagnostics
+
+These block generation:
+
+| Code | What it checks |
+|---|---|
+| `SYNC_SCHEMA_MISSING_PRIMARY_KEY` | Table has no primary key |
+| `SYNC_SCHEMA_UNSUPPORTED_PRIMARY_KEY` | PK is not a single `text("id")` |
+| `SYNC_SCHEMA_MISSING_SCOPE_COLUMN` | Scope field does not map to a real column |
+| `SYNC_SCHEMA_MISSING_DELETED_AT` | No `deleted_at` column |
+| `SYNC_SCHEMA_MISSING_ROW_STATE_COLUMN` | Missing `created_at` or `updated_at` |
+| `SYNC_SCHEMA_MISSING_LOCAL_IS_SYNCED` | Missing `is_synced` (local-only) |
+| `SYNC_SCHEMA_UNSUPPORTED_COLUMN_TYPE` | Column type Baresync cannot serialize |
+| `SYNC_SCHEMA_DUPLICATE_TABLE_NAME` | Same table name appears twice |
+| `SYNC_SCHEMA_DUPLICATE_FIELD_NAME` | Duplicate column name in a table |
+| `SYNC_SCHEMA_RESERVED_FIELD_REUSED` | Reserved column has wrong type |
+| `SYNC_SCHEMA_ENCODING_UNSUPPORTED` | Encoding is not `"json"` or `"protobuf"` |
+| `SYNC_SCHEMA_FK_CYCLE` | Foreign key cycle between synced tables |
+| `SYNC_SCHEMA_REQUIRED_EXTERNAL_FK` | NOT NULL FK to a non-synced table |
+
+## Warning diagnostics
+
+These do not block generation but may indicate problems:
+
+| Code | What it checks |
+|---|---|
+| `SYNC_SCHEMA_MISSING_SYNC_UPDATED_AT` | Missing `sync_updated_at` on API schema |
+| `SYNC_SCHEMA_NULLABLE_SCOPE_COLUMN` | Scope column is nullable |
+| `SYNC_SCHEMA_NO_CONFLICT_STRATEGY` | No conflict strategy defined |
+| `SYNC_SCHEMA_NO_DELETE_STRATEGY` | No delete strategy defined |
+| `SYNC_SCHEMA_LARGE_TEXT_FIELD` | Text column over 10,000 chars |
+| `SYNC_SCHEMA_JSON_ONLY_FIELD` | JSON-typed column may not work in all encodings |
+| `SYNC_INDEX_MISSING_SCOPE_WATERMARK` | No `(scope, sync_updated_at)` index |
+| `SYNC_INDEX_MISSING_LOCAL_DIRTY` | No `is_synced` index |
+| `SYNC_COMPAT_ADDITIVE_CHANGE` | Table removed from contract since last run |
+
+## Treat warnings as errors
+
+```bash
+bunx baresync generate --warnings-as-errors
+```
+
+This is useful in CI to catch potential issues early.

@@ -1,6 +1,74 @@
 ---
-title: Api Sync Columns
-description: TODO
+title: API Sync Columns
+description: What apiSyncColumns() adds to your server-side synced tables.
 ---
 
-TODO: Write this page.
+# API Sync Columns
+
+Spread `apiSyncColumns()` into your API synced table definition to add the columns Baresync needs for cursor-based incremental sync on the server.
+
+## What it adds
+
+```ts
+import { apiSyncColumns } from "baresync/schema";
+
+// Returns:
+{
+  deletedAt: text("deleted_at"),
+  syncUpdatedAt: integer("sync_updated_at", { mode: "number" }).notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}
+```
+
+| Column | Type | Purpose |
+|---|---|---|
+| `deletedAt` | `text` (nullable) | Soft-delete timestamp |
+| `syncUpdatedAt` | `integer` | Unix epoch milliseconds — used as the cursor watermark for incremental pull |
+| `createdAt` | `text` | Row creation timestamp |
+| `updatedAt` | `text` | Row modification timestamp |
+
+## How syncUpdatedAt works
+
+`syncUpdatedAt` is the cursor column. When the server writes or updates a row, it sets `syncUpdatedAt` to `Date.now()`. When the client pulls, it sends its last cursor value. The server returns all rows where `syncUpdatedAt > cursor`.
+
+This is a server-only column. It does not exist on the local schema. The generator marks it as a `serverOnlyColumn` in the contract.
+
+## Recommended indexes
+
+Create a composite index on `(scopeId, syncUpdatedAt)` for efficient pull queries:
+
+```ts
+import { apiSyncColumns } from "baresync/schema";
+import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const locations = sqliteTable(
+  "locations",
+  {
+    id: text("id").primaryKey(),
+    scopeId: text("scope_id").notNull(),
+    name: text("name").notNull(),
+    ...apiSyncColumns(),
+  },
+  (table) => [
+    index("locations_scope_sync_idx").on(table.scopeId, table.syncUpdatedAt),
+  ]
+);
+```
+
+The generator warns if this index is missing, but does not create it automatically.
+
+## Usage
+
+```ts
+import { apiSyncColumns } from "baresync/schema";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const items = sqliteTable("items", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  locationId: text("location_id").notNull(),
+  name: text("name").notNull(),
+  ...apiSyncColumns(),
+});
+```

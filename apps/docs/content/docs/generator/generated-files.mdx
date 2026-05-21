@@ -1,6 +1,94 @@
 ---
 title: Generated Files
-description: TODO
+description: What the generator outputs and how to use them.
 ---
 
-TODO: Write this page.
+# Generated Files
+
+The generator writes three files to your `outputDir`.
+
+## sync-contract.json
+
+The full sync contract. Contains:
+
+- Table names, column names, and protobuf field numbers
+- Scope mappings (which column partitions data)
+- Local-only and server-only column lists
+- Upsert and delete order
+- Push limits (`maxPushBytes`, `maxPushRows`)
+- Encoding and package name
+
+```json
+{
+  "version": 1,
+  "generatorVersion": "0.1.0",
+  "encoding": "json",
+  "packageName": "inventory.sync.v1",
+  "upsertOrder": ["locations", "items", "stock_counts"],
+  "deleteOrder": ["stock_counts", "items", "locations"],
+  "tables": {
+    "locations": {
+      "columns": ["id", "scope_id", "name", "deleted_at", "is_synced", "created_at", "updated_at"],
+      "scope": { "field": "scopeId" },
+      "localOnlyColumns": ["isSynced"],
+      "serverOnlyColumns": ["syncUpdatedAt"]
+    }
+  },
+  "limits": {
+    "maxPushBytes": 2097152,
+    "maxPushRows": 2000
+  }
+}
+```
+
+Used by the server to understand the contract shape.
+
+## sync-table-order.ts
+
+TypeScript constants for table ordering.
+
+```ts
+export const SYNC_UPSERT_ORDER = ["locations", "items", "stock_counts"] as const;
+export const SYNC_DELETE_ORDER = ["stock_counts", "items", "locations"] as const;
+```
+
+Used by:
+- The server's `createSyncPushHandler` to apply changes in the correct order
+- The Rust plugin's `contract_tables()` for the same purpose
+
+Import it from your sync contract package:
+
+```ts
+import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-order";
+```
+
+## sync-contract.manifest.json
+
+A flat manifest for build tooling and CI. Contains:
+
+- Contract version and generator version
+- Package name and encoding
+- Table list with field numbers
+- Scope mappings
+- Table order
+- Output file paths
+
+Used to detect contract drift between builds and to verify the contract has not changed unexpectedly.
+
+## Package exports
+
+Wire these up in your sync contract `package.json`:
+
+```json
+{
+  "exports": {
+    "./generated/sync-table-order": "./generated/sync-table-order.ts",
+    "./generated/sync-contract": "./generated/sync-contract.json",
+    "./generated/manifest": "./generated/sync-contract.manifest.json"
+  }
+}
+```
+
+## Do not edit generated files
+
+All three files are auto-generated. If you need to change the contract, update your schemas or config and re-run `bun run generate`.

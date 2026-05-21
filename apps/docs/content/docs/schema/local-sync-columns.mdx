@@ -1,6 +1,58 @@
 ---
 title: Local Sync Columns
-description: TODO
+description: What localSyncColumns() adds to your local synced tables.
 ---
 
-TODO: Write this page.
+# Local Sync Columns
+
+Spread `localSyncColumns()` into your local synced table definition to add the columns Baresync needs for dirty tracking and soft deletes.
+
+## What it adds
+
+```ts
+import { localSyncColumns } from "baresync/schema";
+
+// Returns:
+{
+  deletedAt: text("deleted_at"),
+  isSynced: integer("is_synced", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+}
+```
+
+| Column | Type | Default | Purpose |
+|---|---|---|---|
+| `deletedAt` | `text` (nullable) | `null` | Soft-delete timestamp |
+| `isSynced` | `integer` (boolean) | `false` | Whether the row has been pushed to the server |
+| `createdAt` | `text` | current ISO string | Row creation timestamp |
+| `updatedAt` | `text` | current ISO string | Row modification timestamp |
+
+## How isSynced works
+
+- `false` (default) — the row has unsynced local changes
+- `true` — the row has been successfully pushed to the server
+
+The sync engine sets `isSynced` to `true` after a successful push. Your UI can use it to show sync badges or filter dirty rows.
+
+When you write a local change through `writeLocalChange`, `isSynced` is set to `false` automatically. You do not need to set it yourself.
+
+## How deletedAt works
+
+`deletedAt` is nullable. When set to a timestamp string, the row is considered soft-deleted. The sync engine pushes this as an update — the server sees the `deletedAt` value and marks the row as deleted.
+
+## Usage
+
+```ts
+import { localSyncColumns } from "baresync/schema";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const items = sqliteTable("items", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  name: text("name").notNull(),
+  ...localSyncColumns(),
+});
+```
+
+This is a local-only column set. It does not exist on the API schema.

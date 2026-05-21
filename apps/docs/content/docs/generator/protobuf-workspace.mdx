@@ -1,6 +1,38 @@
 ---
 title: Protobuf Workspace
-description: TODO
+description: Additional artifacts generated for protobuf encoding.
 ---
 
-TODO: Write this page.
+# Protobuf Workspace
+
+When using `defineProtobufSyncConfig`, the generator produces additional protobuf-specific artifacts alongside the standard JSON outputs.
+
+## Output directories
+
+Configure these in the `outputs` field:
+
+```ts
+outputs: {
+  protoDir: "./generated/proto",
+  rustMapperDir: "./generated/rust",
+  tsRuntimeDir: "./generated/ts",
+}
+```
+
+## What gets generated
+
+| Directory | Contents |
+|---|---|
+| `protoDir` | `.proto` files for each synced table |
+| `rustMapperDir` | Rust mapper functions for encoding/decoding |
+| `tsRuntimeDir` | TypeScript runtime code for protobuf serialization |
+
+## When to use
+
+Most apps should use JSON encoding. Use protobuf when:
+
+- Your tables have many columns and wire size matters
+- Your backend already speaks protobuf
+- You need strict schema evolution guarantees
+
+See [Protobuf](/docs/protobuf/overview) for detailed documentation.

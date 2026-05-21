@@ -1,6 +1,87 @@
 ---
-title: Cli
-description: TODO
+title: CLI
+description: The baresync command-line tool.
 ---
 
-TODO: Write this page.
+# CLI
+
+Baresync provides a CLI for generating artifacts and running diagnostics.
+
+## baresync generate
+
+Generates sync artifacts from your config file.
+
+```bash
+bunx baresync generate
+```
+
+Looks for one of these config files in the current directory:
+
+- `sync.config.ts`
+- `sync.config.mts`
+- `sync.config.js`
+- `sync.config.mjs`
+
+### Options
+
+| Flag | Purpose |
+|---|---|
+| `--config <path>` | Path to a specific config file |
+| `--output <dir>` | Override the output directory |
+| `--check` | Only validate, do not write files |
+| `--warnings-as-errors` | Treat warnings as errors |
+
+### Examples
+
+```bash
+# Generate with auto-detected config
+bunx baresync generate
+
+# Generate with a specific config
+bunx baresync generate --config packages/sync-contract/sync.config.ts
+
+# Validate only (no file writes)
+bunx baresync generate --check
+
+# CI-friendly: fail on warnings too
+bunx baresync generate --warnings-as-errors
+```
+
+## baresync doctor
+
+Runs diagnostics on your schemas without generating anything.
+
+```bash
+bunx baresync doctor
+```
+
+### Options
+
+| Flag | Purpose |
+|---|---|
+| `--config <path>` | Path to a specific config file |
+
+### Example output
+
+```txt
+Loaded config: /path/to/sync.config.ts
+Running diagnostics for syncGeneratorConfig
+WARN  SYNC_SCHEMA_NO_CONFLICT_STRATEGY [locations]: Table "locations" has no conflict strategy defined
+       Why: Without a conflict strategy, last-write-wins is assumed
+       Fix: Add a conflict strategy
+0 error(s), 1 warning(s), 0 info(s)
+```
+
+## Running from package scripts
+
+Most projects add these to their sync contract package:
+
+```json
+{
+  "scripts": {
+    "generate": "bun generate.ts",
+    "doctor": "bunx baresync doctor",
+    "check": "bun run doctor && bun run typecheck"
+  }
+}
+```

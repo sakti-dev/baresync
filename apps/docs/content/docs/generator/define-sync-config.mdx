@@ -1,6 +1,95 @@
 ---
 title: Define Sync Config
-description: TODO
+description: How to write sync.config.ts for the Baresync generator.
 ---
 
-TODO: Write this page.
+# Define Sync Config
+
+The sync config tells the generator which tables to sync, where to find schemas, and where to write output.
+
+## The config file
+
+Create `packages/sync-contract/sync.config.ts`:
+
+```ts
+import { defineSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import { INVENTORY_PACKAGE_NAME } from "./src/constants";
+import * as localSyncedSchema from "./src/local-synced-schema";
+
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  packageName: INVENTORY_PACKAGE_NAME,
+  tables: {
+    locations: { scope: "scope_id" },
+    items: { scope: "scope_id" },
+    stockCounts: { scope: "scope_id" },
+  },
+});
+```
+
+## Parameters
+
+| Parameter | Type | Purpose |
+|---|---|---|
+| `localSyncedSchema` | `* as schema` | Namespace import of your local synced tables |
+| `apiSyncedSchema` | `* as schema` | Namespace import of your API synced tables |
+| `outputDir` | `string` | Where to write generated files |
+| `packageName` | `string` | Dot-separated name for the contract (e.g., `"inventory.sync.v1"`) |
+| `tables` | `Record<string, TableOptions>` | Map of export names to sync options |
+| `encoding` | `"json" \| "protobuf"` | Default: `"json"` |
+| `limits` | `{ maxPushBytes?, maxPushRows? }` | Override default push limits |
+
+## Table options
+
+Each entry in `tables` maps an export name from your schemas to sync options:
+
+```ts
+tables: {
+  locations: {
+    scope: "scope_id",
+    localOnlyColumns: ["isSynced"],
+    serverOnlyColumns: ["syncUpdatedAt"],
+  },
+}
+```
+
+| Option | Default | Purpose |
+|---|---|---|
+| `scope` | (required) | Which column to use for scope partitioning |
+| `localOnlyColumns` | `["isSynced"]` | Columns that exist only on the local schema |
+| `serverOnlyColumns` | `["syncUpdatedAt"]` | Columns that exist only on the API schema |
+
+The generator validates that local-only columns are not in the API schema and vice versa. If you add a column to one side and forget the other, you get a clear error.
+
+## The generate script
+
+Create `packages/sync-contract/generate.ts`:
+
+```ts
+import { generateSyncArtifacts } from "baresync/generator";
+import { syncGeneratorConfig } from "./sync.config";
+
+generateSyncArtifacts(syncGeneratorConfig);
+```
+
+Then in your `package.json`:
+
+```json
+{
+  "scripts": {
+    "generate": "bun generate.ts"
+  }
+}
+```
+
+## Validation at config time
+
+`defineSyncConfig` validates that:
+
+- Each table export exists in both `localSyncedSchema` and `apiSyncedSchema`
+- Local-only columns are present in the local schema but not the API schema
+- Server-only columns are present in the API schema but not the local schema
+- Shared columns match between both schemas

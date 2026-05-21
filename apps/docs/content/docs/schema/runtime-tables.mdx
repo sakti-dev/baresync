@@ -1,6 +1,61 @@
 ---
 title: Runtime Tables
-description: TODO
+description: The outbox, cursors, and batch requests tables that Baresync uses internally.
 ---
 
-TODO: Write this page.
+# Runtime Tables
+
+Baresync uses three runtime tables that are not synced themselves but support the sync engine.
+
+## sync_outbox (local)
+
+Tracks pending local changes that need to be pushed to the server.
+
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | `text` PK | UUID |
+| `tableName` | `text` | Which table the change belongs to |
+| `rowId` | `text` | Which row changed |
+| `operation` | `text` | `"insert"`, `"update"`, or `"delete"` |
+| `payload` | `text` (nullable) | Optional JSON payload |
+| `scopeId` | `text` | Scope the change belongs to |
+| `changedAt` | `text` | ISO timestamp of the change |
+| `syncedAt` | `text` (nullable) | When the change was synced (null = pending) |
+
+The table has a unique index on `(tableName, rowId) WHERE syncedAt IS NULL`. This means only one pending outbox entry per row. If you update the same row twice before sync, the outbox entry is upserted rather than duplicated.
+
+This table lives in the **local app database** only.
+
+## sync_cursors (local)
+
+Stores the last cursor timestamp per scope so the client can do incremental pulls.
+
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | `integer` PK (auto) | Row ID |
+| `scopeId` | `text` | Scope identifier |
+| `lastCursor` | `text` | Last server watermark |
+| `updatedAt` | `text` | When the cursor was last updated |
+
+After a successful pull, the sync engine updates `lastCursor` to the highest `syncUpdatedAt` value from the pulled rows.
+
+This table lives in the **local app database** only.
+
+## sync_batch_requests (server)
+
+Stores idempotency records for push requests on the server.
+
+| Column | Type | Purpose |
+|---|---|---|
+| `id` | `integer` PK (auto) | Row ID |
+| `clientId` | `text` | Client identifier |
+| `idempotencyKey` | `text` | Unique key per push batch |
+| `requestHash` | `text` | Hash of the request body |
+| `status` | `text` | `"pending"`, `"completed"`, or `"failed"` |
+| `responseBody` | `text` (nullable) | Cached response for replay |
+| `createdAt` | `integer` | Unix timestamp |
+| `completedAt` | `integer` (nullable) | When processing finished |
+
+The table has a unique index on `(clientId, idempotencyKey)`. If a client retries a push with the same idempotency key, the server returns the cached response instead of processing it again.
+
+This table lives in the **server database** only.
