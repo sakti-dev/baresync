@@ -54,6 +54,8 @@ const SyncClientContext = createContext<SyncClient | null>(null);
 
 export function SyncClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+
+  // Create the client once — useState with an initializer never re-creates it
   const [client] = useState(() =>
     createSyncClient({
       apiUrl: "http://127.0.0.1:18181",
@@ -64,6 +66,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   );
   const initialized = useRef(false);
 
+  // Start background polling on mount, stop on unmount
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -73,15 +76,22 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
     };
   }, [client]);
 
+  // Subscribe to Tauri events emitted by the Rust sync engine.
+  // These fire when observable local data changes or sync status changes.
   useEffect(() => {
     let disposed = false;
     let cleanup: (() => Promise<void> | void) | null = null;
 
     const pending = Promise.all([
+      // Emitted after local writes, sync pull, or garbage collection
+      // that actually changed rows (rows_affected > 0).
+      // Invalidate both data queries and sync state so the UI updates.
       listen("baresync://data-changed", async () => {
         await queryClient.invalidateQueries({ queryKey: ["inventory"] });
         await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
       }),
+      // Emitted when polling starts/stops or a sync cycle completes.
+      // Only need to refresh the sync indicator.
       listen("baresync://sync-status-changed", async () => {
         await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
       }),
@@ -89,6 +99,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
       const release = async () => {
         await Promise.all([unlistenDataChanged(), unlistenStatusChanged()]);
       };
+      // If the component unmounted before the listeners resolved, release immediately
       if (disposed) {
         release();
         return;
@@ -252,6 +263,9 @@ function AddItemButton() {
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
+    // writeTransaction wraps all changes in a single SQLite transaction.
+    // writeLocalChange performs the Drizzle write AND creates an outbox entry
+    // so the sync engine picks it up on the next push.
     await client.writeTransaction(db, async (tx) => {
       await client.writeLocalChange(tx, {
         operation: "insert",
@@ -267,14 +281,15 @@ function AddItemButton() {
       });
     });
 
+    // Eagerly invalidate so the user sees the new row immediately.
+    // The baresync://data-changed event will also fire, but it may arrive
+    // slightly later — this ensures instant feedback.
     await queryClient.invalidateQueries({ queryKey: ["inventory", "items"] });
   }
 
   return <button onClick={handleAdd}>Add item</button>;
 }
 ```
-
-You could rely on the `baresync://data-changed` event to invalidate, but calling `invalidateQueries` directly after the write gives immediate feedback — the event may arrive slightly later.
 
 ### Write data (soft delete)
 
@@ -290,6 +305,8 @@ async function handleDelete(
 ) {
   const timestamp = new Date().toISOString();
 
+  // Soft delete: set deletedAt and mark unsynced so the engine pushes the deletion.
+  // The row stays in the table until garbage collection hard-deletes it after sync.
   await client.writeTransaction(db, async (tx) => {
     await client.writeLocalChange(tx, {
       operation: "update",
@@ -307,6 +324,7 @@ async function handleDelete(
     });
   });
 
+  // Refresh the list so the deleted row disappears (or shows as struck-through)
   await queryClient.invalidateQueries({ queryKey: ["inventory", "items"] });
 }
 ```

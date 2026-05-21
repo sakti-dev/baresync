@@ -49,6 +49,10 @@ const db = createTauriDrizzleDatabase({ schema, invoke });
 
 ## Writing data
 
+All writes go through `client.writeTransaction` + `client.writeLocalChange`. The transaction ensures atomicity; `writeLocalChange` performs the Drizzle write **and** creates an outbox entry so the sync engine picks it up on the next push.
+
+After writing, you should invalidate your data cache so the UI updates immediately — see the [React](/docs/ui-frameworks/react) or [Solid](/docs/ui-frameworks/solid) pages for framework-specific examples.
+
 ### Insert a row
 
 ```ts
@@ -95,6 +99,8 @@ await client.writeTransaction(db, async (tx) => {
 ```ts
 const timestamp = new Date().toISOString();
 
+// Soft delete: set deletedAt and mark unsynced so the engine pushes the deletion.
+// The row stays in the table until garbage collection hard-deletes it after sync.
 await client.writeTransaction(db, async (tx) => {
   await client.writeLocalChange(tx, {
     operation: "update",
@@ -115,7 +121,7 @@ await client.writeTransaction(db, async (tx) => {
 
 ### Multiple changes in one transaction
 
-All changes inside `writeTransaction` are atomic. The outbox entries are created in order.
+All changes inside `writeTransaction` are atomic. The outbox entries are created in order. This is useful for related rows that must be written together.
 
 ```ts
 await client.writeTransaction(db, async (tx) => {
@@ -151,23 +157,29 @@ await client.writeTransaction(db, async (tx) => {
 ## Triggering sync
 
 ```ts
+// Auto-selects the best mode (NoOp, PushOnly, PullOnly, FullSync, FullResync)
 await client.syncNow();
 
+// Push local changes to the server only
 await client.push();
 
+// Pull server changes to the local database only
 await client.pull();
 
+// Wipe local cursor and re-download everything from the server, then push
 await client.fullResync();
 ```
 
 ## Polling control
 
 ```ts
+// Start background polling — the engine periodically calls syncNow for you
 await client.startPolling({ scopeId: "merchant-1" });
 await client.stopPolling();
 await client.pausePolling();
 await client.resumePolling();
 
+// Check whether polling is active
 const status = await client.getPollingStatus();
 // { running: boolean, paused: boolean, last_sync_at: string | null }
 ```
@@ -177,9 +189,9 @@ const status = await client.getPollingStatus();
 ```ts
 const state = await client.getState();
 // {
-//   local_dirty_count: number,
-//   last_server_watermark: string,
-//   needs_baseline_sync: boolean,
+//   local_dirty_count: number,    // rows in outbox waiting to be pushed
+//   last_server_watermark: string, // stored cursor (empty if never synced)
+//   needs_baseline_sync: boolean,  // true on first launch (no cursor yet)
 // }
 ```
 
@@ -190,14 +202,15 @@ Use `@tauri-apps/api/event` directly:
 ```ts
 import { listen } from "@tauri-apps/api/event";
 
-const unlisten = await listen("baresync://data-changed", (event) => {
-  // Re-fetch your data
+// Fires after local writes, sync pull, or garbage collection
+// that actually changed rows (rows_affected > 0).
+const unlisten = await listen("baresync://data-changed", () => {
   refreshData();
 });
 
-const unlistenStatus = await listen("baresync://sync-status-changed", (event) => {
-  // Update sync UI
-  updateSyncStatus();
+// Fires when polling starts/stops or a sync cycle completes.
+const unlistenStatus = await listen("baresync://sync-status-changed", () => {
+  updateSyncIndicator();
 });
 
 // Later, cleanup:
@@ -207,7 +220,7 @@ unlistenStatus();
 
 ### Event payloads
 
-Both events currently emit without a typed payload. The event itself is the signal — you respond by re-querying your data or sync state. The actual data comes from the local SQLite database via Drizzle, not from the event.
+Both events emit without a typed payload. The event itself is the signal — re-query your data from the local SQLite database via Drizzle.
 
 ## The write-then-sync cycle
 
