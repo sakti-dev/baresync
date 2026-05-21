@@ -2,11 +2,13 @@
   "title": "Testing",
   "pages": [
     "overview",
-    "js-client-tests",
-    "server-tests",
-    "rust-core-simulation",
-    "tauri-plugin-host-tests",
-    "inventory-app-tests",
-    "e2e-runbook"
+    "frontend-tests",
+    "local-database-tests",
+    "server-contract-tests",
+    "app-smoke-tests",
+    "example-app-tests",
+    "e2e-runbook",
+    "advanced-rust-extension-tests",
+    "advanced-plugin-host-tests"
   ]
 }

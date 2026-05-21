@@ -3,6 +3,8 @@ import { loader } from "fumadocs-core/source";
 import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
 import { docsRoute } from "./shared";
 
+const MARKDOWN_EXTENSION_RE = /\.md$/;
+
 export const source = loader({
   source: docs.toFumadocsSource(),
   baseUrl: docsRoute,
@@ -10,11 +12,18 @@ export const source = loader({
 });
 
 export function markdownPathToSlugs(segs: string[]) {
-  if (segs.length === 0) return [];
+  if (segs.length === 0) {
+    return [];
+  }
 
   const out = [...segs];
-  out[out.length - 1] = out[out.length - 1].replace(/\.md$/, "");
-  if (out.length === 1 && out[0] === "index") out.pop();
+  const last = out.at(-1);
+  if (last !== undefined) {
+    out[out.length - 1] = last.replace(MARKDOWN_EXTENSION_RE, "");
+  }
+  if (out.length === 1 && out[0] === "index") {
+    out.pop();
+  }
   return out;
 }
 

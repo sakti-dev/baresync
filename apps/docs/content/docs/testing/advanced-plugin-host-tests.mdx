@@ -1,0 +1,76 @@
+---
+title: "Advanced: Plugin Host Tests"
+description: Test custom Tauri plugin commands, events, and polling behavior when you fork or extend the Baresync plugin.
+---
+
+# Advanced: Plugin Host Tests
+
+Most apps use the Baresync Tauri plugin as published. You do not need plugin host tests just to integrate Baresync.
+
+Use this page only if you:
+
+- fork the plugin crate
+- add or modify Tauri commands
+- change event emission
+- change polling lifecycle behavior
+- contribute to Baresync itself
+
+Normal app teams should usually test plugin integration through app smoke tests instead.
+
+## Host Test Shape
+
+A plugin host test creates real plugin state with:
+
+- a temporary SQLite database
+- embedded test migrations
+- a recording HTTP transport
+- a recording event sink
+
+That lets you call command helpers directly without launching a full Tauri app.
+
+## What To Test
+
+If you customize the plugin, test:
+
+- SQL commands execute against the expected database
+- write commands emit `baresync://data-changed`
+- read commands do not emit data-change events
+- `sync_now`, `sync_push`, and `sync_pull` use the configured transport
+- polling starts, stops, pauses, and resumes
+- sync status events fire at the expected times
+- command errors are returned clearly to the frontend
+
+## Recording Event Sink
+
+```rust
+use tauri_plugin_baresync::commands::{PluginEvent, PluginEventSink};
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone, Default)]
+struct RecordingEventSink {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl PluginEventSink for RecordingEventSink {
+    fn emit(&self, event: PluginEvent) {
+        let name = match event {
+            PluginEvent::DataChanged => "baresync://data-changed",
+            PluginEvent::SyncStatusChanged => "baresync://sync-status-changed",
+        };
+        self.events.lock().unwrap().push(name.to_string());
+    }
+}
+```
+
+## App Developer Guidance
+
+If your app is failing at runtime, do not start here. First check:
+
+- frontend command names match registered Tauri commands
+- migrations ran
+- the app database path is writable
+- local writes produce outbox rows
+- the backend URL is correct
+- the backend contract tests pass
+
+Plugin host tests are for plugin behavior changes. They are not a replacement for testing your app through its real Tauri runtime.

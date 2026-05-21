@@ -1,0 +1,93 @@
+---
+title: "Advanced: Rust Extension Tests"
+description: Test custom Rust sync transports or engine changes when you extend Baresync internals.
+---
+
+# Advanced: Rust Extension Tests
+
+Most applications do not need Rust engine tests. Use this page only if you extend Baresync internals, such as:
+
+- implementing a custom `SyncHttpTransport`
+- changing push or pull behavior in Rust
+- adding a new sync strategy
+- contributing to Baresync itself
+
+If you are only building an app with the published plugin, prefer frontend tests, local database tests, server contract tests, and app smoke tests.
+
+## Recording Transport Pattern
+
+When you do need Rust engine tests, replace HTTP with a transport that records requests and returns controlled responses.
+
+```rust
+use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
+struct RecordingTransport {
+    calls: Arc<Mutex<Vec<(String, Value)>>>,
+    push_response: Value,
+    status_response: Value,
+    pull_response: Value,
+}
+
+impl RecordingTransport {
+    fn calls(&self) -> Vec<(String, Value)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl SyncHttpTransport for RecordingTransport {
+    fn send_push_request(&self, _api_url: String, envelope: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.push_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("push".to_string(), envelope));
+            Ok(response)
+        })
+    }
+
+    fn send_status_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.status_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("status".to_string(), body));
+            Ok(response)
+        })
+    }
+
+    fn send_pull_request(&self, _api_url: String, body: Value) -> SyncTransportFuture {
+        let calls = Arc::clone(&self.calls);
+        let response = self.pull_response.clone();
+        Box::pin(async move {
+            calls.lock().unwrap().push(("pull".to_string(), body));
+            Ok(response)
+        })
+    }
+}
+```
+
+## What To Assert
+
+Advanced Rust tests should assert engine-level behavior:
+
+- clean state sends only status
+- local dirty state sends push
+- remote dirty state sends pull
+- both sides dirty send the expected sequence
+- rejected rows trigger the expected reconciliation path
+- chunking limits split requests correctly
+- garbage collection removes eligible soft-deleted rows
+
+These tests are valuable for engine changes. They are usually too low-level for app integration testing.
+
+## App Developer Guidance
+
+If you are debugging a normal app integration issue, ask first:
+
+- Did my app write the source row?
+- Did my app write a pending outbox row?
+- Did my backend accept the push?
+- Did the accepted row become clean locally?
+
+If the answer is no, stay in app-level tests. Rust engine tests are the last stop, not the first.

@@ -33,7 +33,9 @@ const serverLoader = createServerFn({
   .inputValidator((slugs: string[]) => slugs)
   .handler(async ({ data: slugs }) => {
     const page = source.getPage(slugs);
-    if (!page) throw notFound();
+    if (!page) {
+      throw notFound();
+    }
 
     return {
       path: page.path,
@@ -47,26 +49,28 @@ const clientLoader = browserCollections.docs.createClientLoader({
     { toc, frontmatter, default: MDX },
     // you can define props for the component
     {
+      components,
       markdownUrl,
       path,
     }: {
+      components: ReturnType<typeof useMDXComponents>;
       markdownUrl: string;
       path: string;
-    },
+    }
   ) {
     return (
       <DocsPage toc={toc}>
         <DocsTitle>{frontmatter.title}</DocsTitle>
         <DocsDescription>{frontmatter.description}</DocsDescription>
-        <div className="flex flex-row gap-2 items-center border-b -mt-4 pb-6">
+        <div className="-mt-4 flex flex-row items-center gap-2 border-b pb-6">
           <MarkdownCopyButton markdownUrl={markdownUrl} />
           <ViewOptionsPopover
-            markdownUrl={markdownUrl}
             githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${path}`}
+            markdownUrl={markdownUrl}
           />
         </div>
         <DocsBody>
-          <MDX components={useMDXComponents()} />
+          <MDX components={components} />
         </DocsBody>
       </DocsPage>
     );
@@ -75,13 +79,14 @@ const clientLoader = browserCollections.docs.createClientLoader({
 
 function Page() {
   const { path, pageTree, markdownUrl } = useFumadocsLoader(
-    Route.useLoaderData(),
+    Route.useLoaderData()
   );
+  const components = useMDXComponents();
 
   return (
     <DocsLayout {...baseOptions()} tree={pageTree}>
       <Suspense>
-        {clientLoader.useContent(path, { markdownUrl, path })}
+        {clientLoader.useContent(path, { components, markdownUrl, path })}
       </Suspense>
     </DocsLayout>
   );

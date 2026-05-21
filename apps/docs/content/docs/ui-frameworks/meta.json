@@ -1,9 +1,4 @@
 {
   "title": "UI Frameworks",
-  "pages": [
-    "overview",
-    "react",
-    "solid",
-    "framework-agnostic-patterns"
-  ]
+  "pages": ["overview", "react", "solid", "framework-agnostic-patterns"]
 }

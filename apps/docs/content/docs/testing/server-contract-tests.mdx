@@ -1,0 +1,221 @@
+---
+title: Server Contract Tests
+description: Test the sync contract implemented by your backend, including push, pull, status, authorization, and idempotency.
+---
+
+# Server Contract Tests
+
+Server contract tests prove that your backend speaks the sync protocol your app expects. They should run without launching a Tauri app.
+
+Use these tests for:
+
+- `POST /sync/status`
+- `POST /sync/pull`
+- `POST /sync/push`
+- scope authorization
+- table ordering
+- idempotency
+- JSON/protobuf encoding if your app uses both
+- persistence of accepted changes
+
+## Test Handlers With Real Requests
+
+Baresync's server helpers accept real `Request` objects, so you can test your handler without a running HTTP server.
+
+```ts
+import { createSyncPushHandler } from "baresync/server";
+import { describe, expect, it, vi } from "vitest";
+
+it("authorizes and applies push changes in table order", async () => {
+  const applyPushChanges = vi.fn(async (input) => ({
+    serverTime: "2026-05-20T00:00:00.000Z",
+    tables: input.changes.map((change) => ({
+      acceptedCreatedIds: change.changedRows.map((row) => String(row.id)),
+      acceptedDeletedIds: change.deletedIds,
+      acceptedUpdatedIds: [],
+      rejected: [],
+      table: change.table,
+    })),
+  }));
+
+  const handler = createSyncPushHandler({
+    applyPushChanges,
+    encoding: "json",
+    idempotency: { db: createTestIdempotencyDb() },
+    resolveScope: async ({ scopeId }) => ({
+      ok: true,
+      scope: { merchantId: scopeId },
+    }),
+    upsertOrder: ["categories", "products"],
+  });
+
+  const response = await handler(
+    new Request("https://api.example.test/sync/push", {
+      body: JSON.stringify({
+        clientId: "client-1",
+        idempotencyKey: "idem-1",
+        scopeId: "merchant-1",
+        tables: [
+          { changedRows: [{ id: "prod-1" }], deletedIds: [], table: "products" },
+          { changedRows: [{ id: "cat-1" }], deletedIds: [], table: "categories" },
+        ],
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+    { sessionId: "session-1" }
+  );
+
+  expect(response.status).toBe(200);
+  expect(applyPushChanges.mock.calls[0][0].changes.map((c) => c.table)).toEqual([
+    "categories",
+    "products",
+  ]);
+});
+```
+
+## Test Authorization
+
+Your backend owns scope authorization. Test both accepted and rejected scopes.
+
+```ts
+it("rejects unauthorized scopes before applying changes", async () => {
+  const applyPushChanges = vi.fn();
+  const handler = createSyncPushHandler({
+    applyPushChanges,
+    encoding: "json",
+    idempotency: { db: createTestIdempotencyDb() },
+    resolveScope: async () => ({
+      body: { error: "forbidden" },
+      ok: false,
+      status: 403,
+    }),
+    upsertOrder: ["items"],
+  });
+
+  const response = await handler(createPushRequest({ scopeId: "other" }), {
+    sessionId: "session-1",
+  });
+
+  expect(response.status).toBe(403);
+  expect(applyPushChanges).not.toHaveBeenCalled();
+});
+```
+
+## Test Pull And Status
+
+Status and pull tests should assert your cursor, scope, and table behavior.
+
+```ts
+import { createSyncPullHandler, createSyncStatusHandler } from "baresync/server";
+
+it("returns status for an authorized scope", async () => {
+  const handler = createSyncStatusHandler({
+    encoding: "json",
+    loadSyncStatus: async ({ cursor, scopeId }) => ({
+      changedTables: ["items"],
+      cursor,
+      hasChanges: true,
+      scopeId,
+      serverTime: "2026-05-20T00:00:00.000Z",
+    }),
+    resolveScope: async ({ scopeId }) => ({
+      ok: true,
+      scope: { merchantId: scopeId },
+    }),
+  });
+
+  const response = await handler(
+    createJsonRequest({
+      cursor: "",
+      scopeId: "merchant-1",
+    }),
+    { sessionId: "session-1" }
+  );
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toMatchObject({
+    hasChanges: true,
+  });
+});
+
+it("returns requested pull tables", async () => {
+  const handler = createSyncPullHandler({
+    encoding: "json",
+    limit: 100,
+    loadPullChanges: async ({ tables }) => ({
+      cursor: "sync:1:items:item-1",
+      hasMore: false,
+      serverTime: "2026-05-20T00:00:00.000Z",
+      tables: tables.map((table) => ({
+        changedRows: [],
+        deletedIds: [],
+        table,
+      })),
+    }),
+    resolveScope: async ({ scopeId }) => ({
+      ok: true,
+      scope: { merchantId: scopeId },
+    }),
+  });
+
+  const response = await handler(
+    createJsonRequest({
+      cursor: "",
+      scopeId: "merchant-1",
+      tables: ["items"],
+    }),
+    { sessionId: "session-1" }
+  );
+
+  expect(response.status).toBe(200);
+});
+```
+
+## Test Idempotency
+
+Push idempotency should use a real test database, not an in-memory object. That catches schema and transaction mistakes.
+
+```ts
+import { createIdempotencyGuard } from "baresync/server";
+
+it("replays duplicate push responses", async () => {
+  const guard = createIdempotencyGuard({ db: createTestIdempotencyDb() });
+  let callCount = 0;
+
+  const first = await guard.run(
+    { clientId: "client-1", idempotencyKey: "key-1", requestHash: "hash-a" },
+    async () => {
+      callCount++;
+      return { serverTime: "2026-05-20T00:00:00.000Z" };
+    }
+  );
+
+  const second = await guard.run(
+    { clientId: "client-1", idempotencyKey: "key-1", requestHash: "hash-a" },
+    async () => {
+      callCount++;
+      return { serverTime: "2026-05-20T00:00:00.000Z" };
+    }
+  );
+
+  expect(first.wasReplay).toBe(false);
+  expect(second.wasReplay).toBe(true);
+  expect(callCount).toBe(1);
+});
+```
+
+## Contract Checklist
+
+A good server contract suite asserts:
+
+- valid scopes can status, pull, and push
+- invalid scopes are rejected before data changes
+- push changes are applied in dependency order
+- accepted row IDs are returned in the shape the client expects
+- rejected rows are explicit and not confused with empty success
+- duplicate idempotency keys replay the cached response
+- same idempotency key with a different body fails
+- cleanup jobs preserve recent idempotency rows and remove old ones
+
+If a device smoke test fails, run these contract tests before assuming the device is the problem.

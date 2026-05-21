@@ -9,14 +9,14 @@ export const Route = createFileRoute("/")({
 function Home() {
   return (
     <HomeLayout {...baseOptions()}>
-      <div className="flex flex-col flex-1 justify-center px-4 py-8 text-center">
-        <h1 className="font-medium text-xl mb-4">Baresync Docs</h1>
+      <div className="flex flex-1 flex-col justify-center px-4 py-8 text-center">
+        <h1 className="mb-4 font-medium text-xl">Baresync Docs</h1>
         <Link
-          to="/docs/$"
+          className="mx-auto rounded-lg bg-fd-primary px-3 py-2 font-medium text-fd-primary-foreground text-sm"
           params={{
             _splat: "",
           }}
-          className="px-3 py-2 rounded-lg bg-fd-primary text-fd-primary-foreground font-medium text-sm mx-auto"
+          to="/docs/$"
         >
           Open Docs
         </Link>

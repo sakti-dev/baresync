@@ -1,0 +1,160 @@
+---
+title: Example App Testing Patterns
+description: Adaptable testing patterns for apps that use Baresync, based on a small inventory-style app.
+---
+
+# Example App Testing Patterns
+
+This page shows patterns you can adapt to your own app. The examples use inventory-shaped data because category/product relationships are easy to understand, but the same ideas apply to notes, tasks, CRM records, forms, or any other synced domain.
+
+Replace the schema, query keys, labels, and scope IDs with your own.
+
+## Event Bridge Test
+
+If your app invalidates queries when Baresync emits events, capture the listener and call it from your test.
+
+```ts
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+
+const listen = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
+
+it("invalidates app data when local sync data changes", async () => {
+  const queryClient = new QueryClient();
+  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const listeners = new Map<string, (event: unknown) => void>();
+
+  listen.mockImplementation((event, handler) => {
+    listeners.set(event, handler);
+    return Promise.resolve(async () => {});
+  });
+
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(SyncEventBridge)
+    )
+  );
+
+  await waitFor(() => {
+    expect(listeners.has("baresync://data-changed")).toBe(true);
+  });
+
+  await listeners.get("baresync://data-changed")?.(undefined);
+
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory"] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["sync-state"] });
+});
+```
+
+## Component Test
+
+Keep component tests about your UI, not Baresync internals.
+
+```ts
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
+it("renders local rows and pending state", () => {
+  render(
+    <InventoryTable
+      rows={[
+        { id: "item-1", isSynced: false, name: "Coffee" },
+        { id: "item-2", isSynced: true, name: "Tea" },
+      ]}
+    />
+  );
+
+  expect(screen.getByText("Coffee")).toBeDefined();
+  expect(screen.getByText("Pending")).toBeDefined();
+  expect(screen.getByText("Tea")).toBeDefined();
+});
+```
+
+## Repository Test
+
+Use a real in-memory database for repository code. This catches SQL mistakes that mocks miss.
+
+```ts
+import { Database } from "bun:sqlite";
+import { describe, expect, it } from "bun:test";
+
+function createTestDb() {
+  const sqlite = new Database(":memory:");
+  sqlite.run("PRAGMA foreign_keys = ON");
+  sqlite.exec(`
+    CREATE TABLE categories (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL,
+      name TEXT NOT NULL
+    );
+  `);
+  return sqlite;
+}
+
+it("loads rows for a scope", () => {
+  const db = createTestDb();
+  db.run(
+    "INSERT INTO categories (id, merchant_id, name) VALUES (?1, ?2, ?3)",
+    "cat-1",
+    "merchant-1",
+    "Drinks"
+  );
+
+  const rows = loadCategoriesForScope(db, "merchant-1");
+
+  expect(rows).toEqual([{ id: "cat-1", name: "Drinks" }]);
+});
+```
+
+## Server Contract Test
+
+Test the backend contract with your own domain rows.
+
+```ts
+it("accepts pushed category rows", async () => {
+  const response = await syncPushHandler(
+    createJsonRequest({
+      clientId: "client-1",
+      idempotencyKey: "idem-1",
+      scopeId: "merchant-1",
+      tables: [
+        {
+          changedRows: [{ id: "cat-1", merchantId: "merchant-1", name: "Drinks" }],
+          deletedIds: [],
+          table: "categories",
+        },
+      ],
+    }),
+    { sessionId: "session-1" }
+  );
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toMatchObject({
+    tables: [
+      {
+        acceptedCreatedIds: ["cat-1"],
+        table: "categories",
+      },
+    ],
+  });
+});
+```
+
+## What To Adapt
+
+For your app, replace:
+
+- `merchant-1` with your scope model
+- `categories` and `items` with your synced tables
+- query keys with your cache keys
+- test labels with your UI text
+- fixture rows with domain rows your team recognizes
+- backend setup with your framework's test harness
+
+The pattern is the important part: mock frontend boundaries, use real SQLite for persistence code, test backend contracts directly, and keep app smoke tests small.

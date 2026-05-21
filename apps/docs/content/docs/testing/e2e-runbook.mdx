@@ -1,451 +1,440 @@
 ---
 title: E2E Runbook
-description: How to set up and run end-to-end tests for your Baresync app — fixture backend, desktop smoke, Android smoke, and debugging.
+description: How to test your own Tauri app after integrating Baresync, including backend contracts, desktop smoke tests, mobile smoke tests, and debugging.
 ---
 
 # E2E Runbook
 
-Unit tests verify your code in isolation. E2E tests verify your entire stack works together — the Tauri plugin, IPC, SQLite, migrations, sync engine, and your UI. This page covers how to set up each E2E layer and what to do when tests fail.
+This runbook is for testing **your application** after it integrates Baresync.
 
-## Why E2E matters
+The goal is not to test Baresync itself. The goal is to prove that your app wiring works end to end:
 
-Unit tests mock `invoke` and mock the server. E2E tests don't mock anything. They catch:
+- your Tauri app registers the plugin correctly
+- your migrations create the schema your app expects
+- your frontend calls the right IPC commands
+- your local SQLite file is readable, writable, and isolated per test run
+- your app can pull server data into local state
+- your app can create local data and enqueue it for sync
+- your app can push local changes to your backend
+- accepted local rows become clean locally
+- important local state survives an app restart
 
-- Plugin registration wiring mistakes
-- Migration SQL that doesn't match your Drizzle schema
-- IPC command name mismatches between JS and Rust
-- SQLite file path issues on different platforms
-- Sync engine behavior with real network calls
-- Data persistence across app restarts
+Good E2E tests should be small and boring. Put sync edge cases in host tests and backend contract tests. Use UI/device tests only to prove the real runtime wiring works.
 
-## The four verification layers
+## Recommended Layers
 
-Don't collapse everything into one UI test. Each layer catches different bugs:
+Do not collapse all sync testing into one UI test. Each layer should own a different risk.
 
-| Layer | What it catches | When to run |
+| Layer | Purpose | Typical cadence |
 |---|---|---|
-| **Rust host tests** | Sync algorithm bugs, SQLite edge cases, migration failures | Every commit |
-| **JS typecheck + lint** | Type errors, API misuse, broken imports | Every commit |
-| **Backend contract tests** | HTTP API contract violations in JSON and protobuf | Before release |
-| **Desktop/Android smoke** | Plugin wiring, IPC, persistence, real sync cycle | Before release |
+| App unit tests | Validate your own UI state, helpers, and domain logic without Tauri | Every commit |
+| JS typecheck and lint | Catch wrong imports, API misuse, and broken app types | Every commit |
+| Backend contract tests | Prove your sync backend accepts and returns the protocol your app uses | Every commit or before release |
+| Desktop smoke test | Prove your real Tauri desktop app can sync through IPC, SQLite, and your UI | Before release |
+| Mobile smoke test | Prove packaged mobile runtime, app-private SQLite path, networking, and lifecycle | Before release or platform changes |
 
-## Backend contract tests
+Baresync's own repository uses the same shape internally, but your app should use your own schema, backend, app ID, UI selectors, and test runner.
 
-### What they are
+## What Not To Put In UI E2E
 
-The backend contract tests spawn a real HTTP server, send real requests, and assert the responses. No Tauri app involved — this isolates the server side.
+UI E2E is expensive and easy to make flaky. Keep it focused on integration confidence.
 
-### What they verify
+Do not use desktop or mobile smoke tests for:
 
-Each contract test runs this sequence:
+- cursor ordering edge cases
+- conflict resolution matrices
+- idempotency behavior
+- chunk sizing and retry behavior
+- every table in your app
+- detailed protocol validation
 
-1. **Spawn the fixture backend** on a free port with `:memory:` SQLite
-2. **Wait for readiness** by polling `GET /__state`
-3. **Reset state** via `POST /__reset`
-4. **Assert initial seed data** — one category (`cat-1`, "Drinks") and one product (`prod-1`, "Kopi Susu")
-5. **Status check** — `POST /sync/status` with a cursor, verify `hasChanges: true`
-6. **Reject invalid scope** — status with wrong scope returns 404
-7. **Pull seeded data** — `POST /sync/pull` returns both tables with the seed rows
-8. **Push new data** — `POST /sync/push` with new categories and products, verify `acceptedCreatedIds`
-9. **Verify push persisted** — `GET /__state` now includes the pushed rows
-10. **Reset and verify** — `POST /__reset` clears everything back to seed state
+Those belong in backend contract tests, host tests, or direct sync-engine tests. Your UI smoke test only needs one or two representative tables that prove the whole path works.
 
-This runs once in `json` mode and once in `protobuf` mode, verifying both encoding paths.
+## Deterministic Test Backend
 
-### How to run them
+Your E2E tests need a backend that is deterministic and owned by the test runner.
 
-```bash
-# JSON mode
-bun --cwd tests/e2e run fixture:backend:contract:json
+The backend can be your real backend running in a test mode, or a small fixture server that implements the same sync endpoints your app uses. The important part is that it behaves predictably.
 
-# Protobuf mode
-bun --cwd tests/e2e run fixture:backend:contract:protobuf
-```
+Your test backend should provide:
 
-No external setup needed — the test spawns and kills the server automatically.
+| Capability | Why it matters |
+|---|---|
+| Reset endpoint | Clears stale state before each run |
+| State inspection endpoint | Lets the test assert what the backend received |
+| Fixed baseline data | Lets the test prove pull applies server rows |
+| Push recording | Lets the test prove local changes reached the backend |
+| Same encoding as production | Exercises JSON or protobuf exactly as your app uses it |
 
-### The fixture backend
-
-The fixture backend (`tests/e2e/backend/fixture-server.ts`) is a deterministic Bun HTTP server backed by `bun:sqlite`. It exposes:
-
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/__reset` | POST | Clear all data and re-seed with defaults |
-| `/__state` | GET | Return current categories, products, and all pushed rows |
-| `/sync/status` | POST | Check if there are changes since a cursor |
-| `/sync/pull` | POST (or GET for JSON) | Pull changed rows since cursor |
-| `/sync/push` | POST | Push new/updated/deleted rows |
-
-Configuration via environment variables:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `BARESYNC_FIXTURE_BACKEND_PORT` | `18080` | Port to listen on |
-| `BARESYNC_FIXTURE_DB_PATH` | `/tmp/baresync-fixture-${RUN_ID}.db` | SQLite file. Use `:memory:` for contract tests. |
-| `BARESYNC_FIXTURE_ENCODING` | `json` | `json` or `protobuf` |
-| `BARESYNC_FIXTURE_SCOPE_ID` | `merchant-1` | Default scope for sync operations |
-| `BARESYNC_FIXTURE_RUN_ID` | `local` | Used to derive DB path for isolation |
-
-## Desktop smoke tests
-
-### What they are
-
-Desktop smoke runs a **real Tauri binary** controlled by WebdriverIO through `tauri-driver`. It clicks buttons, reads the DOM, and verifies that data flows through the entire stack.
-
-### What you need before running
-
-1. **Nix dev shell** — provides Rust, Bun, Tauri host libraries, `tauri-driver`
-
-   ```bash
-   nix develop .#default
-   ```
-
-2. **The fixture app built** — the WDIO config builds it, but you can also pre-build:
-
-   ```bash
-   cargo build -p baresync-fixture --manifest-path tests/fixture-app/src-tauri/Cargo.toml
-   ```
-
-3. **`tauri-driver` installed** — usually at `~/.cargo/bin/tauri-driver`
-
-### What the WDIO config does
-
-The WebdriverIO config (`tests/e2e/desktop/webdriverio.conf.ts`) orchestrates four processes:
+Example shape:
 
 ```txt
-onPrepare:
-  1. Allocate a free port for the fixture backend
-  2. Spawn the fixture backend (bun run backend/fixture-server.ts)
-  3. Wait for GET /__state to succeed
-  4. Spawn the Vite dev server for the fixture app frontend
-  5. Build the Tauri binary (cargo build -p baresync-fixture)
-
-beforeSession:
-  6. Spawn tauri-driver on port 4444
-
-[tests run]
-
-afterSession:
-  7. Kill all spawned processes
+POST /__reset
+GET  /__state
+POST /sync/status
+POST /sync/pull
+POST /sync/push
 ```
 
-The runner owns the backend — don't rely on one already running on `localhost:18080`. Stale backends cause false passes.
+`/__reset` and `/__state` are test-only endpoints. Do not expose them in production.
 
-### Running desktop smoke
+### Backend Contract Test
 
-```bash
-nix develop .#default --command bash -lc '
-  cd tests/e2e
-  bun run desktop:sync
-'
+Before launching a desktop or mobile app, test the backend directly over HTTP. This separates backend contract failures from device and WebView failures.
+
+A useful backend contract test should:
+
+1. Start the test backend on a free port.
+2. Use an isolated database, often an in-memory database or per-run file.
+3. Wait until the backend is ready.
+4. Call `POST /__reset`.
+5. Assert the initial state contains your expected seed rows.
+6. Call `POST /sync/status` with the expected scope and cursor.
+7. Assert invalid scopes are rejected.
+8. Call `POST /sync/pull` and assert your seed rows are returned.
+9. Call `POST /sync/push` with representative local rows.
+10. Assert the push response acknowledges the accepted rows.
+11. Call `GET /__state` and assert the pushed rows were recorded.
+12. Run the same test for every encoding mode your app supports.
+
+The rows should come from your domain. For example, a POS app might use one category and one product. A notes app might use one notebook and one note. Keep it small, but make it real enough to exercise table ordering and foreign keys.
+
+## Run Isolation
+
+Every smoke run must be isolated from previous runs. A stale database can make a broken sync flow look successful.
+
+Use both:
+
+- a fresh local SQLite file or app-data namespace for each run
+- a backend reset before each test
+
+One without the other is not enough.
+
+Stale state can hide these bugs:
+
+- old `sync_outbox` rows make manual sync appear to push current data
+- old `sync_cursors` skip the baseline pull path
+- old local rows make restart persistence pass without current-run writes
+- repeated test IDs collide across runs
+
+For desktop tests, derive your app's Baresync database path from a run ID:
+
+```txt
+<temp-dir>/<your-app-name>-baresync-<run-id>.db
 ```
 
-To use a pre-built binary:
+For Android, use an app-private path and create the parent directory before initializing the plugin:
 
-```bash
-nix develop .#default --command bash -lc '
-  cd tests/e2e
-  BARESYNC_DESKTOP_APP_PATH=/path/to/target/debug/baresync-fixture \
-    bun run desktop:sync
-'
+```txt
+/data/user/0/<your.app.id>/files/baresync-<run-id>.db
 ```
 
-To test protobuf mode:
+On iOS, use an app container path that your Tauri app can write to.
 
-```bash
-nix develop .#default --command bash -lc '
-  cd tests/e2e
-  BARESYNC_FIXTURE_ENCODING=protobuf \
-  BARESYNC_DESKTOP_APP_PATH=/path/to/target/debug/baresync-fixture \
-    bun run desktop:sync
-'
+## Desktop Smoke Test
+
+A desktop smoke test should launch your real Tauri desktop app and drive it through the same public surfaces a user exercises.
+
+Use any runner that can control your Tauri app. Common choices are WebdriverIO with `tauri-driver`, Playwright around a dev WebView setup, or another tool already used in your app. The runner choice matters less than the assertions.
+
+### Desktop Setup
+
+Install the tools for your platform:
+
+- Rust toolchain
+- Node or Bun, matching your app
+- Tauri CLI
+- system libraries required by Tauri on your OS
+- a browser automation runner
+- `tauri-driver` if you use WebDriver
+
+You do not need Nix to test an app that uses Baresync. If your project already uses Nix, it is fine to put these tools in a dev shell. If your team uses macOS, Windows, Linux packages, CI images, or another toolchain manager, use those instead.
+
+### Desktop Runner Responsibilities
+
+The desktop runner should own all processes it depends on:
+
+1. Allocate a free backend port.
+2. Start your deterministic test backend.
+3. Export the backend URL to the app.
+4. Set a unique run ID or database path for the app.
+5. Start your frontend dev server if your Tauri config uses one.
+6. Build or launch your Tauri app.
+7. Start the automation driver.
+8. Kill all spawned processes at the end.
+
+Avoid relying on a backend that a developer manually started on `localhost`. That creates stale state, port conflicts, and false passes.
+
+### Desktop Smoke Scenario
+
+Your desktop smoke should be one short scenario:
+
+1. Launch the app.
+2. Wait until the app reports it is ready.
+3. Assert migrations ran.
+4. Assert the app is using the expected database path or run ID.
+5. Assert the app is using the expected sync transport, if your UI exposes it.
+6. Trigger baseline sync.
+7. Wait until known server rows appear in the UI or local state.
+8. Create a representative local row through the app UI.
+9. Assert the local row appears before sync.
+10. Assert there is a pending local change, either through UI state or SQLite inspection.
+11. Trigger manual sync.
+12. Assert the backend recorded the pushed row.
+13. Assert the accepted local row is clean, for example `is_synced = 1`.
+14. Restart the app.
+15. Wait for readiness again.
+16. Assert the local row and clean state survived restart.
+17. Assert the dirty count is zero after restart.
+
+If your app does not expose internal sync state in the UI, add test-only diagnostics behind a non-production flag, or inspect the isolated SQLite file from the test process.
+
+## Mobile Smoke Test
+
+Mobile smoke tests should be even smaller than desktop smoke tests. Their job is lifecycle and packaging confidence:
+
+- the packaged app launches
+- the plugin initializes on the device
+- the app uses an app-private SQLite path
+- the device can reach the test backend
+- baseline pull works
+- one local write can be pushed
+- accepted rows become clean
+- data survives kill and relaunch
+
+Use the mobile automation tool that fits your app. Maestro is a good fit for simple Android smoke flows. Appium is also common. Use your existing mobile test stack if you already have one.
+
+### Android Setup
+
+For Android, make sure:
+
+- `adb devices` shows a usable emulator or physical device
+- the test APK is installed on the selected target
+- the backend URL is reachable from that target
+- the Baresync database path is under the app-private files directory
+
+Backend URLs differ by target:
+
+| Target | Backend URL |
+|---|---|
+| Android emulator | `http://10.0.2.2:<port>` |
+| Physical Android device | LAN-reachable host IP, for example `http://192.168.1.50:<port>` |
+
+The backend URL must be available to the app at startup. For mobile builds, that often means compiling it into a test build or passing it through your app's runtime configuration.
+
+### Android Scenario
+
+A useful Android smoke should:
+
+1. Clear app data or install a fresh build, depending on the lifecycle you are testing.
+2. Launch the app.
+3. Wait for your app's ready text.
+4. Trigger baseline sync.
+5. Assert server rows are visible.
+6. Create one local row.
+7. Assert the local row is visible before sync.
+8. Trigger manual sync.
+9. Wait until the row is clean.
+10. Kill and relaunch the app.
+11. Assert the local row and clean state persisted.
+12. Assert the backend recorded the pushed row from the same backend URL the app used.
+
+Android selectors often need more patience than desktop selectors. Prefer semantic waits over fixed sleeps.
+
+For example, with Maestro:
+
+```yaml
+- extendedWaitUntil:
+    visible: ".*Your synced row label.*"
+    timeout: 30000
 ```
 
-### What the smoke test verifies
+If your app renders JSON text for diagnostics, remember that SQLite booleans often appear as `1` or `0`, not `true` or `false`.
 
-The smoke is one long scenario (`tests/e2e/desktop/sync-smoke.test.ts`). It checks:
+## Good Waits
 
-1. **App launches and reaches readiness** — `#app-status` equals `"ready"`
-2. **DB path is correct** — contains the fixture run ID
-3. **Migrations ran** — migration count is `1`
-4. **Transport mode matches** — shows `json` or `protobuf` per config
-5. **Baseline sync** — click "Baseline Sync", wait for `baseline:` in `#sync-result`
-6. **Server data renders** — seeded "Drinks" category and "Kopi Susu" product appear
-7. **Local row creation** — click "Create Row", new category and product render in the UI
-8. **Manual sync** — click "Manual Sync", wait for `manual:` in `#sync-result`
-9. **Backend received pushes** — `GET /__state` from the test includes `local-cat-001` and `local-prod-001`
-10. **Clean state** — local rows show `"is_synced":1` in the rendered JSON
-11. **Restart persistence** — `browser.reloadSession()`, wait for readiness, verify rows and clean state survive
-12. **Dirty count is zero** — `#dirty-count` is `"0"` after restart
+Most flaky E2E tests come from weak waits.
 
-### Async wait patterns
-
-The most common cause of flaky desktop tests is bad waits. Always wait for semantic state:
+Wait for semantic state:
 
 ```ts
-// Good — waits for actual app state
 await waitForText("#app-status", "ready", "app should be ready");
-await waitForTextIncludes("#sync-result", "baseline:", "baseline should complete");
-await waitForTextMatches("#categories-list", CLEAN_LOCAL_CATEGORY_RE, "should be clean");
+await waitForTextIncludes("#sync-result", "manual:", "manual sync should finish");
+await waitForTextMatches("#rows", CLEAN_LOCAL_ROW_RE, "local row should be clean");
+```
 
-// Bad — timing-dependent, breaks on slow machines
+Avoid timing guesses:
+
+```ts
 await sleep(5000);
 expect(await text("#app-status")).toBe("ready");
 ```
 
-Helper functions used in the smoke:
+Good wait targets include:
 
-```ts
-// Wait for exact text match
-async function waitForText(selector: string, expected: string, message: string) {
-  await browser.waitUntil(
-    async () => (await text(selector)) === expected,
-    { timeout: 30_000, timeoutMsg: message }
-  );
-}
+- app readiness flag
+- migration count
+- database path or run ID
+- baseline sync result
+- manual sync result
+- expected server row visible locally
+- expected local row visible before sync
+- expected clean state after sync
+- dirty count after sync
 
-// Wait for text to include a substring
-async function waitForTextIncludes(selector: string, expected: string, message: string) {
-  await browser.waitUntil(
-    async () => (await text(selector)).includes(expected),
-    { timeout: 30_000, timeoutMsg: message }
-  );
-}
+## Required Assertions
 
-// Wait for text to match a regex
-async function waitForTextMatches(selector: string, expected: RegExp, message: string) {
-  await browser.waitUntil(
-    async () => expected.test(await text(selector)),
-    { timeout: 30_000, timeoutMsg: message }
-  );
-}
-```
+At minimum, your Baresync E2E smoke should assert both server-side and local-side state.
 
-### Regex constants
+Server-side assertions:
 
-Define regex patterns at the top level, not inside functions — linters flag regex literals inside function bodies:
+- the backend starts in a known state
+- baseline data exists before sync
+- pushed local row IDs are recorded after manual sync
+- the test reads backend state from the same URL the app used
 
-```ts
-// Top of file — correct
-const CLEAN_LOCAL_CATEGORY_RE = /\{"id":"local-cat-001"[^}]*"is_synced":1/;
-const CLEAN_LOCAL_PRODUCT_RE = /\{"id":"local-prod-001"[^}]*"is_synced":1/;
-```
+Local-side assertions:
 
-### Why it resets the backend before testing
+- migrations ran
+- baseline rows exist locally after pull
+- local writes create pending outbox entries
+- accepted local rows become clean
+- dirty count returns to zero
+- clean state survives app restart
 
-The `before` hook calls `POST /__reset` to clear stale state:
+Backend acceptance alone is not enough. A backend can accept a push while the local database still thinks the row is dirty.
 
-```ts
-before(async () => {
-  await fetch(`${process.env.BARESYNC_FIXTURE_API_URL}/__reset`, { method: "POST" });
-});
-```
-
-Without this, a previous run's pushed rows or modified state could make assertions pass for the wrong reasons.
-
-## Android smoke tests
-
-### What they are
-
-Android smoke is a lightweight lifecycle test that runs on a real Android device or emulator via Maestro. It's intentionally minimal — protocol edge cases belong in host tests.
-
-### Prerequisites
-
-- Default Nix dev shell (provides Maestro, Android SDK/NDK, `adb`)
-- A connected emulator or physical device visible to `adb devices`
-- The fixture APK built and installed
-
-### Building and installing the fixture APK
-
-```bash
-nix develop .#default --command bash -lc '
-  cd tests/e2e
-  bun run android:install-fixture
-'
-```
-
-The installer:
-1. Selects a target from `adb devices`
-2. Detects the target's ABI
-3. Infers or prompts for a backend URL reachable from the device
-4. Builds the debug APK
-5. Installs with `adb install -r`
-
-### Running
-
-```bash
-nix develop .#default --command bash -lc '
-  cd tests/e2e
-  BARESYNC_ANDROID_APP_ID=com.example.app \
-  BARESYNC_ANDROID_READY_TEXT=Baresync \
-    bun run android:sync
-'
-```
-
-The test uses Maestro YAML flows that:
-1. Launch the app and wait for the ready text
-2. Trigger baseline sync
-3. Create local rows
-4. Trigger manual sync
-5. Verify rows are marked clean
-6. Kill and relaunch the app
-7. Verify data persisted
-
-### Android-specific selector rules
-
-- **SQLite booleans render as `1`/`0`** — assert `"is_synced":1`, not `"is_synced":true`
-- **Maestro text selectors match accessibility text nodes**, not substrings inside long JSON. Use regex selectors: `.*Fixture Category 001.*`
-- **Use `extendedWaitUntil`** for baseline/sync results — device networking is slower than Maestro's default timeout
-- **Emulator backend URL**: `http://10.0.2.2:18080` (host-mapped)
-- **Physical device backend URL**: a LAN-reachable IP address
-
-### What Android smoke does NOT test
-
-Protocol edge cases — idempotency, conflict resolution, adaptive chunking, detailed cursor handling. These belong in host tests and backend contract tests.
-
-## Run isolation
-
-Every smoke run must be isolated from previous runs. Without isolation:
-
-- Stale `sync_outbox` rows hide broken local create behavior
-- Stale `sync_cursors` skip baseline paths that should run
-- Stale local rows make restart assertions pass for the wrong reasons
-- Repeated IDs like `local-cat-001` collide across runs
-
-### How to isolate
-
-1. **Unique DB path per run** — use `BARESYNC_FIXTURE_RUN_ID`:
-
-   ```bash
-   BARESYNC_FIXTURE_RUN_ID=desktop-$(date +%s)
-   ```
-
-   The DB path becomes `/tmp/baresync-fixture-desktop-1747894800.db`.
-
-2. **Backend reset** — call `POST /__reset` before each test.
-
-3. **Both together** — one without the other isn't enough. A fresh DB with stale backend data (or vice versa) still produces false results.
-
-### Android DB path
-
-Android can't use `/tmp`. Use an app-private path:
-
-```
-/data/user/0/com.your.app/files/baresync-fixture-${RUN_ID}.db
-```
-
-Create the parent directory before initializing the plugin, or you'll get `unable to open database file`.
-
-## Common failures and fixes
-
-### "could not connect to localhost"
-
-The app can't reach the Vite dev server.
-
-**Fix**: Start Vite before the app, or ensure the WDIO config starts it in `onPrepare`. The fixture app's Tauri config should point to `http://127.0.0.1:5173` (or whatever port Vite uses).
-
-### Backend fetch fails in test `before` hook
-
-The fixture backend isn't running.
-
-**Fix**: The WDIO config should start the backend and wait for `GET /__state`. Don't assume one is already running on port 18080 — allocate a free port and export `BARESYNC_FIXTURE_API_URL`.
-
-### App opens briefly then crashes
-
-Missing Tauri host library (dbus, GTK, WebKit, `libsoup_3`).
-
-**Fix**: Run inside `nix develop .#default`. Check `app stderr` for the specific missing library.
-
-### `tables_synced: []` after manual sync
-
-No pending outbox rows reached the push engine.
-
-**Debug**:
-```bash
-sqlite3 /tmp/baresync-fixture-<run-id>.db '
-  SELECT id, table_name, row_id, scope_id, synced_at FROM sync_outbox;
-  SELECT id, is_synced FROM categories;
-  SELECT id, is_synced FROM products;
-'
-```
-
-Check:
-- `sync_outbox.scope_id` matches the sync client scope
-- `sync_outbox.synced_at` is `NULL`
-- `sync_outbox.table_name` matches the contract table name
-- The row exists in the source table
-
-### Backend doesn't record pushed rows
-
-Wrong `BARESYNC_FIXTURE_API_URL` or stale backend.
-
-**Fix**:
-- The runner should own `BARESYNC_FIXTURE_API_URL`
-- Assert the manual sync result *before* checking `/__state`
-- Fetch `/__state` from the same URL the app uses
-
-### `is_synced: 0` after successful push
-
-Source rows were marked clean before outbox entries were cleared, or the clean-marking query intentionally skips rows with pending outbox entries.
-
-**Expected behavior**: Accepted outbox entries are cleared first, then accepted source rows are marked `is_synced = 1`.
-
-### `Failed to resolve module specifier "@tauri-apps/api/core"`
-
-Vite left the Tauri API import as a bare module specifier. The WebView loads the HTML but JS never runs. The app stays at "booting" forever.
-
-**Fix**: Configure Vite to bundle `@tauri-apps/api/core` instead of externalizing it. This is a Vite config issue, not a sync issue.
-
-### WebKit internal error / invalid session id
-
-Desktop runner flake. Treat separately from sync correctness.
-
-**Fix**: Rerun once to check reproducibility. If reproducible, inspect app stderr and Tauri/WebKit startup logs.
-
-## Debugging sequence
+## Debugging Sequence
 
 When a smoke test fails, debug in this order:
 
-1. **Processes** — are backend, Vite, tauri-driver, and the app all running?
-2. **Environment** — check `BARESYNC_FIXTURE_API_URL`, `BARESYNC_FIXTURE_RUN_ID`, `BARESYNC_FIXTURE_DB_PATH`
-3. **App readiness** — `#app-status`, migration count, DB path in the UI
-4. **Backend state** — `GET /__state` returns expected data
-5. **SQLite state** — source tables, `sync_outbox`, `sync_cursors`, `is_synced` values
-6. **Engine-level bugs** — add a Rust simulation test. Don't debug engine semantics through WebDriver.
+1. Confirm the backend is running and responds to its state endpoint.
+2. Confirm the app received the same backend URL the test is inspecting.
+3. Confirm the app is using a fresh local database path.
+4. Confirm the app reached readiness before the test clicked anything.
+5. Confirm migrations ran.
+6. Confirm baseline pull returned rows from the backend.
+7. Confirm local create wrote the source table row.
+8. Confirm local create wrote a pending `sync_outbox` row.
+9. Confirm manual sync sent the push payload.
+10. Confirm the backend recorded the pushed row.
+11. Confirm accepted outbox rows were marked synced.
+12. Confirm accepted source rows were marked clean.
+13. Confirm restart uses the same expected database path.
 
-## Full verification checklist
+If the failure is protocol-level, move it out of UI E2E and reproduce it in a backend contract or host test.
 
-Before claiming E2E work is done, run every check that touches the files you changed:
+## Common Failures
 
-```bash
-# Always
-bun run typecheck
-bun x ultracite check
-cargo test --workspace
+### The app cannot reach localhost
 
-# Backend contract
-bun --cwd tests/e2e run fixture:backend:contract:json
-bun --cwd tests/e2e run fixture:backend:contract:protobuf
+On desktop, this usually means your frontend dev server or backend is not running, or the app launched before it was ready.
 
-# Desktop smoke (requires Nix dev shell)
-nix develop .#default --command bash -lc '
-  cd tests/e2e && bun run desktop:sync
-'
+On Android, `localhost` means the device itself, not your development machine. Use `10.0.2.2` for Android emulator access to the host, or a LAN-reachable IP for a physical device.
 
-# Android smoke (requires Nix dev shell + device)
-nix develop .#default --command bash -lc '
-  cd tests/e2e && bun run android:install-fixture && bun run android:sync
-'
+### Manual sync returns no synced tables
+
+The push engine probably found no pending local changes.
+
+Inspect your local database:
+
+```sql
+SELECT id, table_name, row_id, scope_id, synced_at
+FROM sync_outbox;
 ```
 
-If Android can't run because no device or app build is available, say that explicitly. Don't mark it as passing.
+Check that:
 
-## Building your own fixture app
+- `scope_id` matches the sync client scope
+- `synced_at` is `NULL` before manual sync
+- `table_name` matches the sync contract table name exactly
+- `row_id` matches the source table primary key
+- the source row exists
 
-If you're testing your own app (not the built-in fixture), follow these rules:
+### Backend did not record pushed rows
 
-1. **Use the same surfaces your real app uses** — `tauri-plugin-baresync` registration, embedded migrations, `createSyncClient`, `createTauriDrizzleDatabase`, real `invoke`.
-2. **Don't bypass plugin registration** — a fixture that skips the plugin gives false confidence.
-3. **Own your backend** — start it in the test runner, don't rely on a manual server.
-4. **Reset before each run** — stale state hides bugs.
-5. **Assert both backend and local state** — backend acceptance alone isn't enough. Verify local rows are clean after push.
+Common causes:
+
+- the app used a different backend URL than the test inspected
+- the backend reset happened after the push
+- manual sync did not complete before the assertion
+- the pushed row used a different scope than the backend expected
+
+Assert the manual sync result before checking backend state.
+
+### Local row stays dirty after successful push
+
+Common causes:
+
+- accepted outbox rows were not marked synced
+- source rows were marked clean before outbox entries were cleared
+- clean-marking query skips rows that still have pending outbox entries
+- backend response did not acknowledge the row ID you expected
+
+Expected behavior:
+
+1. Backend accepts the pushed row.
+2. Accepted outbox entries are marked synced.
+3. Accepted source rows are marked clean.
+4. Dirty count returns to zero.
+
+### App launches but never becomes ready
+
+Likely causes:
+
+- plugin command registration mismatch
+- frontend calls a different command name than Rust registered
+- migrations failed
+- database path is not writable
+- frontend bundle failed before app bootstrap
+- backend URL is missing or invalid and startup code does not handle it
+
+Check app logs before treating this as a sync-engine failure.
+
+## Platform Notes
+
+Use whatever toolchain is normal for your app and CI.
+
+For desktop Tauri tests:
+
+- macOS needs the normal Xcode command line tooling and Tauri prerequisites.
+- Windows needs the Microsoft C++ build tools and WebView2.
+- Linux needs the Tauri host libraries for your distribution, including WebKit and GTK-related packages.
+
+For mobile tests:
+
+- Android needs Android SDK, NDK if your Tauri setup requires it, `adb`, and a connected target.
+- iOS needs Xcode and a simulator or device setup supported by your app.
+
+Baresync does not require Nix. The Baresync repository uses Nix for its own contributor environment, but public apps can use any reproducible setup.
+
+## Reference: Baresync's Own Fixture
+
+Baresync's repository includes a public fixture app that applies this pattern to a tiny category/product schema. Treat it as an example, not as something your app must copy.
+
+The fixture demonstrates:
+
+- a deterministic test backend
+- JSON and protobuf transport modes
+- a Tauri fixture app using real plugin registration
+- embedded migrations
+- frontend `invoke` calls
+- Drizzle over Tauri IPC
+- desktop smoke with WebdriverIO and `tauri-driver`
+- Android smoke with Maestro
+
+Your app should keep the same testing principles, but replace the fixture schema, seed data, UI selectors, app ID, backend URL, and commands with your own.
+
+## Done Means
+
+Before you trust an E2E change, collect evidence:
+
+- backend contract tests pass for the encoding your app uses
+- desktop smoke passes on the platform you support
+- mobile smoke passes on a real target or emulator when mobile is in scope
+- test logs show the backend URL, run ID, and database path used
+- backend state confirms pushed rows
+- local state confirms accepted rows are clean
+- app restart proves persistence
+
+If a platform could not be tested because no device, emulator, or CI runner was available, say that explicitly. Do not count an unrun smoke test as passing.

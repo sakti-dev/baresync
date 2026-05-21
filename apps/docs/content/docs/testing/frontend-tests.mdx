@@ -1,0 +1,181 @@
+---
+title: Frontend Tests
+description: Test frontend code that uses Baresync's sync client, Drizzle proxy, hooks, providers, and Tauri events.
+---
+
+# Frontend Tests
+
+Frontend tests should prove that your UI code calls Baresync correctly and reacts to sync state changes. They should not require a Tauri runtime or a real backend.
+
+Use these tests for:
+
+- buttons or forms that trigger `syncNow`, `push`, `pull`, or `getState`
+- hooks that wrap the sync client
+- providers that start or stop polling
+- React Query or TanStack Query invalidation after plugin events
+- components that render pending/clean/baseline state
+- code that queries SQLite through `createTauriDrizzleDatabase`
+
+## Mock `invoke`
+
+`createSyncClient` accepts an explicit `invoke` function. In tests, pass a mock implementation and assert the commands your app sends.
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+import { describe, expect, it, vi } from "vitest";
+
+it("loads local sync state", async () => {
+  const invoke = vi.fn(async (cmd: string) => {
+    if (cmd === "get_sync_local_state") {
+      return {
+        last_server_watermark: "",
+        local_dirty_count: 3,
+        needs_baseline_sync: false,
+      };
+    }
+    return {};
+  });
+
+  const client = createSyncClient({
+    apiUrl: "https://api.example.test",
+    encoding: "json",
+    scopeId: "merchant-1",
+    invoke,
+  });
+
+  await expect(client.getState()).resolves.toMatchObject({
+    local_dirty_count: 3,
+  });
+  expect(invoke).toHaveBeenCalledWith("get_sync_local_state", {
+    scopeId: "merchant-1",
+  });
+});
+```
+
+## Verify User Actions
+
+Your component tests should assert app behavior, not Baresync internals. For example, a save flow might write a row and then request a sync.
+
+```ts
+it("requests sync after saving an item", async () => {
+  const calls: Array<{ args?: Record<string, unknown>; cmd: string }> = [];
+  const client = createSyncClient({
+    apiUrl: "https://api.example.test",
+    encoding: "json",
+    scopeId: "merchant-1",
+    invoke: async (cmd, args) => {
+      calls.push({ args, cmd });
+      return {};
+    },
+  });
+
+  await saveInventoryItem({ client, name: "Coffee" });
+
+  expect(calls).toContainEqual({
+    args: { scopeId: "merchant-1" },
+    cmd: "sync_now",
+  });
+});
+```
+
+## Simulate Errors
+
+Reject `invoke` to test error UI and retry behavior.
+
+```ts
+it("surfaces sync failures", async () => {
+  const client = createSyncClient({
+    apiUrl: "https://api.example.test",
+    encoding: "json",
+    scopeId: "merchant-1",
+    invoke: async () => {
+      throw new Error("network unavailable");
+    },
+  });
+
+  await expect(client.syncNow()).rejects.toThrow("network unavailable");
+});
+```
+
+## Test Event Bridges
+
+If your app listens to Baresync events, mock `@tauri-apps/api/event` and capture the listener.
+
+```ts
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+
+const listen = vi.hoisted(() => vi.fn());
+
+vi.mock("@tauri-apps/api/event", () => ({ listen }));
+
+it("invalidates inventory queries when Baresync reports data changes", async () => {
+  const queryClient = new QueryClient();
+  const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+  const listeners = new Map<string, (event: unknown) => void>();
+
+  listen.mockImplementation((event, handler) => {
+    listeners.set(event, handler);
+    return Promise.resolve(async () => {});
+  });
+
+  render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(SyncEventBridge)
+    )
+  );
+
+  await waitFor(() => {
+    expect(listeners.has("baresync://data-changed")).toBe(true);
+  });
+
+  await listeners.get("baresync://data-changed")?.(undefined);
+
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory"] });
+});
+```
+
+## Test Drizzle Proxy Usage
+
+When code queries through `createTauriDrizzleDatabase`, mock `invoke` at the SQL command boundary.
+
+```ts
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { describe, expect, it } from "vitest";
+import { items } from "../schema";
+
+it("runs expected SQL through Tauri IPC", async () => {
+  const calls: Array<{ params: unknown[]; sql: string }> = [];
+  const db = createTauriDrizzleDatabase({
+    schema: { items },
+    invoke: async (cmd, args) => {
+      if (cmd === "run_sql") {
+        const query = args?.query as { params: unknown[]; sql: string };
+        calls.push(query);
+        return [];
+      }
+      return { rows_affected: 0 };
+    },
+  });
+
+  await db.select().from(items);
+
+  expect(calls[0].sql).toContain("items");
+});
+```
+
+## What To Assert
+
+Good frontend tests assert:
+
+- command names and arguments sent to `invoke`
+- query invalidation after Baresync events
+- visible loading, pending, error, and clean states
+- scope ID propagation
+- explicit error handling
+
+Do not assert that Baresync's sync engine orders rows correctly from a frontend unit test. That belongs in backend contract tests, local database tests, or Baresync's own engine tests.

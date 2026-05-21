@@ -1,0 +1,175 @@
+---
+title: Local Database & Outbox Tests
+description: Test that your app's local write paths create both domain rows and pending Baresync outbox entries.
+---
+
+# Local Database & Outbox Tests
+
+The most important app-level sync test is simple: when your app creates or updates local data, it must also enqueue a pending sync outbox row.
+
+If this path is broken, manual sync has nothing to push. UI E2E might still pass accidentally if stale outbox rows exist, so test the local write path directly.
+
+## What To Test
+
+For each important local write path, assert:
+
+1. The domain row is written to the expected table.
+2. The row has the expected scope ID.
+3. The row is marked dirty or not synced, if your schema uses `is_synced`.
+4. A `sync_outbox` row exists for the same table and row ID.
+5. The outbox row has the same scope ID as the sync client.
+6. `synced_at` is `NULL`.
+7. The operation is correct, such as `insert` or `update`.
+
+Use your real app schema and a temporary SQLite database. Do not use production data.
+
+## Example
+
+This example uses pseudocode for the app write function. Replace it with your own repository, service, or action.
+
+```ts
+import { Database } from "bun:sqlite";
+import { afterEach, describe, expect, it } from "bun:test";
+
+function createTestDatabase() {
+  const sqlite = new Database(":memory:");
+  sqlite.run("PRAGMA foreign_keys = ON");
+  sqlite.exec(`
+    CREATE TABLE items (
+      id TEXT PRIMARY KEY,
+      merchant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      is_synced INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE sync_outbox (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      payload TEXT,
+      scope_id TEXT NOT NULL,
+      changed_at TEXT NOT NULL,
+      synced_at TEXT
+    );
+  `);
+  return sqlite;
+}
+
+describe("local item writes", () => {
+  let sqlite: Database | undefined;
+
+  afterEach(() => {
+    sqlite?.close();
+  });
+
+  it("creates an item and queues it for sync", async () => {
+    sqlite = createTestDatabase();
+
+    await createLocalItem({
+      db: sqlite,
+      id: "item-1",
+      name: "Coffee",
+      scopeId: "merchant-1",
+    });
+
+    const item = sqlite
+      .query("SELECT id, merchant_id, is_synced FROM items WHERE id = ?1")
+      .get("item-1") as
+      | { id: string; is_synced: number; merchant_id: string }
+      | null;
+
+    expect(item).toEqual({
+      id: "item-1",
+      is_synced: 0,
+      merchant_id: "merchant-1",
+    });
+
+    const outbox = sqlite
+      .query(`
+        SELECT table_name, row_id, operation, scope_id, synced_at
+        FROM sync_outbox
+        WHERE row_id = ?1
+      `)
+      .get("item-1") as
+      | {
+          operation: string;
+          row_id: string;
+          scope_id: string;
+          synced_at: string | null;
+          table_name: string;
+        }
+      | null;
+
+    expect(outbox).toEqual({
+      operation: "insert",
+      row_id: "item-1",
+      scope_id: "merchant-1",
+      synced_at: null,
+      table_name: "items",
+    });
+  });
+});
+```
+
+## Testing `writeLocalChange`
+
+If your app wraps writes with `client.writeLocalChange`, test the wrapper so a future refactor cannot skip outbox creation.
+
+```ts
+it("runs the write before enqueueing the outbox row", async () => {
+  const events: string[] = [];
+  const tx = {
+    insert(table: unknown) {
+      return {
+        values(values: Record<string, unknown>) {
+          events.push(`insert:${String(values.rowId ?? values.id)}`);
+          return Promise.resolve({ table, values });
+        },
+      };
+    },
+  };
+
+  const client = createSyncClient({
+    apiUrl: "https://api.example.test",
+    encoding: "json",
+    scopeId: "merchant-1",
+    invoke: async () => ({}),
+  });
+
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: "item-1",
+    table: items,
+    write: async (writeTx) => {
+      await writeTx.insert(items).values({ id: "item-1", name: "Coffee" });
+    },
+  });
+
+  expect(events[0]).toBe("insert:item-1");
+  expect(events[1]).toBe("insert:item-1");
+});
+```
+
+## Common Failure Signals
+
+If manual sync returns no synced tables, inspect the local database:
+
+```sql
+SELECT id, table_name, row_id, operation, scope_id, synced_at
+FROM sync_outbox
+WHERE synced_at IS NULL;
+```
+
+Check for:
+
+- wrong `scope_id`
+- wrong `table_name`
+- `synced_at` already set
+- source row missing
+- local write bypassed the dirty-tracking path
+- duplicate test IDs from a previous run
+
+Local database tests are cheap. Add them before debugging this through WebDriver or mobile automation.

@@ -1,0 +1,97 @@
+---
+title: App Smoke Tests
+description: Build a small real-app smoke test for desktop or mobile apps that use Baresync.
+---
+
+# App Smoke Tests
+
+An app smoke test launches your real app and proves the Baresync integration works through the runtime you ship.
+
+Keep this test small. It should not cover every sync edge case. It should prove the wiring:
+
+- plugin registration
+- migrations
+- SQLite file path
+- frontend-to-Rust IPC
+- baseline pull
+- local create
+- manual sync
+- backend acceptance
+- local clean state
+- restart persistence
+
+For the full operational runbook, see [E2E Runbook](/docs/testing/e2e-runbook).
+
+## Desktop Smoke
+
+Your desktop runner should own every process it depends on:
+
+1. Start a deterministic test backend on a free port.
+2. Reset backend state.
+3. Set a unique local database path or run ID.
+4. Start your app's frontend dev server if needed.
+5. Launch your Tauri desktop app.
+6. Wait for app readiness.
+7. Run the smoke scenario.
+8. Stop every process it started.
+
+The test scenario should:
+
+1. Assert the app reaches ready state.
+2. Assert migrations ran.
+3. Trigger baseline sync.
+4. Assert known backend rows are visible locally.
+5. Create one local row through your UI.
+6. Assert the local row appears before sync.
+7. Trigger manual sync.
+8. Assert the backend recorded the pushed row.
+9. Assert the local row is clean.
+10. Restart the app.
+11. Assert the row and clean state persisted.
+
+Use WebdriverIO with `tauri-driver`, Playwright, or the automation stack your app already uses.
+
+## Mobile Smoke
+
+Mobile smoke proves packaging and device lifecycle. For Android, make sure the backend URL is reachable from the target:
+
+| Target | Backend URL |
+|---|---|
+| Emulator | `http://10.0.2.2:<port>` |
+| Physical device | LAN-reachable host IP |
+
+The mobile scenario should:
+
+1. Install or launch a test build.
+2. Clear app data when testing a fresh baseline path.
+3. Wait for ready UI.
+4. Trigger baseline sync.
+5. Assert backend rows render.
+6. Create one local row.
+7. Trigger manual sync.
+8. Assert clean state.
+9. Kill and relaunch the app.
+10. Assert persistence.
+
+Use semantic waits. Avoid fixed sleeps as the primary synchronization mechanism.
+
+## What Makes A Smoke Test Useful
+
+Good smoke tests assert both sides:
+
+- backend state shows the pushed row
+- local state shows the accepted row is clean
+
+Backend acceptance alone is not enough. A row can be accepted by the server while remaining dirty locally if outbox reconciliation is broken.
+
+## What To Keep Out
+
+Do not test these through app smoke:
+
+- conflict resolution matrices
+- cursor ordering edge cases
+- adaptive chunking
+- idempotency internals
+- every synced table
+
+Put those in server contract tests or local database tests.
