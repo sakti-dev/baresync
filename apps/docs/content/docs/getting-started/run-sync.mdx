@@ -122,6 +122,57 @@ export function useDrizzleQuery<Row>(
 }
 ```
 
+## Read sync state (optional)
+
+If you want to show sync status in your UI — dirty row count, cursor, polling state — create `apps/app/src/hooks/useSyncState.ts`:
+
+```ts
+import { useQuery } from "@tanstack/react-query";
+import { useSyncClient } from "./useBaresyncQuery";
+
+interface SyncLocalState {
+  last_server_watermark: string;
+  local_dirty_count: number;
+  needs_baseline_sync: boolean;
+}
+
+interface PollingStatus {
+  last_sync_at: string | null;
+  paused: boolean;
+  running: boolean;
+}
+
+interface SyncStateResult {
+  loading: boolean;
+  localState: SyncLocalState | null;
+  pollingStatus: PollingStatus | null;
+}
+
+export function useSyncState(): SyncStateResult {
+  const client = useSyncClient();
+  const query = useQuery({
+    queryKey: ["sync-state"],
+    queryFn: async () => {
+      const [localState, pollingStatus] = await Promise.all([
+        client.getState(),
+        client.getPollingStatus().catch(() => null),
+      ]);
+      return { localState, pollingStatus };
+    },
+  });
+
+  return {
+    localState: query.data?.localState ?? null,
+    pollingStatus: query.data?.pollingStatus ?? null,
+    loading: query.isPending,
+  };
+}
+```
+
+`client.getState()` returns the number of dirty rows, the last server watermark, and whether a baseline sync is needed. `client.getPollingStatus()` returns whether polling is running, paused, and when the last sync completed.
+
+Both are cached under the `["sync-state"]` query key, which the provider invalidates on `baresync://sync-status-changed` and `baresync://data-changed` events.
+
 ### How this works
 
 1. **`createSyncClient`** creates a client that talks to the Tauri plugin commands and your server.
@@ -154,11 +205,13 @@ Then query data in your components:
 
 ```tsx
 import { useDrizzleQuery, useSyncClient } from "./hooks/useBaresyncQuery";
+import { useSyncState } from "./hooks/useSyncState";
 import { db, TABLE } from "./lib/db";
 import { desc } from "drizzle-orm";
 
 function InventoryApp() {
   const client = useSyncClient();
+  const { localState, pollingStatus } = useSyncState();
 
   const locationsQuery = useDrizzleQuery(["inventory", "locations"], () =>
     db.select().from(TABLE.locations).orderBy(desc(TABLE.locations.updatedAt))
@@ -188,6 +241,10 @@ function InventoryApp() {
   return (
     <div>
       <button onClick={handleSeed}>Add location</button>
+      <p>Dirty rows: {localState?.local_dirty_count ?? "—"}</p>
+      <p>
+        Polling: {pollingStatus?.running ? "Active" : "Stopped"}
+      </p>
       {locationsQuery.loading && <p>Loading...</p>}
       <ul>
         {locationsQuery.rows.map((row) => (
