@@ -1,6 +1,111 @@
 ---
 title: Write Local Changes
-description: TODO
+description: Insert and update rows through the sync client's outbox-enqueued write helpers.
 ---
 
-TODO: Write this page.
+# Write Local Changes
+
+Every local write that needs to sync must go through the sync client's `writeTransaction` and `writeLocalChange` helpers. These ensure the row mutation and the outbox entry are atomic — if the write succeeds, the sync engine will eventually push it to the server.
+
+## Insert a row
+
+```ts
+import { db, TABLE } from "./lib/db";
+import { INVENTORY_SCOPE_ID } from "my-inventory-sync-contract/constants";
+
+const locationId = crypto.randomUUID();
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.locations,
+    rowId: locationId,
+    operation: "insert",
+    write: (writeTx) =>
+      writeTx.insert(TABLE.locations).values({
+        id: locationId,
+        scopeId: INVENTORY_SCOPE_ID,
+        name: "Back room",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+## Update a row
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.locations,
+    rowId: locationId,
+    operation: "update",
+    write: (writeTx) =>
+      writeTx
+        .update(TABLE.locations)
+        .set({ name: "Front room", updatedAt: new Date().toISOString() })
+        .where(eq(TABLE.locations.id, locationId)),
+  });
+});
+```
+
+## Soft-delete a row
+
+Baresync uses soft deletes by default. A deleted row gets a `deletedAt` timestamp and `isSynced: false`. The sync engine pushes this as an update so the server can mark the row as deleted.
+
+```ts
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.locations,
+    rowId: locationId,
+    operation: "update",
+    write: (writeTx) =>
+      writeTx
+        .update(TABLE.locations)
+        .set({ deletedAt: timestamp, isSynced: false, updatedAt: timestamp })
+        .where(eq(TABLE.locations.id, locationId)),
+  });
+});
+```
+
+## Bulk update pattern
+
+For updates that affect multiple rows, query the affected IDs first, then enqueue one outbox entry per row inside the same transaction:
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  const rows = await tx
+    .select({ id: TABLE.items.id })
+    .from(TABLE.items)
+    .where(eq(TABLE.items.locationId, locationId));
+
+  await tx
+    .update(TABLE.items)
+    .set({ deletedAt: timestamp, isSynced: false, updatedAt: timestamp })
+    .where(eq(TABLE.items.locationId, locationId));
+
+  for (const row of rows) {
+    await client.enqueueChange(tx, {
+      table: TABLE.items,
+      rowId: row.id,
+      operation: "update",
+    });
+  }
+});
+```
+
+`enqueueChange` records the outbox entry without performing the write itself. Use it when you have already performed the mutation and only need the outbox tracking.
+
+## What happens under the hood
+
+`writeTransaction` opens a Drizzle transaction. Inside it, `writeLocalChange` performs two things atomically:
+
+1. Runs your `write` callback (the actual insert/update)
+2. Inserts a row into `sync_outbox` with the table name, row ID, and operation
+
+When the sync engine runs next, it reads pending outbox entries, batches them, and pushes them to your server.
+
+Next: [Add Server Routes](/docs/getting-started/add-server-routes).

@@ -1,6 +1,47 @@
 ---
 title: Concepts
-description: TODO
+description: The core ideas behind Baresync's sync model.
 ---
 
-TODO: Write this page.
+# Concepts
+
+## Local-first
+
+Your app reads from and writes to a local SQLite database. No network request is needed to display data or create a record. The user experience is instant.
+
+## Outbox pattern
+
+Every local write that needs to sync goes through `writeLocalChange`. This helper performs two things atomically:
+
+1. **The mutation** — insert, update, or soft-delete a row
+2. **The outbox entry** — records what changed so the sync engine can push it later
+
+If the mutation succeeds but the network is down, the outbox entry waits. When connectivity returns, the sync engine pushes pending changes.
+
+## Push-pull sync
+
+The sync engine runs on a polling interval you configure in the Rust plugin builder:
+
+1. **Push** — reads pending outbox entries, batches them, and sends them to your server's `/sync/push` endpoint
+2. **Pull** — sends the last cursor timestamp to your server's `/sync/pull` endpoint and applies returned rows to the local database
+
+## Scope
+
+Every synced row belongs to a scope. A scope is typically a tenant, workspace, or merchant. Your server's `resolveScope` function checks that the requesting user has access to the requested scope.
+
+## Server-wins reconciliation
+
+When the same row is changed on both the client and the server, the server state wins. The sync engine overwrites the local row with the server version during pull.
+
+## Cursors
+
+Pull is incremental. The local database stores a cursor timestamp per scope. The server returns only rows changed after that cursor. After applying the pulled rows, the cursor advances to the latest `syncUpdatedAt` from the response.
+
+## Paired schemas
+
+Baresync uses two Drizzle schemas per table:
+
+- **Local synced schema** — uses `localSyncColumns()` which adds `deletedAt`, `isSynced`, `createdAt`, `updatedAt`
+- **API synced schema** — uses `apiSyncColumns()` which adds `deletedAt`, `syncUpdatedAt`, `createdAt`, `updatedAt`
+
+The local schema has `isSynced` (a local-only flag). The API schema has `syncUpdatedAt` (a server-only cursor column). Both share the same domain columns.

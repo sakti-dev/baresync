@@ -1,6 +1,13 @@
 ---
-title: Index
-description: TODO
+title: Baresync
+description: Local-first sync for Tauri apps.
 ---
 
-TODO: Write this page.
+Baresync gives your Tauri desktop app a local SQLite database that syncs with your own backend.
+
+- **Local-first** — reads and writes hit SQLite directly. No network required to use the app.
+- **Outbox pattern** — every local write queues a sync change. Push sends changes to your server. Pull brings back server state.
+- **Plugin-owned** — the Tauri plugin manages the database, migrations, polling, and sync engine. Your JS code talks to a Drizzle database proxy.
+- **App-owned backend** — Baresync does not host anything. You add three routes to your own server (status, pull, push) and keep full control over auth, scope, and persistence.
+
+Start with the [Getting Started](/docs/getting-started/introduction) guide to build your first syncing app.

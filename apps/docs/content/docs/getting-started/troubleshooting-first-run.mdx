@@ -1,6 +1,60 @@
 ---
 title: Troubleshooting First Run
-description: TODO
+description: Common issues when running the inventory app for the first time.
 ---
 
-TODO: Write this page.
+# Troubleshooting First Run
+
+## The app says "failed to run inventory app"
+
+Check that your `lib.rs` compiles. The most common cause is a mismatched `baresync-core` or `tauri-plugin-baresync` path in `Cargo.toml`.
+
+```bash
+cd apps/app/src-tauri
+cargo check
+```
+
+## The server does not start
+
+Check that the server database directory exists and is writable:
+
+```bash
+mkdir -p apps/server/data
+```
+
+If you are using Drizzle migrations on the server, make sure you have generated them:
+
+```bash
+cd apps/server
+bunx drizzle-kit generate --config drizzle.config.ts
+```
+
+## No data appears in the app
+
+1. **Is the server running?** Check `http://127.0.0.1:18181/health`.
+2. **Is there data on the server?** Seed the server database.
+3. **Did polling start?** Open the Tauri devtools console and look for sync logs.
+4. **Are your query keys correct?** React Query caches are keyed by the array you pass to `useDrizzleQuery`. The invalidation in `SyncClientProvider` must match.
+
+## Sync outbox is not draining
+
+1. Check that your `contract_tables` in `lib.rs` has the correct upsert and delete order.
+2. Check that the server `/sync/push` route returns 200.
+3. Check the server console for errors in `applyPushChanges`.
+
+## "table not found" errors
+
+Make sure your migration SQL includes all synced tables plus `sync_outbox` and `sync_cursors`. If you add a new table, create a new migration file (e.g., `0002_add_notes.sql`) and rebuild the Tauri app. The plugin will apply pending migrations on next startup.
+
+## Build script does not find migrations
+
+Make sure the `.sql` files are in `apps/app/src-tauri/migrations/` and that `build.rs` points at that directory. Run `cargo clean` and rebuild if you suspect stale build artifacts.
+
+## Multiple outbox entries for the same row
+
+The `sync_outbox` table has a unique index on `(table_name, row_id)` where `synced_at IS NULL`. Calling `writeLocalChange` for the same row twice within one scope will upsert the outbox entry rather than create duplicates. If you see duplicates, check that your migration created the index correctly.
+
+## Where to get more help
+
+- Check `examples/inventory-json-polling` for a working reference
+- Open an issue at the Baresync repository

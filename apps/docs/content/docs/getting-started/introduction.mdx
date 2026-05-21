@@ -1,6 +1,64 @@
 ---
 title: Introduction
-description: TODO
+description: What you will build and what you need installed.
 ---
 
-TODO: Write this page.
+# Introduction
+
+This guide walks you through building a small inventory app that syncs between a Tauri desktop client and a Hono backend. By the end you will have:
+
+- A Tauri app with a local SQLite database
+- A shared sync contract package that both app and server import
+- Server routes for push, pull, and status
+- Automatic polling and React Query cache invalidation
+
+## What you need
+
+- [Bun](https://bun.sh) 1.2 or later
+- [Rust](https://rustup.rs) stable
+- [Tauri CLI](https://tauri.app/start/prerequisites/) 2.x
+- A code editor
+
+## Where you will end up
+
+The final project structure looks like this:
+
+```txt
+my-inventory/
+├── package.json                  # root workspace
+├── apps/
+│   ├── app/                      # Tauri desktop app (React)
+│   │   ├── src/
+│   │   │   ├── lib/db.ts
+│   │   │   ├── hooks/useBaresyncQuery.ts
+│   │   │   └── App.tsx
+│   │   └── src-tauri/
+│   │       ├── src/lib.rs
+│   │       ├── build.rs
+│   │       ├── migrations/
+│   │       │   └── 0001_init.sql
+│   │       ├── Cargo.toml
+│   │       └── tauri.conf.json
+│   └── server/                   # Hono backend
+│       ├── src/index.ts
+│       └── package.json
+└── packages/
+    └── sync-contract/            # shared schemas and generated artifacts
+        ├── src/
+        │   ├── constants.ts
+        │   ├── local-synced-schema.ts
+        │   ├── api-synced-schema.ts
+        │   ├── local-schema.ts
+        │   └── api-schema.ts
+        ├── sync.config.ts
+        ├── generate.ts
+        ├── generated/
+        │   ├── sync-contract.json
+        │   ├── sync-table-order.ts
+        │   └── sync-contract.manifest.json
+        └── package.json
+```
+
+The `packages/sync-contract` package is the key piece. It owns your table schemas and the generated sync contract, so both the Tauri app and the server import the same definitions.
+
+Ready? Go to [Project Setup](/docs/getting-started/project-setup).

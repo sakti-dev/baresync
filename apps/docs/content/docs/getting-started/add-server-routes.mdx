@@ -1,6 +1,312 @@
 ---
 title: Add Server Routes
-description: TODO
+description: Create push, pull, and status handlers on your Hono server.
 ---
 
-TODO: Write this page.
+# Add Server Routes
+
+Your server needs three routes that the Baresync sync engine calls:
+
+- `POST /sync/status` — returns whether there are changes since a cursor
+- `POST /sync/pull` — returns changed rows since a cursor
+- `POST /sync/push` — accepts local changes and writes them to the server database
+
+Baresync provides handler factories that handle decoding, validation, limits, and ordering. You provide scope resolution and the actual database read/write logic.
+
+## Set up the server database
+
+Create `apps/server/src/db/client.ts`:
+
+```ts
+import { Database } from "bun:sqlite";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+
+const DEFAULT_DB_PATH = "./data/inventory-server.db";
+
+export async function createInventoryDatabase() {
+  const dbPath = path.resolve(
+    process.cwd(),
+    process.env.INVENTORY_SERVER_DB_PATH ?? DEFAULT_DB_PATH
+  );
+  await fs.mkdir(path.dirname(dbPath), { recursive: true });
+
+  const sqlite = new Database(dbPath);
+  sqlite.run("PRAGMA journal_mode = WAL");
+  sqlite.run("PRAGMA foreign_keys = ON");
+
+  const db = drizzle(sqlite);
+  migrate(db, {
+    migrationsFolder: path.resolve(process.cwd(), "drizzle"),
+  });
+
+  return { db, dbPath };
+}
+```
+
+This uses Bun's built-in SQLite and Drizzle's migration runner.
+
+## Create the sync repository
+
+The repository handles the actual read and write operations for each table. Baresync provides a `createDrizzleSyncRepository` helper that handles cursor pagination, table ordering, and change loading.
+
+Create `apps/server/src/db/sync-repository.ts`:
+
+```ts
+import {
+  items,
+  locations,
+  stockCounts,
+} from "my-inventory-sync-contract/api-synced-schema";
+import {
+  createDrizzleSyncRepository,
+  optionalString,
+  requiredString,
+} from "baresync/server/drizzle";
+import { and, desc, eq, gt } from "drizzle-orm";
+
+export function createInventorySyncRepository(db) {
+  return createDrizzleSyncRepository({
+    tables: {
+      locations: {
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          id: requiredString(row.id, "locations.id"),
+          name: requiredString(row.name, "locations.name"),
+          scopeId,
+          syncUpdatedAt,
+          updatedAt,
+        }),
+        readLatestRow: async ({ scopeId }) => {
+          const rows = await db
+            .select()
+            .from(locations)
+            .where(eq(locations.scopeId, scopeId))
+            .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id))
+            .limit(1);
+          return rows[0] ?? null;
+        },
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
+            .select()
+            .from(locations)
+            .where(
+              cursorTimestamp > 0
+                ? and(eq(locations.scopeId, scopeId), gt(locations.syncUpdatedAt, cursorTimestamp))
+                : eq(locations.scopeId, scopeId)
+            )
+            .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id)),
+        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+          await db.update(locations).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(locations.id, id));
+        },
+        upsertRow: async (row) => {
+          const { id: _id, ...setValues } = row;
+          await db.insert(locations).values(row).onConflictDoUpdate({
+            target: locations.id,
+            set: setValues,
+          });
+        },
+      },
+      items: {
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          id: requiredString(row.id, "items.id"),
+          locationId: requiredString(row.locationId, "items.locationId"),
+          name: requiredString(row.name, "items.name"),
+          scopeId,
+          sku: optionalString(row.sku),
+          syncUpdatedAt,
+          updatedAt,
+        }),
+        readLatestRow: async ({ scopeId }) => {
+          const rows = await db
+            .select()
+            .from(items)
+            .where(eq(items.scopeId, scopeId))
+            .orderBy(desc(items.syncUpdatedAt), desc(items.updatedAt), desc(items.id))
+            .limit(1);
+          return rows[0] ?? null;
+        },
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
+            .select()
+            .from(items)
+            .where(
+              cursorTimestamp > 0
+                ? and(eq(items.scopeId, scopeId), gt(items.syncUpdatedAt, cursorTimestamp))
+                : eq(items.scopeId, scopeId)
+            )
+            .orderBy(desc(items.syncUpdatedAt), desc(items.updatedAt), desc(items.id)),
+        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+          await db.update(items).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(items.id, id));
+        },
+        upsertRow: async (row) => {
+          const { id: _id, ...setValues } = row;
+          await db.insert(items).values(row).onConflictDoUpdate({
+            target: items.id,
+            set: setValues,
+          });
+        },
+      },
+      stockCounts: {
+        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+          countedQuantity: Number(row.countedQuantity ?? 0),
+          createdAt: optionalString(row.createdAt) ?? updatedAt,
+          deletedAt: optionalString(row.deletedAt),
+          id: requiredString(row.id, "stock_counts.id"),
+          itemId: requiredString(row.itemId, "stock_counts.itemId"),
+          recordedAt: requiredString(row.recordedAt, "stock_counts.recordedAt"),
+          scopeId,
+          syncUpdatedAt,
+          updatedAt,
+        }),
+        readLatestRow: async ({ scopeId }) => {
+          const rows = await db
+            .select()
+            .from(stockCounts)
+            .where(eq(stockCounts.scopeId, scopeId))
+            .orderBy(desc(stockCounts.syncUpdatedAt), desc(stockCounts.updatedAt), desc(stockCounts.id))
+            .limit(1);
+          return rows[0] ?? null;
+        },
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
+            .select()
+            .from(stockCounts)
+            .where(
+              cursorTimestamp > 0
+                ? and(eq(stockCounts.scopeId, scopeId), gt(stockCounts.syncUpdatedAt, cursorTimestamp))
+                : eq(stockCounts.scopeId, scopeId)
+            )
+            .orderBy(desc(stockCounts.syncUpdatedAt), desc(stockCounts.updatedAt), desc(stockCounts.id)),
+        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+          await db.update(stockCounts).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(stockCounts.id, id));
+        },
+        upsertRow: async (row) => {
+          const { id: _id, ...setValues } = row;
+          await db.insert(stockCounts).values(row).onConflictDoUpdate({
+            target: stockCounts.id,
+            set: setValues,
+          });
+        },
+      },
+    },
+  });
+}
+```
+
+Each table entry has:
+
+- `buildRow` — constructs the API row from the raw push payload
+- `readLatestRow` — returns the most recently updated row for cursor calculation
+- `readRows` — returns all rows changed since a cursor timestamp
+- `softDeleteRow` — marks a row as deleted
+- `upsertRow` — inserts or updates a row
+
+## Wire up the handlers
+
+Edit `apps/server/src/index.ts`:
+
+```ts
+import { SYNC_UPSERT_ORDER } from "my-inventory-sync-contract/generated/sync-table-order";
+import {
+  createSyncPullHandler,
+  createSyncPushHandler,
+  createSyncStatusHandler,
+} from "baresync/server";
+import { Hono } from "hono";
+import { createInventoryDatabase } from "./db/client";
+import { createInventorySyncRepository } from "./db/sync-repository";
+
+const app = new Hono();
+const { db } = await createInventoryDatabase();
+const repository = createInventorySyncRepository(db);
+
+const resolveScope = ({ scopeId }: { scopeId: string }) => {
+  if (scopeId !== "default") {
+    return {
+      ok: false as const,
+      status: 403,
+      body: { error: "single_scope_only" },
+    };
+  }
+
+  return {
+    ok: true as const,
+    scope: { scopeId },
+  };
+};
+
+const push = createSyncPushHandler({
+  encoding: "json",
+  resolveScope,
+  upsertOrder: SYNC_UPSERT_ORDER,
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+    repository.applyPushChanges({
+      changes,
+      scopeId: scope.scopeId,
+      syncUpdatedAt,
+    }),
+});
+
+const pull = createSyncPullHandler({
+  encoding: "json",
+  limit: 1000,
+  resolveScope,
+  loadPullChanges: async ({ cursor, scope, tables }) =>
+    repository.loadPullChanges({
+      cursor,
+      scopeId: scope.scopeId,
+      tables,
+    }),
+});
+
+const status = createSyncStatusHandler({
+  encoding: "json",
+  resolveScope,
+  loadSyncStatus: async ({ cursor, scope }) =>
+    repository.loadSyncStatus({
+      cursor,
+      scopeId: scope.scopeId,
+    }),
+});
+
+app.post("/sync/push", (c) => push(c.req.raw, {}));
+app.post("/sync/pull", (c) => pull(c.req.raw, {}));
+app.post("/sync/status", (c) => status(c.req.raw, {}));
+
+export default app;
+
+console.log("inventory server listening on http://127.0.0.1:18181");
+```
+
+### What resolveScope does
+
+The handler factories call `resolveScope` on every request. This is where you check authorization and tenant membership. For this guide, we accept only the `"default"` scope. In a real app, you would verify the session and check that the user belongs to the requested scope.
+
+### What the handlers do
+
+Each handler factory handles:
+
+- Request body decoding (JSON or protobuf)
+- Scope resolution (calling your `resolveScope`)
+- Response envelope formatting
+
+You provide the database operations through `applyPushChanges`, `loadPullChanges`, and `loadSyncStatus`. The `createDrizzleSyncRepository` helper implements these operations for you.
+
+## Verify
+
+Start the server to check it boots:
+
+```bash
+cd apps/server
+bun run dev
+```
+
+You should see `inventory server listening on http://127.0.0.1:18181`.
+
+Next: [Run Sync](/docs/getting-started/run-sync).

@@ -1,6 +1,34 @@
 ---
 title: Examples
-description: TODO
+description: Working examples you can run locally.
 ---
 
-TODO: Write this page.
+# Examples
+
+## inventory-json-polling
+
+The canonical fullstack starter. A single-scope inventory app with:
+
+- Tauri desktop client (React + React Query)
+- Hono backend server
+- Shared sync contract package
+- Build-time migration discovery
+- Automatic polling and event-driven cache invalidation
+
+```txt
+examples/inventory-json-polling/
+├── apps/app/          # Tauri + React
+├── apps/server/       # Hono
+└── packages/sync-contract/
+```
+
+Run it:
+
+```bash
+cd examples/inventory-json-polling
+bun install
+bun run generate
+bun run dev
+```
+
+The server seeds sample data on first run. The app pulls it on the first sync cycle.

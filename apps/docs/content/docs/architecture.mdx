@@ -1,6 +1,82 @@
 ---
 title: Architecture
-description: TODO
+description: How the pieces fit together.
 ---
 
-TODO: Write this page.
+# Architecture
+
+Baresync has three layers: a Rust Tauri plugin, a TypeScript client, and your server.
+
+```txt
+┌─────────────────────────────────────────────────┐
+│  React App                                       │
+│  ┌───────────┐  ┌──────────────┐  ┌───────────┐ │
+│  │ React     │  │ SyncClient   │  │ Drizzle   │ │
+│  │ Query     │  │ Provider     │  │ Proxy DB  │ │
+│  └─────┬─────┘  └──────┬───────┘  └─────┬─────┘ │
+│        │               │                 │       │
+│        └───────────────┼─────────────────┘       │
+│                        │ invoke                  │
+├────────────────────────┼─────────────────────────┤
+│  Tauri Plugin          │                         │
+│  ┌─────────────────────┼──────────────────────┐  │
+│  │  PluginState        │                      │  │
+│  │  ┌──────────┐  ┌────┴────┐  ┌───────────┐ │  │
+│  │  │ SQLite   │  │ Sync    │  │ Migration │ │  │
+│  │  │ Pool     │  │ Engine  │  │ Runner    │ │  │
+│  │  └──────────┘  └────┬────┘  └───────────┘ │  │
+│  └─────────────────────┼──────────────────────┘  │
+│                        │ HTTP                    │
+├────────────────────────┼─────────────────────────┤
+│  Server                │                         │
+│  ┌─────────────────────┼──────────────────────┐  │
+│  │  Hono               │                      │  │
+│  │  ┌────────┐ ┌───────┴──┐ ┌──────────────┐ │  │
+│  │  │/status │ │/pull     │ │/push         │ │  │
+│  │  └────────┘ └──────────┘ └──────────────┘ │  │
+│  │  ┌────────────────────────────────────────┐ │  │
+│  │  │  Server Database (SQLite/Postgres)     │ │  │
+│  │  └────────────────────────────────────────┘ │  │
+│  └─────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+```
+
+## Plugin layer (Rust)
+
+The `tauri-plugin-baresync` crate runs inside the Tauri app process. It:
+
+- Opens and manages the SQLite database
+- Applies migrations on startup
+- Runs the sync engine (push, pull, status) on a polling interval
+- Emits Tauri events when data changes or sync status changes
+- Exposes commands that the JS layer calls via `invoke`
+
+## Client layer (TypeScript)
+
+The `baresync` npm package provides:
+
+- `createTauriDrizzleDatabase` — a Drizzle proxy that sends SQL through `invoke`
+- `createSyncClient` — a client that wraps sync commands and polling control
+- `writeTransaction` / `writeLocalChange` — helpers that perform mutations and enqueue outbox entries atomically
+
+Your React code uses these through a provider pattern with React Query for caching.
+
+## Server layer (your backend)
+
+Your server implements three routes using Baresync's handler factories:
+
+- `createSyncPushHandler` — decodes the push payload and calls your `applyPushChanges`
+- `createSyncPullHandler` — decodes the pull request and calls your `loadPullChanges`
+- `createSyncStatusHandler` — decodes the status request and calls your `loadSyncStatus`
+
+You keep full control over auth, scope resolution, and database persistence.
+
+## Shared contract
+
+The `packages/sync-contract` package owns:
+
+- Local and API synced schemas (Drizzle table definitions)
+- Runtime table schemas (outbox, cursors, batch requests)
+- Generated artifacts (sync contract JSON, table order, manifest)
+
+Both the app and the server import from this package, so they always agree on table shapes and column names.
