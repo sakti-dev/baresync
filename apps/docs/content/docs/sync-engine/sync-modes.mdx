@@ -9,21 +9,7 @@ When you call `sync_now`, the engine inspects local and server state, then picks
 
 ## Decision logic
 
-```txt
-sync_now()
-  │
-  ├─ needs_baseline_sync? ──→ FullResync
-  │
-  ├─ local dirty = 0 AND server has no changes ──→ NoOp
-  │
-  ├─ local dirty > 0 AND server has no changes ──→ PushOnly
-  │
-  ├─ local dirty = 0 AND server has changes ──→ PullOnly
-  │
-  └─ local dirty > 0 AND server has changes ──→ FullSync
-```
-
-The engine calls the status endpoint first, then reads the outbox count. It does not decide the mode before checking the server.
+<SyncModesDiagram />
 
 ## Mode summary
 
