@@ -240,11 +240,13 @@ function ItemsList() {
 ### Write data (insert)
 
 ```tsx
+import { useQueryClient } from "@tanstack/react-query";
 import { useSyncClient } from "./hooks/useBaresyncQuery";
 import { db, TABLE } from "./lib/db";
 
 function AddItemButton() {
   const client = useSyncClient();
+  const queryClient = useQueryClient();
 
   async function handleAdd() {
     const id = crypto.randomUUID();
@@ -264,18 +266,28 @@ function AddItemButton() {
           }),
       });
     });
+
+    await queryClient.invalidateQueries({ queryKey: ["inventory", "items"] });
   }
 
   return <button onClick={handleAdd}>Add item</button>;
 }
 ```
 
+You could rely on the `baresync://data-changed` event to invalidate, but calling `invalidateQueries` directly after the write gives immediate feedback — the event may arrive slightly later.
+
 ### Write data (soft delete)
 
 ```tsx
+import { useQueryClient } from "@tanstack/react-query";
 import { eq } from "drizzle-orm";
+import { db, TABLE } from "./lib/db";
 
-async function handleDelete(client: SyncClient, rowId: string) {
+async function handleDelete(
+  client: SyncClient,
+  queryClient: QueryClient,
+  rowId: string,
+) {
   const timestamp = new Date().toISOString();
 
   await client.writeTransaction(db, async (tx) => {
@@ -294,6 +306,8 @@ async function handleDelete(client: SyncClient, rowId: string) {
           .where(eq(TABLE.items.id, rowId)),
     });
   });
+
+  await queryClient.invalidateQueries({ queryKey: ["inventory", "items"] });
 }
 ```
 
