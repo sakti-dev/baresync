@@ -261,6 +261,9 @@ function InventoryApp() {
 If you want to trigger a sync immediately (for example, after a user action):
 
 ```ts
+import { useSyncClient } from "./hooks/useBaresyncQuery";
+
+const client = useSyncClient();
 await client.syncNow();
 ```
 

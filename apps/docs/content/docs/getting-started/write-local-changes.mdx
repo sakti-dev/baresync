@@ -12,6 +12,8 @@ Every local write that needs to sync must go through the sync client's `writeTra
 ```ts
 import { db, TABLE } from "./lib/db";
 import { INVENTORY_SCOPE_ID } from "@repo/sync-contract/constants";
+import { eq } from "drizzle-orm";
+import { useSyncClient } from "./hooks/useBaresyncQuery";
 
 const locationId = crypto.randomUUID();
 const timestamp = new Date().toISOString();
@@ -36,6 +38,8 @@ await client.writeTransaction(db, async (tx) => {
 ## Update a row
 
 ```ts
+// Uses the same imports as above (db, TABLE, eq, useSyncClient)
+const client = useSyncClient();
 await client.writeTransaction(db, async (tx) => {
   await client.writeLocalChange(tx, {
     table: TABLE.locations,
@@ -55,6 +59,8 @@ await client.writeTransaction(db, async (tx) => {
 Baresync uses soft deletes by default. A deleted row gets a `deletedAt` timestamp and `isSynced: false`. The sync engine pushes this as an update so the server can mark the row as deleted.
 
 ```ts
+// Uses the same imports as above
+const client = useSyncClient();
 const timestamp = new Date().toISOString();
 
 await client.writeTransaction(db, async (tx) => {
@@ -76,6 +82,8 @@ await client.writeTransaction(db, async (tx) => {
 For updates that affect multiple rows, query the affected IDs first, then enqueue one outbox entry per row inside the same transaction:
 
 ```ts
+// Uses the same imports as above
+const client = useSyncClient();
 await client.writeTransaction(db, async (tx) => {
   const rows = await tx
     .select({ id: TABLE.items.id })
