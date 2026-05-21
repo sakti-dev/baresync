@@ -8,7 +8,6 @@
     "commands",
     "events",
     "errors",
-    "glossary",
-    "writing-docs"
+    "glossary"
   ]
 }
