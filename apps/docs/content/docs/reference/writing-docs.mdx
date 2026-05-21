@@ -1,0 +1,69 @@
+---
+title: Writing Docs
+description: How Baresync docs should explain sync behavior clearly.
+---
+
+# Writing Baresync Docs
+
+Good Baresync docs should help a reader build a correct local-first Tauri app without guessing where sync bookkeeping lives.
+
+## Page shape
+
+Each guide page should answer these questions:
+
+1. What problem does this page solve?
+2. Which package or crate does it use?
+3. What code should the reader copy?
+4. What should the reader not do?
+5. How can the reader verify it works?
+
+## Prefer concrete app shapes
+
+Use code from `examples/inventory-json-polling` when possible. If a snippet is simplified, say so.
+
+## Be explicit about ownership
+
+Baresync owns:
+
+- local SQLite proxy commands
+- local sync outbox helpers
+- sync command shape
+- generated table ordering
+- push, pull, status envelope helpers
+- Tauri plugin polling and event emission
+
+The app owns:
+
+- authorization
+- scope resolution
+- backend persistence rules
+- UI error handling
+- domain-specific validation
+- deciding whether hard deletes are allowed
+
+## Avoid unsupported promises
+
+Do not say Baresync is:
+
+- a hosted sync service
+- a generic ORM
+- a generic SQLite plugin
+- a database-agnostic sync engine
+- a full conflict-free replicated data type system
+
+## Required verification
+
+After changing docs, run:
+
+```bash
+cd apps/docs
+bun run types:check
+bun run build
+```
+
+From the repo root, also run:
+
+```bash
+bun x ultracite check
+bun run typecheck
+```
