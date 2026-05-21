@@ -75,25 +75,8 @@ The polling loop also uses internal control messages (not emitted as Tauri event
 
 These are sent via `mpsc::channel` between commands and the polling task.
 
+import { EventFlowDiagram } from "@/components/flow/diagrams/event-flow-diagram";
+
 ## Event flow in a typical app
 
-```txt
-User writes data
-  │
-  ▼ writeTransaction → writeLocalChange
-  │
-  ▼ run_sql (insert row) → run_sql (insert outbox entry)
-  │
-  ├─► emit("baresync://data-changed")  ← UI re-fetches
-  │
-  ▼ notify polling loop
-  │
-  ▼ polling: syncNow()
-  │
-  ├─► emit("baresync://sync-status-changed")
-  │
-  ▼ push → pull
-  │
-  ├─► emit("baresync://data-changed")  ← UI re-fetches with server data
-  └─► emit("baresync://sync-status-changed")
-```
+<EventFlowDiagram />
