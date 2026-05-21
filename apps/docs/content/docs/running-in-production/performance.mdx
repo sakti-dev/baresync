@@ -1,0 +1,176 @@
+---
+title: Performance
+description: How to tune Baresync for production workloads — push chunking, DB size, polling frequency, and garbage collection.
+---
+
+# Performance
+
+Baresync is designed to handle production data volumes out of the box. This page covers what you can tune when you need to optimize for your specific workload.
+
+## How push chunking works
+
+When your users have many pending changes, the engine doesn't send them all at once. It splits them into chunks:
+
+1. Read all pending outbox entries, grouped by table
+2. For each group, build a push payload
+3. If the payload exceeds `max_push_bytes` or `max_push_rows`, split it
+4. Send each chunk to the server
+5. If a chunk gets `413 Payload Too Large`:
+   - If it has more than 1 row: split in half, retry both halves
+   - If it's a single row: fail with `SingleRowTooLarge`
+6. Repeat until all chunks are sent or a single-row chunk fails
+
+```
+1000 pending rows
+  → Chunk 1: 500 rows (~200 KB) ✓
+  → Chunk 2: 500 rows (~200 KB) ✓
+
+2000 pending rows with a 256 KB limit
+  → Chunk 1: 450 rows (~255 KB) ✓
+  → Chunk 2: 450 rows (~253 KB) ✓
+  → Chunk 3: 450 rows (~251 KB) ✓
+  → Chunk 4: 450 rows (~252 KB) ✓
+  → Chunk 5: 200 rows (~120 KB) ✓
+```
+
+### Tuning chunk size
+
+The client's `max_push_bytes` controls the target chunk size:
+
+```rust
+baresync::Builder::new()
+    .max_push_bytes(131_072)  // 128 KB — more chunks, smaller payloads
+    .max_push_rows(500)       // cap rows per chunk
+```
+
+| Setting | Effect | When to use |
+|---|---|---|
+| Small chunks (64–128 KB) | More HTTP requests, each one is faster | Slow or unreliable network (mobile) |
+| Default (256 KB) | Balance between request count and size | Most apps |
+| Large chunks (512 KB–1 MB) | Fewer requests, each one is larger | Fast, reliable network; large data volumes |
+
+The server's `maxBytes` must be **larger** than the client's `max_push_bytes`. If they're equal, any chunk that's slightly over the target gets rejected. A 4:1 ratio is safe (e.g., 256 KB client, 1 MB server; or 256 KB client, 2 MB server).
+
+### Row-level limit
+
+Even if the payload is small, too many rows in one request can be slow. `max_push_rows` caps the number of rows per chunk regardless of byte size. The default is 2000, which is fine for most apps. Lower it to 500 if your rows are large or your server is slow.
+
+## Polling frequency
+
+The `poll_interval_secs` controls how often the engine checks for changes:
+
+| Interval | Sync latency | Server load | Use case |
+|---|---|---|---|
+| 5–10 seconds | Very low | High | Development only |
+| 30 seconds | 30 seconds max | Moderate | Default for most apps |
+| 60 seconds | 1 minute max | Low | Infrequently-changing data |
+| Disabled (0) | Manual only | None | Apps that use push notifications to trigger sync |
+
+### Polling and battery
+
+On mobile, polling when the app is backgrounded drains battery. Set `poll_on_background` to `false` (the default) to pause polling when the window loses focus:
+
+```rust
+baresync::Builder::new()
+    .poll_interval_secs(30)
+    .poll_on_background(false)  // pauses when backgrounded
+```
+
+Polling automatically resumes when the window regains focus.
+
+### Push-triggered sync instead of fast polling
+
+If you need sub-second sync latency, don't set `poll_interval_secs` to 1. Instead, use push notifications:
+
+1. Set `poll_interval_secs(0)` to disable auto-polling
+2. When your server detects a change, send a push notification to the client
+3. On receiving the notification, call `client.syncNow()`
+
+This gives you instant sync without constant polling.
+
+## Database size management
+
+### Garbage collection
+
+Baresync automatically runs garbage collection after every sync cycle. It hard-deletes rows where:
+
+- `deleted_at IS NOT NULL` (soft-deleted)
+- `is_synced = 1` (already synced to the server)
+
+This prevents soft-deleted rows from accumulating indefinitely.
+
+### Purging synced outbox entries
+
+Over time, the `sync_outbox` table grows as entries are marked synced but not deleted. Purge them periodically:
+
+```ts
+await invoke("purge_synced_outbox", {
+  olderThan: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+});
+```
+
+Schedule this during off-peak hours (e.g., when the app launches and it's been more than a day since last purge).
+
+### SQLite settings
+
+Baresync configures SQLite with these performance settings at connection time:
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `journal_mode` | `WAL` | Enables concurrent reads during writes |
+| `synchronous` | `NORMAL` | Balances durability and speed |
+| `foreign_keys` | `ON` | Enforces referential integrity |
+| `busy_timeout` | `5000` (5 seconds) | Waits instead of failing when DB is locked |
+
+You don't need to change these. They're set when the plugin opens the database connection.
+
+## Server-side performance
+
+### Write chunking
+
+The server uses `getWriteChunkSize()` to split incoming push rows into safe SQLite write chunks, respecting the SQLite bind parameter limit:
+
+```ts
+import { getWriteChunkSize } from "@repo/sync-contract/server";
+
+const chunkSize = getWriteChunkSize({
+  columnCount: 10,    // columns per row
+  maxBindParams: 30000,
+  maxRowsPerChunk: 500,
+});
+// Returns: min(500, floor(30000 / 10)) = 500
+```
+
+If your tables have many columns, the chunk size automatically decreases to stay within SQLite's limits.
+
+### Idempotency cleanup
+
+The `sync_batch_requests` table records every push for idempotency. Over time, old entries accumulate. Clean them up:
+
+```ts
+import { cleanupSyncBatchRequests } from "@repo/sync-contract/server";
+
+const result = await cleanupSyncBatchRequests({
+  db: sqliteDb,
+  olderThanMs: 7 * 24 * 60 * 60 * 1000,    // completed entries older than 7 days
+  stalePendingOlderThanMs: 60 * 60 * 1000,  // pending entries older than 1 hour
+  limit: 1000,                               // max to delete per call
+  dryRun: false,
+});
+
+console.log(`Deleted ${result.deletedCount} old batch requests`);
+```
+
+Run this on a server-side cron job or after every N requests.
+
+## Performance checklist
+
+Before going to production:
+
+- [ ] Client `max_push_bytes` is well below server `maxBytes` (4:1 ratio recommended)
+- [ ] `poll_interval_secs` is 30 or higher (not 5 or 10)
+- [ ] `poll_on_background` is `false` on mobile
+- [ ] Synced outbox purge is scheduled (daily or weekly)
+- [ ] Server has `cleanupSyncBatchRequests` running (daily cron or post-request)
+- [ ] DB file is in a writable directory with sufficient disk space
+- [ ] `getState()` is called periodically to catch stuck sync early

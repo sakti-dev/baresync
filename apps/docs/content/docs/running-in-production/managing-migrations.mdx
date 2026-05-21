@@ -1,0 +1,141 @@
+---
+title: Managing Migrations
+description: How Baresync runs migrations, what happens when you add new ones, and how to handle schema changes in production.
+---
+
+# Managing Migrations
+
+Baresync uses SQL migrations to set up and evolve your local SQLite schema. Migrations run automatically when the plugin initializes, but understanding how they work helps you avoid production surprises.
+
+## How migrations work
+
+1. The plugin reads your migration files (embedded or from a directory)
+2. It checks the `__drizzle_migrations` table for already-applied migrations
+3. It runs any new migrations in order, one at a time
+4. Each successful migration is recorded with its hash
+
+A migration is **new** if its name doesn't exist in `__drizzle_migrations`. Migrations are never re-run.
+
+## Migration formats
+
+### Embedded migrations (recommended for production)
+
+Compiled into your binary. No files to ship:
+
+```rust
+const migrations: &[EmbeddedMigration] = &[
+    EmbeddedMigration {
+        name: "0001_create_tables",
+        sql: include_str!("../migrations/0001_create_tables.sql"),
+    },
+    EmbeddedMigration {
+        name: "0002_add_indexes",
+        sql: include_str!("../migrations/0002_add_indexes.sql"),
+    },
+];
+
+baresync::Builder::new()
+    .migrations(migrations)
+```
+
+### Directory migrations (useful during development)
+
+Read from `.sql` files at runtime, sorted by filename:
+
+```rust
+baresync::Builder::new()
+    .migrations_dir("/path/to/migrations")
+```
+
+File naming convention: `0001_create_tables.sql`, `0002_add_indexes.sql`, etc. The sort is alphabetical, so zero-padded numbers keep the order correct.
+
+## Migration SQL format
+
+Each migration file can contain multiple statements separated by `--> statement-breakpoint`:
+
+```sql
+CREATE TABLE categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  deleted_at TEXT,
+  is_synced INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+--> statement-breakpoint
+
+CREATE INDEX idx_categories_scope ON categories(scope_id);
+```
+
+Every statement between breakpoints is executed separately. If one statement fails, the entire migration is rolled back and **not** recorded, so fixing the SQL and restarting the app will re-run it.
+
+## Adding a new migration
+
+When you need to add a column, table, or index:
+
+1. **Create the migration file** — `migrations/0003_add_category_description.sql`
+2. **Add the embedded reference** (if using embedded migrations)
+3. **Rebuild and deploy** — the new migration runs automatically on next app launch
+
+Example — adding a `description` column:
+
+```sql
+ALTER TABLE categories ADD COLUMN description TEXT;
+```
+
+That's it. Baresync runs it once and records it.
+
+## Strict vs tolerant mode
+
+The `MigrationConfig` has a `strict` flag:
+
+| Mode | Behavior |
+|---|---|
+| **Strict** (default) | Any error fails the migration |
+| **Tolerant** | Skips "already exists" and "duplicate column" errors |
+
+Tolerant mode is useful if you need to re-run a migration that partially succeeded before the recording step. Baresync uses strict mode by default.
+
+## Checking migration status
+
+From JS, you can check which migrations have been applied:
+
+```ts
+const status = await invoke("get_migration_status");
+// Returns: Array<{ hash: string, created_at: number }>
+```
+
+This shows what the engine has recorded, not what's pending. If a migration name doesn't appear in the list, it hasn't run yet.
+
+You can also force-run migrations:
+
+```ts
+await invoke("run_migrations");
+```
+
+This is rarely needed — migrations run automatically on plugin init. Use it only if you're applying a migration file after the app has already started.
+
+## Schema changes and sync
+
+When you change your schema, consider how it affects sync:
+
+| Change | Sync impact | Action needed |
+|---|---|---|
+| **Add column** | None. New columns default to `NULL` for existing rows. Next pull fills them. | Add migration, update Drizzle schema, regenerate artifacts. |
+| **Add table** | None. New table gets synced on next baseline. | Add migration, add table to sync contract, regenerate artifacts. |
+| **Remove column** | Existing data in that column is lost locally. Server may still send it. | Update sync contract to exclude the column, regenerate artifacts. The engine ignores unknown columns on pull. |
+| **Remove table** | Local table still exists but no longer synced. | Remove from sync contract, regenerate artifacts. Consider a migration to `DROP TABLE` if you want to reclaim space. |
+| **Rename column** | Treated as drop + add. Data is lost. | Avoid if possible. If necessary: add new column, migrate data, drop old column — across two migrations. |
+| **Change column type** | Depends on SQLite. `STRICT` tables may reject the new type. | Test carefully. Consider additive changes instead. |
+
+## What NOT to do
+
+**Don't edit applied migrations** — changing the SQL of a migration that's already recorded in `__drizzle_migrations` has no effect. The engine skips it by name, not by content. Create a new migration instead.
+
+**Don't rename migration files** — the engine tracks migrations by name. Renaming `0002_add_indexes.sql` to `0002_create_indexes.sql` makes the engine think the old one was never applied, and it runs the "new" one again.
+
+**Don't skip numbers** — `0001`, `0003`, `0005` works fine (sorted alphabetically), but it's confusing. Use sequential numbers.
+
+**Don't put data transformations in migrations** — migrations should be DDL (schema changes). Data migrations (UPDATE, INSERT) should happen in your app code where you can handle errors gracefully.

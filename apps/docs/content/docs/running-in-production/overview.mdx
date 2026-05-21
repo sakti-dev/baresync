@@ -1,0 +1,64 @@
+---
+title: Overview
+description: How Baresync behaves at runtime — the sync lifecycle, what to monitor, and where to look when something goes wrong.
+---
+
+# Running in Production
+
+You've built your app, tested it locally, and now you're shipping it to real users. This section covers what happens after that: how to configure Baresync for production, monitor sync health, handle failures, and tune performance.
+
+## The sync lifecycle at runtime
+
+Every time your app syncs, this is what happens:
+
+```txt
+App starts
+  → Migrations run automatically
+  → Plugin connects to SQLite
+
+User creates/edits data
+  → Your code writes to the local DB
+  → Your code calls writeLocalChange()
+  → Row is added to sync_outbox (dirty count increases)
+
+Polling tick fires (or user calls syncNow)
+  → Engine reads dirty outbox entries
+  → Engine checks server for changes since last cursor
+  → If dirty rows exist → push to server
+  → If server has changes → pull from server
+  → Successful push marks outbox entries as synced
+  → Successful pull updates the cursor
+  → GC removes soft-deleted rows that are already synced
+  → Dirty count returns to 0
+```
+
+Most of this is automatic. Your job is to configure it correctly, verify it's working, and fix it when it breaks.
+
+## What to monitor
+
+Three numbers tell you if sync is healthy:
+
+| Metric | API | Healthy | Problem |
+|---|---|---|---|
+| **Dirty count** | `getState().local_dirty_count` | `0` | Unsynced changes are accumulating |
+| **Last watermark** | `getState().last_server_watermark` | Non-empty string after first sync | Empty = never synced, stale = pull isn't advancing |
+| **Needs baseline** | `getState().needs_baseline_sync` | `false` after first sync | `true` = cursor is missing, full resync needed |
+
+If polling is enabled, also check `getPollingStatus()`:
+
+| Field | Meaning |
+|---|---|
+| `running` | The polling loop is active |
+| `paused` | Paused because window lost focus (if `poll_on_background` is `false`) |
+| `last_sync_at` | Timestamp of the last completed sync cycle |
+
+## Where to go next
+
+| I need to... | Go to |
+|---|---|
+| Set up config for production | [Configuration](./configuration) |
+| Add or update database migrations | [Managing Migrations](./managing-migrations) |
+| Wipe local state and start over | [Resetting Local DB](./resetting-local-db) |
+| Build a sync health indicator | [Monitoring Sync Health](./monitoring-sync-health) |
+| Debug a sync failure | [Troubleshooting](./troubleshooting) |
+| Tune push performance | [Performance](./performance) |

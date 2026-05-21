@@ -1,0 +1,142 @@
+---
+title: Resetting Local DB
+description: How to reset your local database — from a targeted resync to a full wipe — and when to use each approach.
+---
+
+# Resetting Local DB
+
+Sometimes your local state gets out of sync with the server: a corrupted cursor, stale outbox entries, or a migration that went wrong. Baresync offers several levels of reset, from lightweight to nuclear.
+
+## When to reset
+
+| Symptom | Fix |
+|---|---|
+| Sync pulls the same data repeatedly | Cursor may be stale. Try `fullResync()`. |
+| `needs_baseline_sync` is always `true` after syncing | Cursor isn't being saved. Check DB write permissions. Then `fullResync()`. |
+| Dirty count never reaches `0` | Outbox entries are stuck. Check server logs for push rejection. Then `purge_synced_outbox` + `fullResync()`. |
+| Migration error on startup | Bad migration SQL. Fix the migration, delete the DB file, restart. |
+| Wrong `scope_id` data mixed in | Incorrect scope was used. Delete DB and start fresh. |
+
+## Level 1: Full resync (no data loss)
+
+`fullResync()` clears the cursor and re-pulls everything from the server. It does **not** delete your local data. It's safe — your rows stay in the DB, and the server sends a fresh snapshot:
+
+```ts
+await client.syncNow({ mode: "full_resync" });
+// Or from the SyncClient:
+await client.fullResync();
+```
+
+What happens internally:
+
+1. The stored cursor is cleared
+2. A baseline pull fetches all server data
+3. Existing local rows are updated (upserted)
+4. New cursor is saved
+5. GC removes soft-deleted rows that are now synced
+
+This is the first thing to try when sync seems stuck. It's fast and non-destructive.
+
+## Level 2: Purge synced outbox entries
+
+Over time, the `sync_outbox` table accumulates entries that have been synced (their `synced_at` is set). These don't affect sync behavior, but they take up space. Purge them:
+
+```ts
+await invoke("purge_synced_outbox", {
+  olderThan: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+});
+```
+
+This deletes outbox entries that were synced more than 7 days ago. Returns the count of deleted rows.
+
+When to use this: your DB is growing large and you want to reclaim space. This is a housekeeping operation, not a fix.
+
+## Level 3: Delete the DB file (clean slate)
+
+If resync doesn't fix the problem, or you have a migration error that prevents startup, delete the database file and let Baresync recreate it:
+
+```ts
+// In your app's reset/settings screen:
+import { invoke } from "@tauri-apps/api/core";
+import { appDataDir } from "@tauri-apps/api/path";
+import { remove } from "@tauri-apps/api/fs";
+
+const dbPath = await appDataDir() + "baresync.db";
+await remove(dbPath);
+// Restart the app — migrations run from scratch, then full resync
+```
+
+What happens on restart:
+
+1. Plugin creates a fresh SQLite database
+2. All migrations run from the beginning
+3. `needs_baseline_sync` is `true` (no cursor exists)
+4. First sync pulls everything from the server
+
+This is the nuclear option. You lose all local-only data (rows that were never pushed). Only use it when lighter resets don't work.
+
+## Level 4: Delete DB + WAL file
+
+SQLite uses a Write-Ahead Log (WAL) file alongside the main database. If the DB is corrupted, the WAL file may also be stale:
+
+```ts
+const base = await appDataDir();
+await remove(base + "baresync.db");
+await remove(base + "baresync.db-wal");
+await remove(base + "baresync.db-shm");
+// Restart the app
+```
+
+Only needed if the DB file is genuinely corrupted (SQLite errors on open). Under normal operation, SQLite cleans up WAL and SHM files on close.
+
+## Providing a reset button in your UI
+
+A production app should offer users a way to reset sync without reinstalling:
+
+```tsx
+function SyncSettings({ client }: { client: SyncClient }) {
+  const [confirming, setConfirming] = useState(false);
+
+  const handleResync = async () => {
+    await client.fullResync();
+  };
+
+  const handleFullReset = async () => {
+    const base = await appDataDir();
+    await remove(base + "baresync.db");
+    await remove(base + "baresync.db-wal");
+    window.location.reload();
+  };
+
+  return (
+    <div>
+      <button onClick={handleResync}>
+        Re-sync from server
+      </button>
+      <button
+        onClick={() => setConfirming(true)}
+        style={{ color: "red" }}
+      >
+        Reset local database
+      </button>
+      {confirming && (
+        <dialog open>
+          <p>This deletes all local data and re-syncs from the server.</p>
+          <button onClick={handleFullReset}>Confirm</button>
+          <button onClick={() => setConfirming(false)}>Cancel</button>
+        </dialog>
+      )}
+    </div>
+  );
+}
+```
+
+## What NOT to do
+
+**Don't manually delete rows from `sync_outbox`** — if you delete pending (unsynced) entries, those local changes are lost forever. They'll never be pushed to the server.
+
+**Don't manually clear `sync_cursors` via SQL** — use `fullResync()` instead. Direct SQL manipulation can leave the engine in an inconsistent state.
+
+**Don't delete the DB while the app is running** — the plugin holds an open SQLite connection. Close the connection first (restart the app) or the file may be locked.
+
+**Don't share DB files between app versions** — each version's migrations expect a specific schema state. If you downgrade, the DB may have columns the old code doesn't understand.

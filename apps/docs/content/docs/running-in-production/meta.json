@@ -1,0 +1,12 @@
+{
+  "title": "Running in Production",
+  "pages": [
+    "overview",
+    "configuration",
+    "managing-migrations",
+    "resetting-local-db",
+    "monitoring-sync-health",
+    "troubleshooting",
+    "performance"
+  ]
+}

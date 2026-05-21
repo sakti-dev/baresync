@@ -1,0 +1,231 @@
+---
+title: Troubleshooting
+description: When sync breaks — error types, HTTP status codes, diagnostic steps, and how to fix common failures.
+---
+
+# Troubleshooting
+
+Sync fails silently most of the time — the polling loop swallows errors and retries. This page helps you diagnose what went wrong when it stops self-healing.
+
+## Error types
+
+The sync engine reports errors as `SyncError` variants. Here's what each one means:
+
+| Error | Cause | Fix |
+|---|---|---|
+| `SyncError::Network(msg)` | No internet, DNS failure, server unreachable | Check connectivity. The polling loop retries automatically. |
+| `SyncError::Http { status, body, kind }` | Server returned an error. See [HTTP errors](#http-status-codes) below. | Depends on the status code. |
+| `SyncError::Database(msg)` | SQLite error: query failed, table missing, constraint violation | Check your migrations ran. Check DB file permissions. |
+| `SyncError::Validation(msg)` | Push data doesn't match the contract schema | Compare your generated artifacts with the server's contract. |
+| `SyncError::Encoding(msg)` | JSON/protobuf serialization failed | Ensure client and server use the same `encoding`. |
+| `SyncError::Migration(msg)` | Migration SQL failed | Fix the migration SQL. Delete DB and restart if needed. |
+| `SyncError::SingleRowTooLarge { table, id }` | One row exceeds the server's `maxBytes` limit | Reduce the row's data size, or increase the server's `maxBytes`. This can't be auto-retried. |
+
+## HTTP status codes
+
+When the sync engine gets an HTTP error from your server, it classifies the response:
+
+### 401 / 403 — Auth failure
+
+```txt
+kind: "auth"
+```
+
+The server rejected the request because the scope isn't authorized. This happens when:
+
+- The `scopeId` doesn't exist on the server
+- The user's session expired
+- The scope resolver returned `{ ok: false }`
+
+**Fix**: Check that the `scopeId` in your `SyncClient` config matches a scope the server recognizes. If you use auth, ensure tokens are valid.
+
+### 409 — Idempotency conflict
+
+```txt
+kind: "unknown" (status 409)
+code: "sync_idempotency_conflict"
+```
+
+A push with the same idempotency key is already in progress, or completed with a different body. This usually means:
+
+- The client sent a duplicate push
+- A previous push timed out client-side but succeeded server-side
+
+**Fix**: This is usually self-resolving. The polling loop retries, and the server returns the previous result for the same key. If it persists, check `sync_batch_requests` on the server for stale entries and run `cleanupSyncBatchRequests`.
+
+### 413 — Payload too large
+
+```txt
+kind: "payload_too_large"
+code: "sync_payload_too_large"
+```
+
+The push body exceeds the server's `maxBytes` or `maxRows` limit.
+
+**Fix**: The engine automatically splits the chunk in half and retries. If a **single row** is too large, it fails with `SingleRowTooLarge`. Reduce the row's data or increase the server's `maxBytes`.
+
+### 400 — Invalid cursor
+
+```txt
+code: "sync_cursor_invalid"
+```
+
+The cursor format is wrong. Expected: `sync:{timestamp}:{table}:{rowId}`.
+
+**Fix**: Call `fullResync()` to clear the cursor and start fresh.
+
+### 500–599 — Server error
+
+```txt
+kind: "server"
+```
+
+Your server threw an unhandled error.
+
+**Fix**: Check server logs. This is a bug in your server code, not in the sync engine.
+
+## Diagnostic flowchart: "My data isn't syncing"
+
+When a user reports that changes aren't appearing, follow this order:
+
+### Step 1: Check local state
+
+```ts
+const state = await client.getState();
+```
+
+- **`dirty_count > 0`** → Local changes exist but haven't been pushed. Continue to step 2.
+- **`dirty_count === 0`** → Local changes were pushed. Continue to step 3.
+
+### Step 2: Check if push is reaching the server
+
+Call `syncNow()` manually and check the result:
+
+```ts
+const result = await client.syncNow();
+console.log(result);
+```
+
+- **`result.push` exists with `tables_synced`** → Push succeeded. The server has the data.
+- **`result.push` exists with `rejected_tables`** → Server rejected some tables. Check server logs.
+- **`result.push` is missing** → Push didn't run. The engine decided no push was needed, or it errored.
+- **Throws an error** → Check the error type above.
+
+### Step 3: Check if pull is working on the other device
+
+On the device that should receive the data:
+
+```ts
+const state = await client.getState();
+console.log(state.last_server_watermark);
+```
+
+If the watermark is old, call `syncNow()` and check if `result.pull.rows_received > 0`.
+
+### Step 4: Check the server
+
+Hit the server's state endpoint (if you have one) or query the database directly:
+
+```bash
+sqlite3 /path/to/server.db "SELECT COUNT(*) FROM categories WHERE scope_id = 'merchant-123'"
+```
+
+If the row exists on the server but doesn't appear on the client, the pull isn't advancing.
+
+### Step 5: Nuclear option
+
+If nothing above helps:
+
+```ts
+await client.fullResync();
+```
+
+This clears the cursor and re-pulls everything. If the data still doesn't appear, it doesn't exist on the server.
+
+## Common failure patterns
+
+### "Dirty count never reaches 0"
+
+Symptoms: `getState().local_dirty_count` stays positive after multiple sync cycles.
+
+Diagnosis:
+
+```ts
+// Check if push is succeeding
+const result = await client.syncNow();
+if (result.push?.tables_synced.length === 0) {
+  console.log("Push ran but synced nothing");
+  console.log("Rejected tables:", result.push?.rejected_tables);
+}
+```
+
+Common causes:
+- **Server rejecting with 409** — idempotency conflict. Check `sync_batch_requests` table.
+- **Server rejecting with 413** — payload too large. The auto-retry should handle this, but `SingleRowTooLarge` can't be retried.
+- **Scope mismatch** — outbox entries have a different `scope_id` than the sync client. Check `sync_outbox.scope_id` vs your client config.
+
+### "Data appears on one device but not another"
+
+- The sending device hasn't pushed yet (dirty count > 0)
+- The receiving device's cursor is ahead of the new data (stale watermark)
+- The two devices use different `scopeId` values
+- The server has a bug in its scope resolution
+
+### "Sync works but is slow"
+
+See [Performance](./performance) for tuning `max_push_bytes`, `max_push_rows`, and polling interval.
+
+### "App crashes on startup after migration"
+
+Bad migration SQL. The engine logs the error. Fix the SQL, delete the DB file, and restart:
+
+```ts
+import { remove } from "@tauri-apps/api/fs";
+await remove(dbPath);
+window.location.reload();
+```
+
+### "`needs_baseline_sync` stays `true` after syncing"
+
+The cursor isn't being saved. This means SQLite writes are failing silently.
+
+Check:
+1. DB file path is writable
+2. Disk isn't full
+3. DB file isn't read-only (can happen on Android if you point to the wrong directory)
+
+## Inspecting internal tables (last resort)
+
+If the API-based diagnosis above isn't enough, you can query Baresync's internal tables directly through Drizzle. This is for debugging only — don't build features on these tables:
+
+```ts
+import { syncOutbox, syncCursors } from "@repo/sync-contract/schema";
+
+// Check pending outbox entries
+const pending = await db
+  .select()
+  .from(syncOutbox)
+  .where(sql`synced_at IS NULL`);
+
+// Check stored cursors
+const cursors = await db.select().from(syncCursors);
+```
+
+Key columns in `sync_outbox`:
+
+| Column | Meaning |
+|---|---|
+| `table_name` | Which table the change is for |
+| `row_id` | Which row changed |
+| `operation` | `"insert"`, `"update"`, or `"delete"` |
+| `scope_id` | The scope this change belongs to |
+| `synced_at` | `NULL` = pending. Timestamp = successfully pushed. |
+| `changed_at` | When the change was recorded |
+
+Key columns in `sync_cursors`:
+
+| Column | Meaning |
+|---|---|
+| `scopeId` | The scope this cursor belongs to |
+| `lastCursor` | The watermark string |
+| `updatedAt` | When the cursor was last updated |

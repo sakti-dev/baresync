@@ -1,0 +1,132 @@
+---
+title: Configuration
+description: All the knobs you can tune when setting up Baresync for production — plugin builder options, environment-specific settings, and tuning limits.
+---
+
+# Configuration
+
+Baresync has two layers of configuration: the **Tauri plugin** (controls runtime behavior on the client) and the **server** (controls push limits and response behavior). This page covers every setting you can change, what the defaults are, and when to deviate from them.
+
+## Plugin builder options
+
+When you register the plugin in your Tauri app's `main.rs`, you use the builder pattern. Every option has a sensible default, so most apps only set a few:
+
+```rust
+tauri::Builder::default()
+    .plugin(
+        baresync::Builder::new()
+            .api_base_url("https://api.example.com")
+            .db_path("baresync.db")
+            .poll_interval_secs(30)
+            .migrations(migrations)
+            .contract_tables(tables)
+            .build(),
+    )
+```
+
+### All options
+
+| Method | Type | Default | Purpose |
+|---|---|---|---|
+| `.api_base_url(url)` | `String` | `""` (required) | Your sync server's base URL. All sync endpoints are relative to this. |
+| `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative to the app's data directory, or absolute. |
+| `.encoding(enc)` | `String` | `"json"` | Sync encoding: `"json"` or `"protobuf"`. Must match the server. |
+| `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes. Set to `0` to disable auto-polling. |
+| `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
+| `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
+| `.max_push_rows(rows)` | `usize` | `2000` | Maximum rows per push chunk. Works with `max_push_bytes` — whichever limit is hit first. |
+| `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_dir()`, not both. |
+| `.migrations_dir(dir)` | `String` | `""` | Directory of `.sql` migration files. Sorted by filename. |
+| `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
+| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Only useful for testing — don't override this in production. |
+
+## Server configuration
+
+The server limits are set when you create the sync service:
+
+```ts
+const { createSyncService } = await import("@repo/sync-contract/server");
+
+const service = createSyncService({
+  db: sqliteDb,
+  contract: syncContract,
+  limits: {
+    maxBytes: 2 * 1024 * 1024,
+    maxRows: 2000,
+  },
+});
+```
+
+### Server limits
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `maxBytes` | 2 MB | Maximum push body size. Rejects with `413` if exceeded. |
+| `maxRows` | 2000 | Maximum total rows in a push. Rejects with `413` if exceeded. |
+
+The client's `max_push_bytes` should be **smaller** than the server's `maxBytes`. This gives the client room to split chunks before the server rejects them. A good ratio is client target = server max / 8 (e.g., 256 KB client, 2 MB server).
+
+## Environment-specific settings
+
+### Development
+
+```rust
+baresync::Builder::new()
+    .api_base_url("http://localhost:3000")
+    .db_path(":memory:")  // fresh DB on every restart
+    .poll_interval_secs(10)  // fast feedback loop
+    .poll_on_background(true)  // don't pause when you switch to the terminal
+```
+
+### Production
+
+```rust
+baresync::Builder::new()
+    .api_base_url("https://api.example.com")
+    .db_path("baresync.db")
+    .poll_interval_secs(30)
+    .poll_on_background(false)  // save battery on mobile
+    .max_push_bytes(262_144)
+    .max_push_rows(2000)
+```
+
+### Testing
+
+```rust
+baresync::Builder::new()
+    .api_base_url("http://localhost:18080")
+    .db_path(":memory:")
+    .poll_interval_secs(0)  // disable polling, call syncNow() manually
+    .transport(mock_transport)  // record calls for assertions
+```
+
+## JS client configuration
+
+When you create a `SyncClient` in your frontend, you set the scope and encoding:
+
+```ts
+import { createSyncClient } from "@repo/sync-contract";
+
+const client = createSyncClient({
+  apiUrl: "https://api.example.com",
+  encoding: "json",
+  scopeId: "merchant-123",
+});
+```
+
+| Field | Required | Purpose |
+|---|---|---|
+| `apiUrl` | Yes | Server base URL. Must match the plugin's `api_base_url`. |
+| `encoding` | Yes | `"json"` or `"protobuf"`. Must match the plugin and server. |
+| `scopeId` | Yes | The sync scope for this client. Determines which data is synced. |
+| `invoke` | No | Custom invoke function. Only useful for testing. |
+
+## Common mistakes
+
+**Mismatched encoding** — plugin says `"json"`, server says `"protobuf"`. Sync fails with encoding errors. Ensure all three layers (plugin, client, server) use the same encoding.
+
+**DB path without directory** — `db_path("baresync.db")` creates the file in the current working directory, which may not be writable. On mobile, use the app's data directory. On desktop, use `app_data_dir/baresync.db`.
+
+**Polling too fast** — `poll_interval_secs(1)` creates unnecessary load. 30 seconds is a good default. If you need faster updates, consider a push notification that calls `syncNow()` instead.
+
+**Client target larger than server max** — if `max_push_bytes` on the client exceeds `maxBytes` on the server, every push gets rejected with 413. The engine will keep retrying and splitting, but it's wasteful. Keep the client target well below the server limit.
