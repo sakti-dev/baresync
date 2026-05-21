@@ -17,6 +17,7 @@
     "@tanstack/react-router": "1.170.4",
     "@tanstack/react-router-devtools": "1.167.0",
     "@tanstack/react-start": "1.168.6",
+    "@xyflow/react": "^12.10.2",
     "fumadocs-core": "16.9.0",
     "fumadocs-mdx": "15.0.7",
     "fumadocs-ui": "16.9.0",
