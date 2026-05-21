@@ -1,6 +1,97 @@
 ---
 title: Polling
-description: TODO
+description: The polling loop lifecycle — start, stop, pause, resume, and early sync triggers.
 ---
 
-TODO: Write this page.
+# Polling
+
+The polling loop runs the sync engine on a fixed interval. It lives in a spawned Tokio task and communicates via a channel and a `Notify`.
+
+## Lifecycle
+
+```
+startPolling() → loop runs every N seconds → sync_fn() → emit events
+                    ↑                                  |
+                    └── notify_one() on run_sql ───────┘
+```
+
+1. `startPolling(scope_id)` spawns a Tokio task that runs the polling loop
+2. Every `poll_interval_secs` seconds, the loop calls `sync_fn(scope_id)`
+3. `sync_fn` creates a `SyncEngine` and calls `sync_now`
+4. If data changed, emits `baresync://data-changed` and `baresync://sync-status-changed`
+5. The loop resets its timer after each cycle
+
+### Early sync on write
+
+When `run_sql` or `run_sql_batch` detects `rows_affected > 0`, it calls `notify_one()` on the polling loop's `Notify`. This wakes the loop immediately (if it is not paused or already syncing), so local writes are pushed sooner than the next tick.
+
+## Concurrency guard
+
+The loop uses an `AtomicBool` (`sync_in_progress`) to prevent overlapping sync cycles. If a sync is already running when the timer fires or a notify arrives, the cycle is skipped.
+
+## Pause and resume
+
+- `pausePolling()` sends `ControlMsg::Pause` — the loop skips timer ticks but stays alive
+- `resumePolling()` sends `ControlMsg::Resume` — the loop resumes and resets the timer
+- Both emit `baresync://sync-status-changed`
+
+### Window focus (desktop)
+
+When `poll_on_background` is `false` (default):
+
+- Window loses focus → `pausePolling`
+- Window gains focus → `resumePolling`
+
+This prevents unnecessary sync when the user is in another application.
+
+### Mobile lifecycle
+
+On Android/iOS:
+
+- Webview suspended → `pausePolling`
+- Webview resumed → `resumePolling`
+
+## Stop
+
+`stopPolling()` sends `ControlMsg::Stop` and awaits the task handle. The loop exits cleanly. Call `startPolling` again to restart.
+
+Stopping also resets `last_sync_at` and sets `paused` to `false`.
+
+## Polling status
+
+```ts
+const status = await invoke("get_polling_status");
+// { running: boolean, paused: boolean, last_sync_at: string | null }
+```
+
+| Field | Description |
+|---|---|
+| `running` | `true` if the polling task is alive |
+| `paused` | `true` if the loop is skipping ticks |
+| `last_sync_at` | ISO timestamp of the last completed sync |
+
+## Polling state diagram
+
+```
+                    startPolling()
+                         │
+                         ▼
+              ┌────── Running ──────┐
+              │                      │
+         pausePolling()        timer / notify
+              │                      │
+              ▼                      ▼
+         ┌── Paused ──┐      sync_fn() running
+         │             │            │
+    resumePolling()    │            ▼
+         │             │      Check outcome
+         ▼             │      Emit events
+    Back to Running    │      Reset timer
+                        │
+                  stopPolling()
+                        │
+                        ▼
+                    Stopped
+```
+
+Next: [Events](/docs/tauri-plugin/events).

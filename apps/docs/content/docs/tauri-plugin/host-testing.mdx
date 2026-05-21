@@ -1,6 +1,94 @@
 ---
 title: Host Testing
-description: TODO
+description: Test command logic without a running Tauri window.
 ---
 
-TODO: Write this page.
+# Host Testing
+
+The plugin's command logic is separated from Tauri's `State` wrapper. Each command has a `_with_state` variant that takes `&PluginState` directly, which you can construct in tests.
+
+## Testing without Tauri
+
+The `_with_state` functions work with a manually constructed `PluginState`:
+
+```rust
+use tauri_plugin_baresync::commands::{
+    sync_now_with_state, run_sql_with_state, PluginState, PluginEventSink,
+};
+use baresync_core::engine::SyncContractTables;
+use baresync_core::config::SyncEngineConfig;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use tokio::sync::{Mutex, Notify};
+
+#[derive(Default)]
+struct NoopSink;
+impl PluginEventSink for NoopSink {
+    fn emit(&self, _event: PluginEvent) {}
+}
+
+async fn test_state(pool: SqlitePool) -> PluginState {
+    PluginState {
+        pool: Arc::new(pool),
+        sync_config: SyncEngineConfig {
+            api_url: "http://localhost:0".to_string(),
+            encoding: "json".to_string(),
+            scope_id: "test".to_string(),
+            ..Default::default()
+        },
+        contract_tables: SyncContractTables {
+            upsert_order: vec!["items".to_string()],
+            delete_order: vec!["items".to_string()],
+            local_only_columns: vec!["is_synced".to_string()],
+        },
+        db_path: std::path::PathBuf::from(":memory:"),
+        embedded_migrations: Arc::new(vec![]),
+        migrations_dir: None,
+        poll_notify: Arc::new(Notify::new()),
+        sync_in_progress: Arc::new(AtomicBool::new(false)),
+        poll_control_tx: tokio::sync::Mutex::new(None),
+        poll_task_handle: tokio::sync::Mutex::new(None),
+        poll_state: Arc::new(Mutex::new(crate::polling::PollingState {
+            paused: false,
+            last_sync_at: None,
+        })),
+        poll_interval_secs: 30,
+        poll_on_background: false,
+        event_sink: Arc::new(NoopSink),
+    }
+}
+```
+
+## Custom HTTP transport
+
+The builder accepts a custom `transport` for testing. Implement `SyncHttpTransport` to return canned responses:
+
+```rust
+use baresync_core::http::SyncHttpTransport;
+use std::sync::Arc;
+
+struct MockTransport;
+
+#[async_trait::async_trait]
+impl SyncHttpTransport for MockTransport {
+    async fn post_json(&self, url: &str, body: &[u8]) -> Result<Vec<u8>, String> {
+        // Return a canned sync response
+        Ok(r#"{"rows":[],"cursor":"sync:test"}"#.as_bytes().to_vec())
+    }
+}
+
+let plugin = BaresyncBuilder::new()
+    .transport(Arc::new(MockTransport))
+    // ... other config
+    .build();
+```
+
+This lets you test the full sync pipeline without a real HTTP server.
+
+## Testing the JS client
+
+See [Testing](/docs/js-client/testing) for mocking the `invoke` function in JavaScript unit tests.
+
+## Integration tests
+
+The plugin crate includes integration tests in `crates/tauri-plugin-baresync/tests/` that exercise commands and simulation scenarios against an in-memory database with a mock transport. Use these as reference for writing your own tests.

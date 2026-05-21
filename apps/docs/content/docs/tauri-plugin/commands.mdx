@@ -1,6 +1,111 @@
 ---
 title: Commands
-description: TODO
+description: The Tauri commands the plugin exposes and how to register them.
 ---
 
-TODO: Write this page.
+# Commands
+
+The plugin provides command logic, but each app must register the commands in its `generate_handler!` macro. This is a Tauri requirement — commands must be defined per-app.
+
+## How commands work
+
+Each command is a `#[command]` function that takes `State<'_, PluginState>` and delegates to the plugin's implementation. Your `lib.rs` re-exports the same signatures:
+
+```rust
+use tauri::{command, generate_context, generate_handler, State};
+use tauri_plugin_baresync::commands::{self, PluginState};
+
+#[command]
+async fn sync_now(
+    state: State<'_, PluginState>,
+    scope_id: String,
+) -> Result<baresync_core::engine::SyncNowResult, String> {
+    commands::sync_now(state, scope_id).await
+}
+```
+
+Then register in `generate_handler!`:
+
+```rust
+.invoke_handler(generate_handler![
+    run_sql,
+    run_sql_batch,
+    get_db_info,
+    run_migrations,
+    get_migration_status,
+    sync_now,
+    sync_push,
+    sync_pull,
+    sync_full_resync,
+    get_sync_local_state,
+    purge_synced_outbox,
+    run_garbage_collection,
+    start_polling,
+    stop_polling,
+    pause_polling,
+    resume_polling,
+    get_polling_status,
+])
+```
+
+## Command reference
+
+### Database proxy
+
+| Command | JS invoke | Description |
+|---|---|---|
+| `run_sql` | `"run_sql"` | Execute a single SQL query (select or run) |
+| `run_sql_batch` | `"run_sql_batch"` | Execute multiple SQL statements in a transaction |
+| `get_db_info` | `"get_db_info"` | Return database file path and size |
+
+`run_sql` accepts a `SqlQuery { sql, params, method }`. When `method` is `"run"`, it returns no rows but reports `rows_affected`. When `method` is `"all"`, it returns rows.
+
+`run_sql_batch` runs all statements in a single transaction. If any fails, the entire batch rolls back.
+
+Both commands emit `baresync://data-changed` when `rows_affected > 0` and notify the polling loop to consider an early sync.
+
+### Migrations
+
+| Command | JS invoke | Description |
+|---|---|---|
+| `run_migrations` | `"run_migrations"` | Re-run migrations manually (usually unnecessary) |
+| `get_migration_status` | `"get_migration_status"` | List applied migrations with hashes |
+
+Migrations run automatically during plugin setup. You only need `run_migrations` if you want to trigger them again at runtime (for example, after a hot update).
+
+### Sync
+
+| Command | JS invoke | Returns |
+|---|---|---|
+| `sync_now` | `"sync_now"` | `SyncNowResult` |
+| `sync_push` | `"sync_push"` | `PushResult` |
+| `sync_pull` | `"sync_pull"` | `PullResult` |
+| `sync_full_resync` | `"sync_full_resync"` | `SyncNowResult` |
+| `get_sync_local_state` | `"get_sync_local_state"` | `LocalSyncState` |
+
+All sync commands take `scope_id: String`. See [Sync Commands](/docs/js-client/sync-commands) for the JS-side usage.
+
+### Maintenance
+
+| Command | JS invoke | Description |
+|---|---|---|
+| `purge_synced_outbox` | `"purge_synced_outbox"` | Delete synced outbox entries older than a timestamp |
+| `run_garbage_collection` | `"run_garbage_collection"` | Remove soft-deleted rows that have been synced |
+
+### Polling
+
+| Command | JS invoke | Description |
+|---|---|---|
+| `start_polling` | `"start_polling"` | Start the polling loop for a scope |
+| `stop_polling` | `"stop_polling"` | Stop the polling loop |
+| `pause_polling` | `"pause_polling"` | Pause without stopping the timer |
+| `resume_polling` | `"resume_polling"` | Resume from pause |
+| `get_polling_status` | `"get_polling_status"` | Return running, paused, last_sync_at |
+
+See [Polling](/docs/tauri-plugin/polling) for the polling lifecycle.
+
+## Error handling
+
+All commands return `Result<T, String>`. Errors are converted to strings with `.to_string()` before being sent back to JS. The JS client receives them as rejected promises.
+
+Next: [Migrations](/docs/tauri-plugin/migrations).

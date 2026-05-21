@@ -1,6 +1,123 @@
 ---
 title: Builder
-description: TODO
+description: Configure the plugin with the builder pattern.
 ---
 
-TODO: Write this page.
+# Builder
+
+The `Builder` constructs the Tauri plugin with your database path, server URL, encoding, contract tables, migrations, and polling settings.
+
+## Import
+
+```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+```
+
+## Basic usage
+
+```rust
+tauri::Builder::default()
+    .plugin(
+        BaresyncBuilder::new()
+            .api_base_url("http://127.0.0.1:18181")
+            .encoding("json")
+            .db_path(db_path())
+            .contract_tables(contract_tables())
+            .migrations(my_migrations())
+            .poll_interval_secs(30)
+            .build(),
+    )
+    .invoke_handler(generate_handler![/* ... */])
+    .run(generate_context!())
+    .expect("failed to run app");
+```
+
+## Builder methods
+
+| Method | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `api_base_url` | `impl Into<String>` | Yes | `""` | Your server's base URL |
+| `encoding` | `impl Into<String>` | Yes | `"json"` | Wire encoding (`"json"` or `"protobuf"`) |
+| `db_path` | `impl Into<String>` | Yes | `"baresync.db"` | Path to the local SQLite file |
+| `contract_tables` | `SyncContractTables` | Yes | empty | Upsert order, delete order, local-only columns |
+| `migrations` | `Vec<EmbeddedMigration>` | Yes | empty | Embedded SQL migrations |
+| `migrations_dir` | `impl Into<PathBuf>` | No | `None` | Additional filesystem-based migrations |
+| `poll_interval_secs` | `u64` | No | `30` | Seconds between polling cycles |
+| `poll_on_background` | `bool` | No | `false` | Whether to poll when the window is unfocused |
+| `max_push_bytes` | `usize` | No | `262144` | Maximum push payload size in bytes |
+| `max_push_rows` | `usize` | No | `2000` | Maximum rows per push request |
+| `transport` | `Arc<dyn SyncHttpTransport>` | No | `default_transport()` | Custom HTTP transport (for testing) |
+
+### api_base_url
+
+The plugin uses this URL when making HTTP requests to your server. It is combined with the sync contract's endpoint paths.
+
+### db_path
+
+The SQLite file path. Use an environment variable to override for testing:
+
+```rust
+fn db_path() -> String {
+    let base = env::var("MY_APP_DB_PATH").unwrap_or_else(|_| {
+        let mut path = std::env::temp_dir();
+        path.push("my-app.db");
+        path.to_string_lossy().to_string()
+    });
+    PathBuf::from(base).to_string_lossy().to_string()
+}
+```
+
+### contract_tables
+
+Tells the plugin the order to insert/update and delete rows, and which columns are local-only:
+
+```rust
+fn contract_tables() -> SyncContractTables {
+    SyncContractTables {
+        upsert_order: vec![
+            "locations".to_string(),
+            "items".to_string(),
+            "stock_counts".to_string(),
+        ],
+        delete_order: vec![
+            "stock_counts".to_string(),
+            "items".to_string(),
+            "locations".to_string(),
+        ],
+        local_only_columns: vec!["is_synced".to_string()],
+    }
+}
+```
+
+These values come from your generated `sync-table-order.ts`. See [Generated Files](/docs/generator/generated-files).
+
+### migrations
+
+Embedded migrations are compiled into the binary. Use a build script to generate them:
+
+```rust
+include!(concat!(env!("OUT_DIR"), "/my_migrations.rs"));
+```
+
+See [Migrations](/docs/tauri-plugin/migrations) for the build script.
+
+### poll_on_background
+
+When `false` (default), the plugin pauses polling when the window loses focus and resumes when it gains focus. This saves resources on desktop.
+
+When `true`, polling continues regardless of window focus. Use this for background services or mobile apps where the webview lifecycle is managed differently.
+
+On Android/iOS, the plugin also responds to `Suspended`/`Resumed` webview events, pausing and resuming polling automatically.
+
+## What happens during setup
+
+The builder's `setup` closure runs during Tauri initialization:
+
+1. Connects to SQLite at `db_path` (creates the file if missing, sets WAL mode, foreign keys on)
+2. Runs embedded migrations in strict mode
+3. Runs filesystem migrations (if `migrations_dir` is set) in strict mode
+4. Stores `PluginState` in Tauri's managed state
+
+If any step fails, the app panics with a descriptive error.
+
+Next: [Commands](/docs/tauri-plugin/commands).

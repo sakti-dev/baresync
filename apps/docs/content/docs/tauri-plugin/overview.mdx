@@ -1,6 +1,55 @@
 ---
 title: Overview
-description: TODO
+description: The Tauri plugin — what it owns and where it lives.
 ---
 
-TODO: Write this page.
+# Tauri Plugin Overview
+
+The Baresync Tauri plugin owns the local SQLite database. It opens the database, applies migrations, runs the sync engine on a timer, emits Tauri events when data changes, and exposes Tauri commands that your JS code calls through `invoke`.
+
+## Crates
+
+| Crate | Purpose |
+|---|---|
+| `baresync-core` | Sync engine, push/pull logic, migrations, drizzle proxy, state |
+| `tauri-plugin-baresync` | Tauri plugin builder, command handlers, polling loop, event emission |
+
+Your app depends on both: `baresync-core` for the build script and type definitions, `tauri-plugin-baresync` for the runtime plugin.
+
+## What the plugin owns
+
+- Local SQLite connection (single-pool, WAL mode, foreign keys on)
+- Migration discovery and execution (embedded at compile time)
+- Sync engine lifecycle (push, pull, full resync)
+- Polling loop with pause/resume/stop
+- Event emission (`baresync://data-changed`, `baresync://sync-status-changed`)
+- Drizzle proxy commands (`run_sql`, `run_sql_batch`)
+- Client identity (a UUID stored in `sync_client_identity`)
+
+## What the plugin does not own
+
+- Authorization headers — your server handles auth
+- Conflict resolution — the server decides merge outcomes
+- UI state — your React code reads events and invalidates caches
+- Server implementation — see [Server](/docs/server/overview)
+
+## Your app's responsibility
+
+Your app must:
+
+1. Add both crates as dependencies
+2. Write a `build.rs` that discovers migration files and embeds them
+3. Write a `lib.rs` that configures the builder and registers all commands
+4. Provide the contract tables (upsert order, delete order, local-only columns)
+
+The Getting Started guide walks through all of this. These reference pages explain each piece in depth.
+
+## Next steps
+
+- [Installation](/docs/tauri-plugin/installation) — Cargo.toml setup
+- [Builder](/docs/tauri-plugin/builder) — plugin configuration
+- [Commands](/docs/tauri-plugin/commands) — what each command does
+- [Migrations](/docs/tauri-plugin/migrations) — how migrations are discovered and applied
+- [Polling](/docs/tauri-plugin/polling) — the polling loop lifecycle
+- [Events](/docs/tauri-plugin/events) — what events the plugin emits and when
+- [Host Testing](/docs/tauri-plugin/host-testing) — testing without Tauri

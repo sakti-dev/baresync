@@ -1,6 +1,95 @@
 ---
 title: Events
-description: TODO
+description: What events the plugin emits and when.
 ---
 
-TODO: Write this page.
+# Events
+
+The plugin emits Tauri events so your JS code can react to sync state changes. Listen with `@tauri-apps/api/event`.
+
+## Event types
+
+| Event | When |
+|---|---|
+| `baresync://data-changed` | Rows were inserted, updated, or deleted by the sync engine or a Drizzle proxy write |
+| `baresync://sync-status-changed` | A sync cycle completed, polling started/stopped/paused/resumed |
+
+## baresync://data-changed
+
+Fires when the plugin detects that local data changed:
+
+- After a pull that received rows (`rows_received > 0`)
+- After a push that synced tables (`tables_synced` is not empty)
+- After a `run_sql` or `run_sql_batch` that affected rows (`rows_affected > 0`)
+
+The event payload is an empty object `()`. Use it as a signal to invalidate caches, not as a diff.
+
+### Typical handler
+
+```ts
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen("baresync://data-changed", async () => {
+  await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+});
+```
+
+## baresync://sync-status-changed
+
+Fires when the sync status changes:
+
+- After any sync command completes (`syncNow`, `push`, `pull`, `fullResync`)
+- When polling starts, stops, pauses, or resumes
+
+### Typical handler
+
+```ts
+const unlisten = await listen("baresync://sync-status-changed", async () => {
+  await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+});
+```
+
+## React provider pattern
+
+Combine both listeners in a provider that cleans up on unmount:
+
+```tsx
+useEffect(() => {
+  let disposed = false;
+  let cleanup: (() => Promise<void>) | null = null;
+
+  const pending = Promise.all([
+    listen("baresync://data-changed", async () => {
+      await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+    }),
+    listen("baresync://sync-status-changed", async () => {
+      await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+    }),
+  ]).then(([unlistenData, unlistenStatus]) => {
+    const release = async () => {
+      await Promise.all([unlistenData(), unlistenStatus()]);
+    };
+    if (disposed) {
+      release();
+      return;
+    }
+    cleanup = release;
+  });
+
+  return () => {
+    disposed = true;
+    if (cleanup) cleanup();
+  };
+}, [queryClient]);
+```
+
+The `disposed` flag handles the race between the async `listen` setup and component unmount.
+
+## Important details
+
+- Events fire from the Rust side, not from your JS code. You cannot control when they fire.
+- Multiple writes in quick succession may produce multiple events. React Query's `invalidateQueries` batches invalidations, so this is not a problem in practice.
+- Events do not carry payloads about which rows changed. Use queries to find out what changed.
+
+Next: [Host Testing](/docs/tauri-plugin/host-testing).
