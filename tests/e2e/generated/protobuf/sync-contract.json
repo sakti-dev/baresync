@@ -30,7 +30,7 @@
         "created_at": 7,
         "updated_at": 8
       },
-      "localOnlyColumns": [],
+      "localOnlyColumns": ["isSynced"],
       "serverOnlyColumns": []
     },
     "products": {

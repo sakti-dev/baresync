@@ -283,6 +283,7 @@ describe("defineProtobufSyncConfig", () => {
     expect(config.contract.packageName).toBe("test.sync.v1");
     expect(config.contract.encoding).toBe("protobuf");
     expect(config.outputs.proto).toBe("./generated/sync.proto");
+    expect(config.outputs.rustSyncMappers).toBe("./generated/sync-mappers.rs");
   });
 
   it("can be passed directly to generateProtobufWorkspaceArtifacts", () => {

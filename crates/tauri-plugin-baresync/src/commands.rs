@@ -491,22 +491,6 @@ pub fn handle_run_event_for_state(state: &PluginState, event: &RunEvent) {
         } => {
             handle_window_focus_for_state(state, *focused);
         }
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        RunEvent::WebviewEvent {
-            event: tauri::WebviewEvent::Suspended,
-            ..
-        } => {
-            schedule_control_msg(&state, ControlMsg::Pause);
-        }
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        RunEvent::WebviewEvent {
-            event: tauri::WebviewEvent::Resumed,
-            ..
-        }
-        | RunEvent::Resumed => {
-            schedule_control_msg(&state, ControlMsg::Resume);
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         RunEvent::Resumed => {
             schedule_control_msg(&state, ControlMsg::Resume);
         }

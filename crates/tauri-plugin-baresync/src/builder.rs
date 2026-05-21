@@ -128,13 +128,13 @@ impl Builder {
                 delete_order: vec![],
                 local_only_columns: vec![],
             }),
+            transport: self.transport,
             poll_interval_secs: self.poll_interval_secs.unwrap_or(30),
             poll_on_background: self.poll_on_background.unwrap_or(false),
         };
 
         let embedded_migrations = self.embedded_migrations;
         let migrations_dir = self.migrations_dir;
-        let transport = self.transport;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
             .setup(move |app, _api| {
@@ -147,14 +147,14 @@ impl Builder {
                         })
                 })?;
 
+                let transport = resolve_transport(&config)?;
+
                 let sync_config = SyncEngineConfig {
                     api_url: config.api_base_url.clone(),
                     encoding: config.encoding.clone(),
                     max_push_bytes: config.max_push_bytes,
                     max_push_rows: config.max_push_rows,
-                    transport: transport
-                        .clone()
-                        .unwrap_or_else(baresync_core::http::default_transport),
+                    transport,
                     ..Default::default()
                 };
 
@@ -202,5 +202,102 @@ impl Builder {
                 crate::commands::handle_run_event(app, event);
             })
             .build()
+    }
+}
+
+fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
+    if config.encoding == "protobuf" {
+        return config.transport.clone().ok_or_else(|| {
+            let message = "Protobuf encoding requires a generated protobuf transport. \
+                 Call .transport(...) with the generated transport before building the plugin.";
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, message)
+        });
+    }
+
+    Ok(config
+        .transport
+        .clone()
+        .unwrap_or_else(baresync_core::http::default_transport))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_transport;
+    use crate::config::PluginConfig;
+    use baresync_core::engine::SyncContractTables;
+    use baresync_core::http::SyncHttpTransport;
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct MockTransport;
+
+    impl SyncHttpTransport for MockTransport {
+        fn send_push_request(
+            &self,
+            _api_url: String,
+            _envelope: serde_json::Value,
+        ) -> baresync_core::http::SyncTransportFuture {
+            Box::pin(async { Ok(serde_json::Value::Null) })
+        }
+
+        fn send_status_request(
+            &self,
+            _api_url: String,
+            _body: serde_json::Value,
+        ) -> baresync_core::http::SyncTransportFuture {
+            Box::pin(async { Ok(serde_json::Value::Null) })
+        }
+
+        fn send_pull_request(
+            &self,
+            _api_url: String,
+            _body: serde_json::Value,
+        ) -> baresync_core::http::SyncTransportFuture {
+            Box::pin(async { Ok(serde_json::Value::Null) })
+        }
+    }
+
+    fn test_config(encoding: &str, transport: Option<Arc<dyn SyncHttpTransport>>) -> PluginConfig {
+        PluginConfig {
+            api_base_url: "http://127.0.0.1:18181".to_string(),
+            encoding: encoding.to_string(),
+            max_push_bytes: 256 * 1024,
+            max_push_rows: 2000,
+            db_path: ":memory:".to_string(),
+            contract_tables: SyncContractTables {
+                upsert_order: vec![],
+                delete_order: vec![],
+                local_only_columns: vec![],
+            },
+            transport,
+            poll_interval_secs: 30,
+            poll_on_background: false,
+        }
+    }
+
+    #[test]
+    fn protobuf_requires_explicit_transport() {
+        let error = match resolve_transport(&test_config("protobuf", None)) {
+            Ok(_) => panic!("protobuf should require an explicit transport"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("generated protobuf transport"),
+            "unexpected error message: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn protobuf_uses_explicit_transport() {
+        let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
+        let resolved = resolve_transport(&test_config("protobuf", Some(transport.clone())))
+            .expect("explicit protobuf transport should resolve");
+        assert!(Arc::ptr_eq(&transport, &resolved));
+    }
+
+    #[test]
+    fn json_uses_default_transport_when_missing() {
+        assert!(resolve_transport(&test_config("json", None)).is_ok());
     }
 }

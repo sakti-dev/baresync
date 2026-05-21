@@ -5,7 +5,7 @@ description: What the generator outputs and how to use them.
 
 # Generated Files
 
-The generator writes three files to your `outputDir`.
+The generator writes three files for JSON configs, and additional protobuf outputs when you use `defineProtobufSyncConfig()`.
 
 ## sync-contract.json
 
@@ -91,4 +91,4 @@ Wire these up in your sync contract `package.json`:
 
 ## Do not edit generated files
 
-All three files are auto-generated. If you need to change the contract, update your schemas or config and re-run `bun run generate`.
+The generated files are auto-generated. If you need to change the contract, update your schemas or config and re-run `bun run generate`.

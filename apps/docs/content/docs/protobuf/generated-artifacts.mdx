@@ -5,7 +5,7 @@ description: What the protobuf generator produces — the .proto file, TypeScrip
 
 # Generated Artifacts
 
-When you run `generateSyncArtifacts()` with a protobuf config, it produces 7 files. This page explains what each one is and how to use it.
+When you run `generateSyncArtifacts()` with a protobuf config, it produces the protobuf schema, runtime, contract files, and generated Rust transport code. This page explains what each one is and how to use it.
 
 ## The 7 generated files
 
@@ -17,7 +17,7 @@ When you run `generateSyncArtifacts()` with a protobuf config, it produces 7 fil
 | `sync.generated.ts` | `SYNC_PROTOBUF_SCHEMA` constant | Yes — used by server handlers |
 | `sync-table-order.ts` | Upsert and delete ordering | Yes — used by server write operations |
 | `sync-contract.json` | Full contract with field numbers | Yes — machine-readable contract |
-| `protobuf_generated.rs` | Rust prost struct definitions | Yes — used in Tauri app |
+| `protobuf_generated.rs` | Rust prost structs, row mappers, and generated transport | Yes — used in Tauri app |
 
 All files are deterministic — regenerating with the same schema produces identical output. Commit them to version control.
 
@@ -195,7 +195,7 @@ The machine-readable contract. The protobuf version adds `protobufFieldNumbers` 
 
 ## `protobuf_generated.rs`
 
-Generated Rust structs using `prost` derive macros:
+Generated Rust structs using `prost` derive macros plus the app-specific transport helpers:
 
 ```rust
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -220,7 +220,25 @@ pub struct CategoriesRow {
 | `int64` | `i64` |
 | `string` | `String` |
 
-**Current status:** These structs are generated and compilable, but the Rust sync engine doesn't use them yet. When protobuf transport is implemented in the engine, these structs will be used for encoding push/pull/status messages. For now, they're ready for use with custom transports or tests.
+### Generated transport
+
+The Rust output also includes a concrete transport factory and value mappers for your sync contract. The generated code is what makes `.encoding("protobuf")` work in a Tauri app:
+
+```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+mod protobuf_generated;
+
+tauri::Builder::default()
+    .plugin(
+        BaresyncBuilder::new()
+            .encoding("protobuf")
+            .transport(protobuf_generated::generated_protobuf_transport())
+            .build(),
+    );
+```
+
+The transport is schema-specific, so it is generated alongside the prost structs rather than provided as a single generic library type.
 
 Include in your Tauri app's `Cargo.toml`:
 

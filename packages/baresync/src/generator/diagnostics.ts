@@ -532,6 +532,32 @@ function checkNoDeleteStrategy(
   return [];
 }
 
+function checkBatteriesIncludedNot1To1(
+  meta: {
+    localOnlyColumns?: string[];
+    serverOnlyColumns?: string[];
+  },
+  tableName: string
+): SyncDiagnostic[] {
+  const localOnly = meta.localOnlyColumns ?? [];
+  const serverOnly = meta.serverOnlyColumns ?? [];
+
+  if (localOnly.length > 0 && serverOnly.length > 0) {
+    return [
+      {
+        code: "SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1",
+        severity: "warning",
+        message: `Table "${tableName}" mixes local-only and server-only columns`,
+        table: tableName,
+        why: "Batteries-included contracts are easiest to maintain when local and server columns map 1:1 with the sync schema",
+        fix: "Split local-only or server-only state into explicit sync columns when possible",
+      },
+    ];
+  }
+
+  return [];
+}
+
 function checkLargeTextField(
   def: SyncedTableDefinition,
   tableName: string
@@ -705,6 +731,7 @@ export function runDiagnostics(
     diagnostics.push(...checkNullableScopeColumn(def, tableName));
     diagnostics.push(...checkNoConflictStrategy(def, tableName));
     diagnostics.push(...checkNoDeleteStrategy(def, tableName));
+    diagnostics.push(...checkBatteriesIncludedNot1To1(meta, tableName));
     diagnostics.push(...checkLargeTextField(def, tableName));
     diagnostics.push(...checkJsonOnlyField(def, tableName));
     diagnostics.push(...checkMissingScopeWatermark(tableName));

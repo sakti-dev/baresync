@@ -27,6 +27,7 @@ export interface ProtobufFieldDescriptor {
 export interface ProtobufTableDescriptor {
   changesMessageName: string;
   fields: ProtobufFieldDescriptor[];
+  localOnlyColumns: string[];
   requestFieldNumber: number;
   rowMessageName: string;
   wrapperFieldNumbers: {
@@ -80,6 +81,7 @@ function buildProtobufTableDescriptor(input: {
       name: column.name,
       protobufType: buildProtobufScalarType(column),
     })),
+    localOnlyColumns: input.table.localOnlyColumns ?? [],
     requestFieldNumber: input.tableIndex + 4,
     rowMessageName: `${toPascalCase(input.tableName)}Row`,
     wrapperFieldNumbers: {

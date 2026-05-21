@@ -350,6 +350,22 @@ bun run typecheck
 cd apps/docs && bun run types:check && bun run build
 ```
 
+Measure test coverage:
+
+```bash
+bun run coverage:js
+bun run coverage:rust
+bun run coverage
+```
+
+The JS coverage command uses Bun's built-in coverage reporting. The Rust coverage command uses `cargo llvm-cov` and currently runs `baresync-core` and `tauri-plugin-baresync` separately on this machine because full workspace coverage hits local disk limits here.
+
+Last measured in this checkout:
+
+- JS/Bun coverage: 95.36% lines, 93.56% functions
+- `baresync-core`: 56.46% lines, 51.08% functions
+- `tauri-plugin-baresync`: 35.36% lines, 21.43% functions
+
 Publishing to npm and crates.io remains a manual maintainer action after the build and package verification steps pass.
 
 Additional verification lives in the fixture and E2E workspaces. Before changing desktop, Android, Tauri, fixture app, fixture backend, or smoke automation, read `docs/knowledge/E2E-TESTING-RUNBOOK.md`.

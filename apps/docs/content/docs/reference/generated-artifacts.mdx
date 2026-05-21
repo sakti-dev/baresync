@@ -120,9 +120,9 @@ export { decodeProtobufBody, encodeProtobufBody } from "...";
 export type { SyncProtobufSchema } from "...";
 ```
 
-### Rust sync mappers
+### Rust sync mappers and transport
 
-Prost-compatible Rust structs with `#[derive(Clone, PartialEq, ::prost::Message)]`.
+Prost-compatible Rust structs with `#[derive(Clone, PartialEq, ::prost::Message)]`, plus generated value mappers and a transport factory for the Tauri plugin.
 
 ```rust
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -133,6 +133,8 @@ pub struct ItemsRow {
     pub name: String,
 }
 ```
+
+The generated Rust file also includes `generated_protobuf_transport()`, which the plugin uses when you wire `.encoding("protobuf")` with `.transport(...)`.
 
 ## How to regenerate
 

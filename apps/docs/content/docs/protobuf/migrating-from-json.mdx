@@ -110,10 +110,11 @@ Once you're confident protobuf works, switch the plugin config:
 
 ```rust
 baresync::Builder::new()
-    .encoding("protobuf")  // was "json" or omitted
+    .encoding("protobuf")
+    .transport(protobuf_generated::generated_protobuf_transport())
 ```
 
-**Reminder:** The Rust engine currently sends JSON regardless of this setting. The protobuf path works for server-to-server or custom transport scenarios. When Rust protobuf transport is implemented, this switch will take effect automatically.
+**Reminder:** `encoding("protobuf")` only becomes wire-visible when the generated Rust transport is wired into the plugin. Keep the generated transport import and the `.transport(...)` call in place after the switch.
 
 ### Step 6: Remove JSON handlers (optional)
 

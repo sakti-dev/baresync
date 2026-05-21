@@ -40,7 +40,7 @@ tauri::Builder::default()
 | `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_dir()`, not both. |
 | `.migrations_dir(dir)` | `String` | `""` | Directory of `.sql` migration files. Sorted by filename. |
 | `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
-| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Only useful for testing — don't override this in production. |
+| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Required for protobuf apps; optional for JSON apps and tests. |
 
 ## Server configuration
 
@@ -118,6 +118,8 @@ BaresyncBuilder::new()
     .transport(mock_transport)  // record calls for assertions
 ```
 
+For protobuf apps, use the generated transport here instead of a mock if you want to exercise the real wire format.
+
 ## JS client configuration
 
 When you create a `SyncClient` in your frontend, you set the scope and encoding:
@@ -143,7 +145,7 @@ const client = createSyncClient({
 
 ## Common mistakes
 
-**Mismatched encoding** — plugin says `"json"`, server says `"protobuf"`. Sync fails with encoding errors. Ensure all three layers (plugin, client, server) use the same encoding.
+**Mismatched encoding** — plugin says `"json"`, server says `"protobuf"`. Sync fails with encoding errors. Ensure all three layers (plugin, client, server) use the same encoding and, for protobuf, that the generated transport is wired into the plugin.
 
 **DB path without a predictable app directory** — `db_path("baresync.db")` is relative to the process working directory. For production, resolve an app-owned data path explicitly, especially on mobile.
 

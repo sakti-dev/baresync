@@ -520,12 +520,13 @@ function handleStateRequest(): Response | Promise<Response> {
 }
 
 async function handleStatusRequest(request: Request): Promise<Response> {
-  const decoded = await decodeSyncRequest({
-    encoding: transportMode,
+  const decoded = await decodeFixtureRequest({
     kind: "status",
-    protobufSchema,
     request,
   });
+  if ("response" in decoded) {
+    return decoded.response;
+  }
   const body = decoded.body;
   if (String(body.scopeId ?? "") !== scopeId) {
     return Response.json({ error: "invalid_scope" }, { status: 404 });
@@ -561,12 +562,13 @@ async function handlePullRequest(request: Request): Promise<Response> {
     });
   }
 
-  const decoded = await decodeSyncRequest({
-    encoding: transportMode,
+  const decoded = await decodeFixtureRequest({
     kind: "pull",
-    protobufSchema,
     request,
   });
+  if ("response" in decoded) {
+    return decoded.response;
+  }
   const body = decoded.body;
   if (String(body.scopeId ?? "") !== scopeId) {
     return Response.json({ error: "invalid_scope" }, { status: 404 });
@@ -586,12 +588,13 @@ async function handlePullRequest(request: Request): Promise<Response> {
 }
 
 async function handlePushRequest(request: Request): Promise<Response> {
-  const decoded = await decodeSyncRequest({
-    encoding: transportMode,
+  const decoded = await decodeFixtureRequest({
     kind: "push",
-    protobufSchema,
     request,
   });
+  if ("response" in decoded) {
+    return decoded.response;
+  }
   const body = decoded.body;
   if (String(body.scopeId ?? "") !== scopeId) {
     return Response.json({ error: "invalid_scope" }, { status: 404 });
@@ -616,6 +619,34 @@ async function handlePushRequest(request: Request): Promise<Response> {
     kind: "push",
     protobufSchema,
   });
+}
+
+async function decodeFixtureRequest(input: {
+  kind: "push" | "pull" | "status";
+  request: Request;
+}): Promise<{ body: Record<string, unknown> } | { response: Response }> {
+  try {
+    const decoded = await decodeSyncRequest({
+      encoding: transportMode,
+      kind: input.kind,
+      protobufSchema,
+      request: input.request,
+    });
+    return { body: decoded.body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      response: Response.json(
+        {
+          error: "invalid_request_body",
+          encoding: transportMode,
+          kind: input.kind,
+          message,
+        },
+        { status: 400 }
+      ),
+    };
+  }
 }
 
 runtime.Bun.serve({

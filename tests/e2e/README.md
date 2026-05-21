@@ -48,7 +48,14 @@ bun --cwd tests/e2e run desktop:sync
 The smoke harness also exposes `desktop:sync:json` and `desktop:sync:protobuf` for explicit transport runs.
 
 The desktop smoke should validate plugin registration, command names, WebView-to-Rust IPC, local SQLite file behavior, baseline pull, local create, manual sync, and restart persistence.
-When a desktop smoke fails, collect the app logs and inspect `GET /__state` from the fixture backend to confirm whether the push path recorded the local rows.
+When a desktop smoke fails, collect:
+
+- the selected transport mode from the runner environment
+- the app-visible transport mode from the UI, if exposed
+- the backend transport mode from fixture logs or `/__state`
+- `GET /__state` from the fixture backend to confirm whether the push path recorded the local rows
+- the generator drift check output if the generated artifacts might be stale
+
 The backend contract checks should be used first when validating backend request/response behavior or SQLite persistence without launching the desktop app.
 
 ## Android
@@ -79,5 +86,13 @@ Android backend rules:
 - The public fixture app resolves the backend URL from Rust at startup, so the installed Android build must match the target it was built for.
 
 The Android smoke is final lifecycle and filesystem confidence only. Sync correctness belongs in the host command, JS invoke, and host-only simulation suites.
-When Android smoke fails, collect logcat output and, when practical, capture the fixture backend `/__state` response or a SQLite snapshot for the local app data.
+When Android smoke fails, collect:
+
+- the selected transport mode from the runner environment
+- the app-visible transport mode from the UI, if exposed
+- the backend transport mode from fixture logs or `/__state`
+- logcat output
+- the fixture backend `/__state` response or a SQLite snapshot for the local app data
+- the generator drift check output if the generated artifacts might be stale
+
 Use the backend contract checks to verify the deterministic fixture backend before treating an Android failure as a device-only issue.

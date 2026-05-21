@@ -188,12 +188,20 @@ async function postSync(
   kind: "push" | "pull" | "status",
   body: Record<string, unknown>
 ): Promise<Response> {
+  const headers =
+    encoding === "json"
+      ? { "Content-Type": "application/json" }
+      : { "Content-Type": "application/x-protobuf" };
+  assertEqual(
+    headers["Content-Type"],
+    encoding === "json" ? "application/json" : "application/x-protobuf",
+    "sync request content-type should match transport"
+  );
+
   return encoding === "json"
     ? await fetch(`${baseUrl}/sync/${kind}`, {
         body: JSON.stringify(body),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         method: "POST",
       })
     : await fetch(`${baseUrl}/sync/${kind}`, {
@@ -205,11 +213,27 @@ async function postSync(
             schema: protobufSchema,
           })
         ),
-        headers: {
-          "Content-Type": "application/x-protobuf",
-        },
+        headers,
         method: "POST",
       });
+}
+
+async function postRawSync(
+  baseUrl: string,
+  encoding: Encoding,
+  kind: "push" | "pull" | "status",
+  body: string | Uint8Array
+): Promise<Response> {
+  const headers =
+    encoding === "json"
+      ? { "Content-Type": "application/json" }
+      : { "Content-Type": "application/x-protobuf" };
+
+  return await fetch(`${baseUrl}/sync/${kind}`, {
+    body: typeof body === "string" ? body : toArrayBuffer(body),
+    headers,
+    method: "POST",
+  });
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -314,6 +338,15 @@ async function runFixtureServerContract(encoding: Encoding): Promise<void> {
       scopeId,
     });
     assertEqual(statusResponse.status, 200, "status should succeed");
+    assertEqual(
+      statusResponse.headers
+        .get("content-type")
+        ?.startsWith(
+          encoding === "json" ? "application/json" : "application/x-protobuf"
+        ),
+      true,
+      "status response content-type should match transport"
+    );
     const status = await readSyncResponse<SyncStatusResponse>(
       statusResponse,
       encoding,
@@ -333,6 +366,15 @@ async function runFixtureServerContract(encoding: Encoding): Promise<void> {
       tables: ["categories", "products"],
     });
     assertEqual(pullResponse.status, 200, "pull should succeed");
+    assertEqual(
+      pullResponse.headers
+        .get("content-type")
+        ?.startsWith(
+          encoding === "json" ? "application/json" : "application/x-protobuf"
+        ),
+      true,
+      "pull response content-type should match transport"
+    );
     const pull = await readSyncResponse<SyncPullResponse>(
       pullResponse,
       encoding,
@@ -399,6 +441,36 @@ async function runFixtureServerContract(encoding: Encoding): Promise<void> {
       "invalid push should not mutate backend state"
     );
 
+    const invalidBody =
+      encoding === "json" ? "{not-json" : new Uint8Array([255, 0, 127]);
+    const invalidBodyResponse = await postRawSync(
+      baseUrl,
+      encoding,
+      "status",
+      invalidBody
+    );
+    assertEqual(
+      invalidBodyResponse.status,
+      400,
+      "invalid request body should be rejected"
+    );
+    const invalidBodyJson = (await invalidBodyResponse.json()) as {
+      encoding: Encoding;
+      error: string;
+      kind: "status";
+      message: string;
+    };
+    assertEqual(
+      invalidBodyJson.error,
+      "invalid_request_body",
+      "invalid body response should identify the decode failure"
+    );
+    assertEqual(
+      invalidBodyJson.encoding,
+      encoding,
+      "invalid body response should report the transport mode"
+    );
+
     const pushResponse = await postSync(
       baseUrl,
       encoding,
@@ -406,6 +478,15 @@ async function runFixtureServerContract(encoding: Encoding): Promise<void> {
       createPushBody()
     );
     assertEqual(pushResponse.status, 200, "push should succeed");
+    assertEqual(
+      pushResponse.headers
+        .get("content-type")
+        ?.startsWith(
+          encoding === "json" ? "application/json" : "application/x-protobuf"
+        ),
+      true,
+      "push response content-type should match transport"
+    );
     const push = await readSyncResponse<SyncPushResponse>(
       pushResponse,
       encoding,

@@ -16,6 +16,8 @@ Your tests should prove that **your app** uses Baresync correctly:
 
 Most apps do not need to test Baresync's internal Rust engine. Baresync covers that in its own test suite. Your tests should focus on your app's schema, backend, UI, and runtime wiring.
 
+If your app uses protobuf, test the generated transport wiring too: the plugin should be configured with the generated Rust transport, and your contract or smoke tests should prove the backend is seeing `application/x-protobuf` traffic.
+
 ## Recommended Layers
 
 | Layer | What to test | Good tools |

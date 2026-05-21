@@ -17,7 +17,7 @@ The sync engine reports errors as `SyncError` variants. Here's what each one mea
 | `SyncError::Http { status, body, kind }` | Server returned an error. See [HTTP errors](#http-status-codes) below. | Depends on the status code. |
 | `SyncError::Database(msg)` | SQLite error: query failed, table missing, constraint violation | Check your migrations ran. Check DB file permissions. |
 | `SyncError::Validation(msg)` | Push data doesn't match the contract schema | Compare your generated artifacts with the server's contract. |
-| `SyncError::Encoding(msg)` | JSON/protobuf serialization failed | Ensure client and server use the same `encoding`. |
+| `SyncError::Encoding(msg)` | JSON/protobuf serialization failed | Ensure client and server use the same `encoding`, and for protobuf verify the generated transport is wired into the plugin. |
 | `SyncError::Migration(msg)` | Migration SQL failed | Fix the migration SQL. Delete DB and restart if needed. |
 | `SyncError::SingleRowTooLarge { table, id }` | One row exceeds the server's `maxBytes` limit | Reduce the row's data size, or increase the server's `maxBytes`. This can't be auto-retried. |
 
@@ -171,6 +171,25 @@ Common causes:
 - The two devices use different `scopeId` values
 - The server has a bug in its scope resolution
 
+### "Server receives JSON in protobuf mode"
+
+- The plugin is still using the default JSON transport
+- The generated Rust transport was not imported
+- `.transport(...)` was omitted from the plugin builder
+- The server route is still wired to a JSON handler
+
+Check the generated transport import, the plugin builder, the route handlers, and the `Content-Type` header first.
+
+### "Protobuf decode failed after a schema change"
+
+This usually means the generated artifacts are stale or the field numbers drifted.
+
+Check:
+1. Regenerate the protobuf artifacts in both the contract package and the app crate
+2. Re-commit `protobuf_generated.rs`, `sync.generated.ts`, and `sync-contract.json`
+3. Confirm the Drizzle column order did not change
+4. Confirm client, plugin, and server are all running the same contract version
+
 ### "Sync works but is slow"
 
 See [Performance](./performance) for tuning `max_push_bytes`, `max_push_rows`, and polling interval.
@@ -194,6 +213,10 @@ Check:
 1. DB file path is writable
 2. Disk isn't full
 3. DB file isn't read-only (can happen on Android if you point to the wrong directory)
+
+### "Field numbers don't match after a schema change"
+
+Protobuf field numbers are derived from column order. If a server starts rejecting protobuf bodies or decoded rows come back wrong after a contract edit, compare the generated artifacts against the committed files and make sure the table definitions were not reordered.
 
 ## Inspecting internal tables (last resort)
 

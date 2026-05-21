@@ -5,7 +5,7 @@ description: What protobuf support means in Baresync, when to use it, and what's
 
 # Protobuf
 
-Baresync supports two sync encodings: **JSON** (default) and **protobuf**. This section covers when protobuf makes sense and how to use it.
+Baresync supports two sync encodings: **JSON** (default) and **protobuf**. This section covers when protobuf makes sense and how to use it in a full app integration.
 
 ## Why protobuf
 
@@ -30,13 +30,14 @@ Baresync supports two sync encodings: **JSON** (default) and **protobuf**. This 
 
 ## Current support
 
-Protobuf encoding currently works at the **server boundary** — the TypeScript server can accept and return protobuf-encoded sync requests. The generated artifacts include:
+Protobuf is a complete app-sync path when you wire the generated Rust transport into the Tauri plugin. The generator produces:
 
-- A `.proto` schema definition
-- A self-contained TypeScript binary codec (no protoc dependency)
-- Rust `prost` struct definitions (for future Rust-side encoding)
+- a `.proto` schema definition
+- a self-contained TypeScript binary codec
+- Rust `prost` struct definitions
+- a generated Rust protobuf transport and row mappers for the Tauri app
 
-The Rust sync engine currently sends **JSON over HTTP only**. Full protobuf transport from the Tauri plugin to the server is not yet implemented — it's on the roadmap. What works today:
+The same contract drives the server, the generated client/runtime, and the fixture tests.
 
 ```txt
 ✅ Server accepts protobuf requests (TS)
@@ -44,10 +45,9 @@ The Rust sync engine currently sends **JSON over HTTP only**. Full protobuf tran
 ✅ Generated .proto file
 ✅ Generated TS binary codec (encode/decode)
 ✅ Generated Rust prost structs
-✅ Server-side round-trip tests (JSON ↔ protobuf parity)
-
-🔲 Tauri plugin sending protobuf over HTTP (not yet implemented)
-🔲 Rust engine protobuf transport (not yet implemented)
+✅ Generated Rust protobuf transport
+✅ Plugin wiring can use the generated transport explicitly
+✅ Server-side and HTTP-boundary round-trip tests
 ```
 
 ## How it works
@@ -57,7 +57,8 @@ Protobuf in Baresync is opt-in and follows the same contract-first approach as J
 1. You define your sync contract with `defineProtobufSyncConfig()` instead of `defineSyncConfig()`
 2. The generator produces protobuf-specific artifacts alongside the standard ones
 3. Your server handlers receive an `encoding: "protobuf"` config with a `protobufSchema`
-4. Requests and responses are binary-encoded using the generated codec
+4. Your Tauri plugin uses the generated Rust transport with `.transport(...)`
+5. Requests and responses are binary-encoded using the generated codec
 
 No `protoc` compiler is needed. The generated TypeScript runtime is a self-contained `BinaryWriter`/`BinaryReader` that handles encoding and decoding without external dependencies.
 

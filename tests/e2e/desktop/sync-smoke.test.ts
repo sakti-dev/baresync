@@ -163,11 +163,7 @@ smokeSuite("public fixture desktop smoke", () => {
 
     const manualSync = await runtime.browser.$("#manual-sync");
     await manualSync.click();
-    await waitForTextIncludes(
-      "#sync-result",
-      "manual:",
-      "manual sync should run"
-    );
+    await waitForText("#dirty-count", "0", "manual sync should complete");
 
     const backendState = await fetch(
       `${process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:18080"}/__state`

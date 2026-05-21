@@ -1,9 +1,11 @@
+import path from "node:path";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SyncContract } from "../schema/contract";
 import type { GeneratorConfig } from "./config";
 import type { SyncDiagnostic } from "./diagnostics";
 import { runDiagnostics } from "./diagnostics";
 import { computeSyncTableOrder } from "./fk-order";
+import { formatGeneratedArtifacts } from "./formatter";
 import { writeManifest } from "./manifest";
 import { writeSyncContractJson, writeTableOrderConstants } from "./outputs";
 
@@ -98,4 +100,12 @@ export function generateSyncArtifacts(
   writeSyncContractJson(contract, tableOrder, dir);
   writeTableOrderConstants(tableOrder, dir);
   writeManifest(contract, tableOrder, dir);
+  formatGeneratedArtifacts({
+    projectDir: process.cwd(),
+    tsAndJson: [
+      path.join(dir, "sync-contract.json"),
+      path.join(dir, "sync-contract.manifest.json"),
+      path.join(dir, "sync-table-order.ts"),
+    ],
+  });
 }

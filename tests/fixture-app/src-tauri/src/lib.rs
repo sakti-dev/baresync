@@ -1,24 +1,15 @@
 use std::env;
 #[cfg(target_os = "android")]
 use std::fs;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
-use baresync_core::error::{classify_http_error, SyncError};
-use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
-use prost::Message;
+use baresync_core::http::SyncHttpTransport;
 use serde::Serialize;
-use serde_json::{json, Value};
 use tauri::{command, generate_context, generate_handler, State};
 
 pub mod protobuf_generated;
 
-use protobuf_generated::{
-    CategoriesChanges, CategoriesRow, ProductsChanges, ProductsRow, SyncPullBatchRequest,
-    SyncPullBatchResponse, SyncPushBatchRequest, SyncPushBatchResponse, SyncStatusRequest,
-    SyncStatusResponse, SyncTableAck,
-};
+use protobuf_generated::generated_protobuf_transport;
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
 
@@ -98,309 +89,9 @@ fn fixture_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {
     }]
 }
 
-#[derive(Debug)]
-struct FixtureProtobufTransport;
-
-fn box_transport<T>(future: T) -> SyncTransportFuture
-where
-    T: Future<Output = Result<Value, SyncError>> + Send + 'static,
-{
-    Box::pin(future) as Pin<Box<dyn Future<Output = Result<Value, SyncError>> + Send>>
-}
-
-fn value_string(row: &Value, key: &str) -> String {
-    row.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn value_i64(row: &Value, key: &str) -> i64 {
-    row.get(key).and_then(Value::as_i64).unwrap_or_default()
-}
-
-fn value_bool(row: &Value, key: &str) -> bool {
-    row.get(key).and_then(Value::as_bool).unwrap_or_default()
-}
-
-fn categories_row_from_value(row: &Value) -> CategoriesRow {
-    CategoriesRow {
-        id: value_string(row, "id"),
-        merchant_id: value_string(row, "merchantId"),
-        name: value_string(row, "name"),
-        sort_order: value_i64(row, "sortOrder"),
-        deleted_at: value_string(row, "deletedAt"),
-        is_synced: value_bool(row, "isSynced"),
-        created_at: value_string(row, "createdAt"),
-        updated_at: value_string(row, "updatedAt"),
-    }
-}
-
-fn products_row_from_value(row: &Value) -> ProductsRow {
-    ProductsRow {
-        id: value_string(row, "id"),
-        merchant_id: value_string(row, "merchantId"),
-        category_id: value_string(row, "categoryId"),
-        name: value_string(row, "name"),
-        price_minor_units: value_i64(row, "priceMinorUnits"),
-        deleted_at: value_string(row, "deletedAt"),
-        is_synced: value_bool(row, "isSynced"),
-        created_at: value_string(row, "createdAt"),
-        updated_at: value_string(row, "updatedAt"),
-    }
-}
-
-fn categories_row_to_value(row: &CategoriesRow) -> Value {
-    json!({
-        "id": row.id,
-        "merchantId": row.merchant_id,
-        "name": row.name,
-        "sortOrder": row.sort_order,
-        "deletedAt": if row.deleted_at.is_empty() { Value::Null } else { Value::String(row.deleted_at.clone()) },
-        "isSynced": row.is_synced,
-        "createdAt": row.created_at,
-        "updatedAt": row.updated_at,
-    })
-}
-
-fn products_row_to_value(row: &ProductsRow) -> Value {
-    json!({
-        "id": row.id,
-        "merchantId": row.merchant_id,
-        "categoryId": row.category_id,
-        "name": row.name,
-        "priceMinorUnits": row.price_minor_units,
-        "deletedAt": if row.deleted_at.is_empty() { Value::Null } else { Value::String(row.deleted_at.clone()) },
-        "isSynced": row.is_synced,
-        "createdAt": row.created_at,
-        "updatedAt": row.updated_at,
-    })
-}
-
-fn changes_from_table(table: &Value) -> (String, Vec<Value>, Vec<String>) {
-    let table_name = table
-        .get("table")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let changed_rows = table
-        .get("changedRows")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let deleted_ids = table
-        .get("deletedIds")
-        .and_then(Value::as_array)
-        .map(|ids| {
-            ids.iter()
-                .filter_map(Value::as_str)
-                .map(std::string::ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    (table_name, changed_rows, deleted_ids)
-}
-
-fn push_request_from_value(envelope: &Value) -> SyncPushBatchRequest {
-    let mut request = SyncPushBatchRequest {
-        scope_id: value_string(envelope, "scopeId"),
-        client_id: value_string(envelope, "clientId"),
-        idempotency_key: value_string(envelope, "idempotencyKey"),
-        categories: None,
-        products: None,
-    };
-
-    if let Some(tables) = envelope.get("tables").and_then(Value::as_array) {
-        for table in tables {
-            let (table_name, changed_rows, deleted_ids) = changes_from_table(table);
-            if table_name == "categories" {
-                request.categories = Some(CategoriesChanges {
-                    changed_rows: changed_rows.iter().map(categories_row_from_value).collect(),
-                    deleted_ids,
-                });
-            } else if table_name == "products" {
-                request.products = Some(ProductsChanges {
-                    changed_rows: changed_rows.iter().map(products_row_from_value).collect(),
-                    deleted_ids,
-                });
-            }
-        }
-    }
-
-    request
-}
-
-fn pull_response_to_value(response: SyncPullBatchResponse) -> Value {
-    let mut tables = Vec::new();
-    if let Some(categories) = response.categories {
-        tables.push(json!({
-            "table": "categories",
-            "changedRows": categories.changed_rows.iter().map(categories_row_to_value).collect::<Vec<_>>(),
-            "deletedIds": categories.deleted_ids,
-        }));
-    }
-    if let Some(products) = response.products {
-        tables.push(json!({
-            "table": "products",
-            "changedRows": products.changed_rows.iter().map(products_row_to_value).collect::<Vec<_>>(),
-            "deletedIds": products.deleted_ids,
-        }));
-    }
-
-    json!({
-        "hasMore": response.has_more,
-        "cursor": response.cursor,
-        "serverTime": response.server_time,
-        "tables": tables,
-    })
-}
-
-fn table_ack_to_value(ack: &SyncTableAck) -> Value {
-    json!({
-        "table": ack.table,
-        "acceptedCreatedIds": ack.accepted_created_ids,
-        "acceptedUpdatedIds": ack.accepted_updated_ids,
-        "acceptedDeletedIds": ack.accepted_deleted_ids,
-        "rejected": ack.rejected.iter().map(|row| json!({
-            "id": row.id,
-            "reason": row.reason,
-        })).collect::<Vec<_>>(),
-    })
-}
-
-fn push_response_to_value(response: SyncPushBatchResponse) -> Value {
-    json!({
-        "tables": response.tables.iter().map(table_ack_to_value).collect::<Vec<_>>(),
-        "serverTime": response.server_time,
-    })
-}
-
-fn status_request_from_value(body: &Value) -> SyncStatusRequest {
-    SyncStatusRequest {
-        scope_id: value_string(body, "scopeId"),
-        cursor: value_string(body, "cursor"),
-    }
-}
-
-fn status_response_to_value(response: SyncStatusResponse) -> Value {
-    json!({
-        "changedTables": response.changed_tables,
-        "hasChanges": response.has_changes,
-        "cursor": response.cursor,
-        "serverTime": response.server_time,
-    })
-}
-
-fn pull_request_from_value(body: &Value) -> SyncPullBatchRequest {
-    let tables = body
-        .get("tables")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(std::string::ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-
-    SyncPullBatchRequest {
-        scope_id: value_string(body, "scopeId"),
-        tables,
-        cursor: value_string(body, "cursor"),
-        limit: value_i64(body, "limit"),
-    }
-}
-
-impl SyncHttpTransport for FixtureProtobufTransport {
-    fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture {
-        box_transport(async move {
-            let url = format!("{}/sync/push", api_url.trim_end_matches('/'));
-            let request = push_request_from_value(&envelope);
-            let body = request.encode_to_vec();
-            let response = reqwest::Client::new()
-                .post(url)
-                .header("Content-Type", "application/x-protobuf")
-                .body(body)
-                .send()
-                .await
-                .map_err(|e| SyncError::Network(format!("Push request failed: {e}")))?;
-            let status = response.status();
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| SyncError::Network(format!("Failed to read response body: {e}")))?;
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes);
-                return Err(classify_http_error(status.as_u16(), &body));
-            }
-            let decoded = SyncPushBatchResponse::decode(bytes.as_ref()).map_err(|e| {
-                SyncError::Encoding(format!("Failed to decode protobuf push response: {e}"))
-            })?;
-            Ok(push_response_to_value(decoded))
-        })
-    }
-
-    fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
-        box_transport(async move {
-            let url = format!("{}/sync/status", api_url.trim_end_matches('/'));
-            let request = status_request_from_value(&body);
-            let body = request.encode_to_vec();
-            let response = reqwest::Client::new()
-                .post(url)
-                .header("Content-Type", "application/x-protobuf")
-                .body(body)
-                .send()
-                .await
-                .map_err(|e| SyncError::Network(format!("Status request failed: {e}")))?;
-            let status = response.status();
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| SyncError::Network(format!("Failed to read response body: {e}")))?;
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes);
-                return Err(classify_http_error(status.as_u16(), &body));
-            }
-            let decoded = SyncStatusResponse::decode(bytes.as_ref()).map_err(|e| {
-                SyncError::Encoding(format!("Failed to decode protobuf status response: {e}"))
-            })?;
-            Ok(status_response_to_value(decoded))
-        })
-    }
-
-    fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
-        box_transport(async move {
-            let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
-            let request = pull_request_from_value(&body);
-            let body = request.encode_to_vec();
-            let response = reqwest::Client::new()
-                .post(url)
-                .header("Content-Type", "application/x-protobuf")
-                .body(body)
-                .send()
-                .await
-                .map_err(|e| SyncError::Network(format!("Pull request failed: {e}")))?;
-            let status = response.status();
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| SyncError::Network(format!("Failed to read response body: {e}")))?;
-            if !status.is_success() {
-                let body = String::from_utf8_lossy(&bytes);
-                return Err(classify_http_error(status.as_u16(), &body));
-            }
-            let decoded = SyncPullBatchResponse::decode(bytes.as_ref()).map_err(|e| {
-                SyncError::Encoding(format!("Failed to decode protobuf pull response: {e}"))
-            })?;
-            Ok(pull_response_to_value(decoded))
-        })
-    }
-}
-
 fn fixture_transport() -> Option<Arc<dyn SyncHttpTransport>> {
     if fixture_encoding() == "protobuf" {
-        Some(Arc::new(FixtureProtobufTransport))
+        Some(generated_protobuf_transport())
     } else {
         None
     }
@@ -572,17 +263,15 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::protobuf_generated::{SyncPullBatchRequest, SyncStatusRequest};
     use prost::Message;
 
     #[test]
     fn protobuf_status_helper_builds_post_request_and_round_trips() {
-        let body = serde_json::json!({
-            "scopeId": "merchant-1",
-            "cursor": "sync:123:categories:row-1",
-        });
-
-        let request = status_request_from_value(&body);
+        let request = SyncStatusRequest {
+            scope_id: "merchant-1".to_string(),
+            cursor: "sync:123:categories:row-1".to_string(),
+        };
         assert_eq!(request.scope_id, "merchant-1");
         assert_eq!(request.cursor, "sync:123:categories:row-1");
 
@@ -603,14 +292,12 @@ mod tests {
 
     #[test]
     fn protobuf_pull_helper_builds_post_request_and_round_trips() {
-        let body = serde_json::json!({
-            "scopeId": "merchant-1",
-            "tables": ["categories", "products"],
-            "limit": 1000,
-            "cursor": "sync:123:categories:row-1",
-        });
-
-        let request = pull_request_from_value(&body);
+        let request = SyncPullBatchRequest {
+            scope_id: "merchant-1".to_string(),
+            tables: vec!["categories".to_string(), "products".to_string()],
+            cursor: "sync:123:categories:row-1".to_string(),
+            limit: 1000,
+        };
         assert_eq!(request.scope_id, "merchant-1");
         assert_eq!(request.tables, vec!["categories", "products"]);
         assert_eq!(request.limit, 1000);

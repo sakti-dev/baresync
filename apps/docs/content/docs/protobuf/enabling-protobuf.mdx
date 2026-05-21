@@ -5,7 +5,7 @@ description: How to switch your Baresync project from JSON to protobuf — confi
 
 # Enabling Protobuf
 
-Switching from JSON to protobuf means changing your sync config, regenerating artifacts, and wiring the server with the protobuf schema. This page walks through each step.
+Switching from JSON to protobuf means changing your sync config, regenerating artifacts, wiring the server with the protobuf schema, and importing the generated Rust transport into the Tauri plugin. This page walks through each step.
 
 ## Step 1: Define a protobuf sync config
 
@@ -77,7 +77,7 @@ import { generateSyncArtifacts } from "@repo/sync-contract/generator";
 await generateSyncArtifacts(config);
 ```
 
-This produces 7 files in your `outputDir`. See [Generated Artifacts](./generated-artifacts) for details on each.
+This produces the protobuf schema, TS runtime, contract files, and the generated Rust transport/mappers in your `outputDir`. See [Generated Artifacts](./generated-artifacts) for details on each.
 
 ## Step 3: Wire the server with protobuf encoding
 
@@ -140,17 +140,38 @@ app.post("/sync/status", protobufStatusHandler);
 
 Or use a single handler that detects the `Content-Type` header and dispatches accordingly.
 
-## Step 4: Plugin configuration
+## Step 4: Wire the Tauri plugin
 
-Set the encoding in your Tauri plugin config:
+Import the generated Rust module and pass the generated transport to the plugin builder:
 
 ```rust
-baresync::Builder::new()
-    .encoding("protobuf")
-    // ... other config
+mod protobuf_generated;
+
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+tauri::Builder::default()
+    .plugin(
+        BaresyncBuilder::new()
+            .api_base_url("http://127.0.0.1:18181")
+            .encoding("protobuf")
+            .transport(protobuf_generated::generated_protobuf_transport())
+            .db_path(db_path())
+            .contract_tables(contract_tables())
+            .migrations(my_migrations())
+            .build(),
+    )
+    .run(tauri::generate_context!())
+    .expect("failed to run app");
 ```
 
-**Note:** As of the current release, the Rust sync engine sends JSON regardless of this setting. The `encoding` field is stored for future use when protobuf transport is implemented. The server-side protobuf path works independently — you can use it with custom transports or for server-to-server communication.
+Add `prost` to the Tauri app crate:
+
+```toml
+[dependencies]
+prost = "0.13"
+```
+
+`encoding("protobuf")` alone is not enough. The generated transport is what makes the plugin send `application/x-protobuf` over HTTP.
 
 ## Step 5: Verify with tests
 

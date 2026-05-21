@@ -52,6 +52,7 @@ export const syncCursors = sqliteTable("sync_cursors", {
 
 export const syncedCategories = syncedTable(categories, {
   scope: "merchant_id",
+  localOnlyColumns: ["isSynced"],
 });
 export const syncedProducts = syncedTable(products, {
   scope: "merchant_id",

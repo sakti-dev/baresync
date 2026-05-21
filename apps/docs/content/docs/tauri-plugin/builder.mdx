@@ -46,7 +46,7 @@ tauri::Builder::default()
 | `poll_on_background` | `bool` | No | `false` | Whether to poll when the window is unfocused |
 | `max_push_bytes` | `usize` | No | `262144` | Maximum push payload size in bytes |
 | `max_push_rows` | `usize` | No | `2000` | Maximum rows per push request |
-| `transport` | `Arc<dyn SyncHttpTransport>` | No | `default_transport()` | Custom HTTP transport (for testing) |
+| `transport` | `Arc<dyn SyncHttpTransport>` | No | `default_transport()` | Custom HTTP transport; required when `encoding` is `"protobuf"` |
 
 ### api_base_url
 
@@ -107,7 +107,21 @@ When `false` (default), the plugin pauses polling when the window loses focus an
 
 When `true`, polling continues regardless of window focus. Use this for background services or mobile apps where the webview lifecycle is managed differently.
 
-On Android/iOS, the plugin also responds to `Suspended`/`Resumed` webview events, pausing and resuming polling automatically.
+On mobile, the plugin relies on app lifecycle and focus events exposed by Tauri. If your app needs background sync while unfocused, enable `poll_on_background` and verify that behavior on the target platform.
+
+### protobuf transport
+
+When you set `.encoding("protobuf")`, pass the generated protobuf transport with `.transport(...)`. The plugin rejects protobuf setup without an explicit transport so it does not silently fall back to JSON:
+
+```rust
+mod protobuf_generated;
+
+BaresyncBuilder::new()
+    .encoding("protobuf")
+    .transport(protobuf_generated::generated_protobuf_transport())
+```
+
+For JSON, you can omit `transport` and the plugin uses `JsonHttpTransport` by default.
 
 ## What happens during setup
 
