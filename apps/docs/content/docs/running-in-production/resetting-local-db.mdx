@@ -138,5 +138,3 @@ function SyncSettings({ client }: { client: SyncClient }) {
 **Don't manually clear `sync_cursors` via SQL** — use `fullResync()` instead. Direct SQL manipulation can leave the engine in an inconsistent state.
 
 **Don't delete the DB while the app is running** — the plugin holds an open SQLite connection. Close the connection first (restart the app) or the file may be locked.
-
-**Don't share DB files between app versions** — each version's migrations expect a specific schema state. If you downgrade, the DB may have columns the old code doesn't understand.
