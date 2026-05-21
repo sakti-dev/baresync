@@ -6,7 +6,6 @@
     "local-sync-columns",
     "api-sync-columns",
     "runtime-tables",
-    "table-helpers",
     "diagnostics"
   ]
 }

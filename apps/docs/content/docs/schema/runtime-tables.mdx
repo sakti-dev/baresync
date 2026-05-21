@@ -5,7 +5,7 @@ description: The outbox, cursors, and batch requests tables that Baresync uses i
 
 # Runtime Tables
 
-Baresync uses three runtime tables that are not synced themselves but support the sync engine.
+Baresync uses three runtime tables that are not synced themselves but support the sync engine. Use the factory functions from `baresync/schema` to create them.
 
 ## sync_outbox (local)
 
@@ -59,3 +59,26 @@ Stores idempotency records for push requests on the server.
 The table has a unique index on `(clientId, idempotencyKey)`. If a client retries a push with the same idempotency key, the server returns the cached response instead of processing it again.
 
 This table lives in the **server database** only.
+
+## Factory functions
+
+Create these tables using factory functions from `baresync/schema`:
+
+```ts
+import { createSyncCursorsTable, createSyncOutboxTable } from "baresync/schema";
+
+export const syncOutbox = createSyncOutboxTable();
+export const syncCursors = createSyncCursorsTable();
+```
+
+```ts
+import { createSyncBatchRequestsTable } from "baresync/schema";
+
+export const syncBatchRequests = createSyncBatchRequestsTable();
+```
+
+Pre-built instances are also exported if you prefer:
+
+```ts
+import { syncOutbox, syncCursors, syncBatchRequests } from "baresync/schema";
+```
