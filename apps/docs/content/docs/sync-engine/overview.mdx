@@ -3,8 +3,6 @@ title: Sync Engine Overview
 description: How the Rust sync engine orchestrates push, pull, and reconciliation.
 ---
 
-import { SyncEngineDiagram } from "@/components/flow/diagrams/sync-engine-diagram";
-
 # Sync Engine Overview
 
 The sync engine lives in `baresync-core` (Rust). It is the logic layer between your local SQLite database and your server's sync endpoints. The Tauri plugin exposes it through commands; you rarely call engine internals directly.

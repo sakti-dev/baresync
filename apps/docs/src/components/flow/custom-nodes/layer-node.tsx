@@ -1,13 +1,14 @@
 "use client";
 
+import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 
-type LayerNodeData = {
+interface LayerNodeData {
+  color?: string;
   label: string;
   sublabel?: string;
-  color?: string;
-};
+  [key: string]: unknown;
+}
 
 type LayerNode = Node<LayerNodeData, "layer">;
 
@@ -16,14 +17,24 @@ function LayerNodeComponent({ data, selected }: NodeProps<LayerNode>) {
 
   return (
     <div
-      className={`rounded-lg border-2 px-6 py-3 min-w-[180px] text-center ${bg} ${selected ? "ring-2 ring-blue-500" : ""}`}
+      className={`min-w-[180px] rounded-lg border-2 px-6 py-3 text-center ${bg} ${selected ? "ring-2 ring-blue-500" : ""}`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-muted-foreground" />
+      <Handle
+        className="!bg-muted-foreground"
+        position={Position.Top}
+        type="target"
+      />
       <div className="font-semibold text-sm">{data.label}</div>
       {data.sublabel && (
-        <div className="text-xs text-muted-foreground mt-1">{data.sublabel}</div>
+        <div className="mt-1 text-muted-foreground text-xs">
+          {data.sublabel}
+        </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="!bg-muted-foreground" />
+      <Handle
+        className="!bg-muted-foreground"
+        position={Position.Bottom}
+        type="source"
+      />
     </div>
   );
 }

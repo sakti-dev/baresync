@@ -1,15 +1,18 @@
 "use client";
 
-import { memo } from "react";
 import {
   BaseEdge,
-  EdgeLabelRenderer,
-  getSmoothStepPath,
-  type EdgeProps,
   type Edge,
+  EdgeLabelRenderer,
+  type EdgeProps,
+  getSmoothStepPath,
 } from "@xyflow/react";
+import { memo } from "react";
 
-type LabeledEdgeData = { label: string };
+interface LabeledEdgeData {
+  label: string;
+  [key: string]: unknown;
+}
 type LabeledEdge = Edge<LabeledEdgeData, "labeled">;
 
 function LabeledEdgeComponent({
@@ -35,11 +38,11 @@ function LabeledEdgeComponent({
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} style={style} markerEnd={markerEnd} />
+      <BaseEdge id={id} markerEnd={markerEnd} path={edgePath} style={style} />
       <EdgeLabelRenderer>
         {data?.label && (
           <div
-            className="nodrag nopan pointer-events-auto absolute rounded bg-background px-2 py-0.5 text-[10px] border shadow-sm text-muted-foreground"
+            className="nodrag nopan pointer-events-auto absolute rounded border bg-background px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             }}

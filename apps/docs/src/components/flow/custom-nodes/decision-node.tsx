@@ -1,11 +1,12 @@
 "use client";
 
+import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 
-type DecisionNodeData = {
+interface DecisionNodeData {
   label: string;
-};
+  [key: string]: unknown;
+}
 
 type DecisionNode = Node<DecisionNodeData, "decision">;
 
@@ -15,21 +16,42 @@ function DecisionNodeComponent({ data, selected }: NodeProps<DecisionNode>) {
       className={`relative ${selected ? "ring-2 ring-blue-500" : ""}`}
       style={{ width: 160, height: 80 }}
     >
-      <Handle type="target" position={Position.Top} className="!bg-muted-foreground" />
+      <Handle
+        className="!bg-muted-foreground"
+        position={Position.Top}
+        type="target"
+      />
       <div
-        className="absolute inset-0 flex items-center justify-center bg-card border-2 border-muted"
+        className="absolute inset-0 flex items-center justify-center border-2 border-muted bg-card"
         style={{
           clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
         }}
       />
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-xs font-medium text-center px-4 leading-tight">
+        <span className="px-4 text-center font-medium text-xs leading-tight">
           {data.label}
         </span>
       </div>
-      <Handle type="source" position={Position.Bottom} id="yes" style={{ left: "30%" }} className="!bg-muted-foreground" />
-      <Handle type="source" position={Position.Bottom} id="no" style={{ left: "70%" }} className="!bg-muted-foreground" />
-      <Handle type="source" position={Position.Right} id="right" className="!bg-muted-foreground" />
+      <Handle
+        className="!bg-muted-foreground"
+        id="yes"
+        position={Position.Bottom}
+        style={{ left: "30%" }}
+        type="source"
+      />
+      <Handle
+        className="!bg-muted-foreground"
+        id="no"
+        position={Position.Bottom}
+        style={{ left: "70%" }}
+        type="source"
+      />
+      <Handle
+        className="!bg-muted-foreground"
+        id="right"
+        position={Position.Right}
+        type="source"
+      />
     </div>
   );
 }

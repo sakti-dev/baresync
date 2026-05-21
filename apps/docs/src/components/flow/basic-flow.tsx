@@ -1,35 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  ReactFlow,
-  Controls,
-  Background,
-  MiniMap,
-  applyNodeChanges,
-  applyEdgeChanges,
   addEdge,
-  useReactFlow,
-  type Node,
-  type Edge,
-  type NodeChange,
-  type EdgeChange,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
   type Connection,
-  type OnConnect,
-  type NodeTypes,
+  Controls,
+  type Edge,
+  type EdgeChange,
   type EdgeTypes,
+  MiniMap,
+  type Node,
+  type NodeChange,
+  type NodeTypes,
+  type OnConnect,
+  ReactFlow,
+  useReactFlow,
 } from "@xyflow/react";
 import { useTheme } from "fumadocs-ui/provider/base";
 import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type BasicFlowProps = {
-  initialNodes: Node[];
-  initialEdges: Edge[];
-  nodeTypes?: NodeTypes;
-  edgeTypes?: EdgeTypes;
+interface BasicFlowProps {
   children?: ReactNode;
   className?: string;
-};
+  edgeTypes?: EdgeTypes;
+  initialEdges: Edge[];
+  initialNodes: Node[];
+  nodeTypes?: NodeTypes;
+}
 
 export function BasicFlow({
   initialNodes,
@@ -65,18 +65,18 @@ export function BasicFlow({
   const onNodesChange = useCallback(
     (changes: NodeChange[]) =>
       setNodes((nds) => applyNodeChanges(changes, nds)),
-    [],
+    []
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) =>
       setEdges((eds) => applyEdgeChanges(changes, eds)),
-    [],
+    []
   );
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [],
+    []
   );
 
   const defaultEdgeOptions = useMemo(
@@ -84,30 +84,37 @@ export function BasicFlow({
       animated: true,
       type: "smoothstep",
     }),
-    [],
+    []
   );
+
+  const colorMode = (() => {
+    if (!mounted) {
+      return "dark" as const;
+    }
+    if (resolvedTheme === "dark") {
+      return "dark" as const;
+    }
+    if (resolvedTheme === "light") {
+      return "light" as const;
+    }
+    return "dark" as const;
+  })();
 
   return (
     <div className={className ?? "h-[600px] w-full"}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        colorMode={colorMode}
         defaultEdgeOptions={defaultEdgeOptions}
+        edges={edges}
+        edgeTypes={edgeTypes}
         fitView
         fitViewOptions={{ padding: 0.4, maxZoom: 1.2 }}
+        nodes={nodes}
+        nodeTypes={nodeTypes}
+        onConnect={onConnect}
+        onEdgesChange={onEdgesChange}
+        onNodesChange={onNodesChange}
         proOptions={{ hideAttribution: true }}
-        colorMode={
-          mounted && resolvedTheme === "dark"
-            ? "dark"
-            : mounted && resolvedTheme === "light"
-              ? "light"
-              : "dark"
-        }
       >
         <Controls />
         <MiniMap className="hidden md:block" />

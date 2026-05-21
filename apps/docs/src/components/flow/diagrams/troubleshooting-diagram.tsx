@@ -1,10 +1,10 @@
 "use client";
 
-import { FlowProvider } from "@/components/flow/flow-provider";
+import type { Edge, Node } from "@xyflow/react";
 import { BasicFlow } from "@/components/flow/basic-flow";
-import { nodeTypes } from "@/components/flow/node-types";
 import { edgeTypes } from "@/components/flow/edge-types";
-import type { Node, Edge } from "@xyflow/react";
+import { FlowProvider } from "@/components/flow/flow-provider";
+import { nodeTypes } from "@/components/flow/node-types";
 
 const nodes: Node[] = [
   {
@@ -150,11 +150,11 @@ export function TroubleshootingDiagram() {
   return (
     <FlowProvider>
       <BasicFlow
-        initialNodes={nodes}
-        initialEdges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
         className="h-[700px] w-full"
+        edgeTypes={edgeTypes}
+        initialEdges={edges}
+        initialNodes={nodes}
+        nodeTypes={nodeTypes}
       />
     </FlowProvider>
   );
