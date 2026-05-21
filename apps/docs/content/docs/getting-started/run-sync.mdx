@@ -105,10 +105,16 @@ export function useSyncClient(): SyncClient {
   return client;
 }
 
+interface UseQueryResult<Row> {
+  error: string | null;
+  loading: boolean;
+  rows: Row[];
+}
+
 export function useDrizzleQuery<Row>(
   queryKey: QueryKey,
-  buildQuery: () => PromiseLike<Row[]>,
-) {
+  buildQuery: () => Promise<Row[]>,
+): UseQueryResult<Row> {
   const query = useQuery({
     queryKey,
     queryFn: async () => await buildQuery(),

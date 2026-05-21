@@ -117,15 +117,28 @@ export function useSyncClient(): SyncClient {
 
 ### 4. Query helper for Drizzle queries
 
-Solid Query's `createQuery` returns a signal-based result. Wrap it for a consistent API:
+Solid Query's `createQuery` returns a signal-based result. `Row` is inferred from your Drizzle table schema using `$inferSelect`:
+
+```ts
+type ItemRow = typeof TABLE.items.$inferSelect;
+// { id: string; name: string; scopeId: string; updatedAt: string; ... }
+```
+
+Wrap the query for a consistent accessor-based API:
 
 ```tsx
 import { createQuery } from "@tanstack/solid-query";
 
+interface UseQueryAccessors<Row> {
+  error: () => string | null;
+  loading: () => boolean;
+  rows: () => Row[];
+}
+
 export function useDrizzleQuery<Row>(
   queryKey: unknown[],
-  buildQuery: () => PromiseLike<Row[]>
-) {
+  buildQuery: () => Promise<Row[]>
+): UseQueryAccessors<Row> {
   const query = createQuery(() => ({
     queryKey,
     queryFn: async () => await buildQuery(),
@@ -139,7 +152,14 @@ export function useDrizzleQuery<Row>(
 }
 ```
 
-Note: in Solid, the returned properties are **accessor functions** (signals), not plain values.
+TypeScript infers `Row` from the `buildQuery` callback — you don't pass it explicitly. The returned properties are **accessor functions** (signals), not plain values.
+
+```ts
+// Row is inferred as ItemRow automatically
+const items = useDrizzleQuery(["inventory", "items"], () =>
+  db.select().from(TABLE.items)
+);
+```
 
 ### 5. Sync state helper
 

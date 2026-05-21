@@ -121,11 +121,27 @@ export function useSyncClient(): SyncClient {
 
 ### 4. Query hook for Drizzle queries
 
+`Row` is inferred from your Drizzle table schema using `$inferSelect`:
+
+```ts
+type ItemRow = typeof TABLE.items.$inferSelect;
+// { id: string; name: string; scopeId: string; updatedAt: string; ... }
+```
+
 ```tsx
+import type { QueryKey } from "@tanstack/react-query";
+
+interface UseQueryResult<Row> {
+  error: string | null;
+  loading: boolean;
+  refresh: () => Promise<void>;
+  rows: Row[];
+}
+
 export function useDrizzleQuery<Row>(
   queryKey: QueryKey,
-  buildQuery: () => PromiseLike<Row[]>
-) {
+  buildQuery: () => Promise<Row[]>
+): UseQueryResult<Row> {
   const query = useQuery({
     queryKey,
     queryFn: async () => await buildQuery(),
@@ -138,6 +154,15 @@ export function useDrizzleQuery<Row>(
     rows: query.data ?? [],
   };
 }
+```
+
+TypeScript infers `Row` from the `buildQuery` callback — you don't pass it explicitly:
+
+```ts
+// Row is inferred as ItemRow automatically
+const items = useDrizzleQuery(["inventory", "items"], () =>
+  db.select().from(TABLE.items)
+);
 ```
 
 ### 5. Sync state hook
