@@ -1,0 +1,1 @@
+Key finding: the Rust engine only supports JSON transport. Protobuf encoding currently works on the TS server side (encode/decode) and has generated Rust structs, but there's no ProtobufHttpTransport implementation. The Tauri plugin stores an encoding field but the engine ignores it for transport.
