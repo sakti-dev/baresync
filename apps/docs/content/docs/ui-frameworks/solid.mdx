@@ -1,6 +1,336 @@
 ---
 title: Solid
-description: TODO
+description: Integrate Baresync with SolidJS using Solid Query, context, and Tauri events.
 ---
 
-TODO: Write this page.
+# Solid
+
+This page shows the SolidJS equivalent of the React integration pattern. It uses `@tanstack/solid-query` for data fetching and Tauri events for cache invalidation.
+
+Baresync does not ship a Solid-specific package. The integration follows the same event-driven pattern as React, using Solid's reactivity primitives instead of React hooks.
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+bun add @tanstack/solid-query baresync @tauri-apps/api drizzle-orm
+```
+
+### 2. Create the database
+
+Same as React — this is framework-agnostic:
+
+```tsx
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { items, locations } from "@your-app/sync-contract/local-synced-schema";
+import { syncOutbox, syncCursors } from "@your-app/sync-contract/local-schema";
+
+export const TABLE = { items, locations, syncOutbox, syncCursors };
+
+export const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
+```
+
+### 3. Create the provider and context
+
+Solid uses `createContext` and `createSignal` instead of React's `useState` and `useContext`. The event listener setup uses `onCleanup` for disposal.
+
+```tsx
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { createSyncClient, type SyncClient } from "baresync/tauri";
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  onCleanup,
+  useContext,
+  type ParentComponent,
+} from "solid-js";
+import { useQueryClient } from "@tanstack/solid-query";
+
+const SyncClientContext = createContext<SyncClient>();
+
+export const SyncClientProvider: ParentComponent = (props) => {
+  const queryClient = useQueryClient();
+
+  const [client] = createSignal(
+    createSyncClient({
+      apiUrl: "http://127.0.0.1:18181",
+      encoding: "json",
+      scopeId: "your-scope-id",
+      invoke,
+    })
+  );
+
+  createEffect(() => {
+    client().startPolling();
+    onCleanup(() => client().stopPolling().catch(() => {}));
+  });
+
+  createEffect(() => {
+    let disposed = false;
+    let cleanup: (() => Promise<void> | void) | null = null;
+
+    const pending = Promise.all([
+      listen("baresync://data-changed", async () => {
+        await queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+      }),
+      listen("baresync://sync-status-changed", async () => {
+        await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+      }),
+    ]).then(([unlistenDataChanged, unlistenStatusChanged]) => {
+      const release = async () => {
+        await Promise.all([unlistenDataChanged(), unlistenStatusChanged()]);
+      };
+      if (disposed) {
+        release();
+        return;
+      }
+      cleanup = release;
+    });
+    pending.catch(() => undefined);
+
+    onCleanup(() => {
+      disposed = true;
+      if (cleanup) cleanup();
+    });
+  });
+
+  return (
+    <SyncClientContext.Provider value={client()}>
+      {props.children}
+    </SyncClientContext.Provider>
+  );
+};
+
+export function useSyncClient(): SyncClient {
+  const client = useContext(SyncClientContext);
+  if (!client) {
+    throw new Error("useSyncClient must be used within SyncClientProvider");
+  }
+  return client;
+}
+```
+
+### 4. Query helper for Drizzle queries
+
+Solid Query's `createQuery` returns a signal-based result. Wrap it for a consistent API:
+
+```tsx
+import { createQuery } from "@tanstack/solid-query";
+
+export function useDrizzleQuery<Row>(
+  queryKey: unknown[],
+  buildQuery: () => PromiseLike<Row[]>
+) {
+  const query = createQuery(() => ({
+    queryKey,
+    queryFn: async () => await buildQuery(),
+  }));
+
+  return {
+    error: () => (query.error ? String(query.error) : null),
+    loading: () => query.isPending,
+    rows: () => query.data ?? [],
+  };
+}
+```
+
+Note: in Solid, the returned properties are **accessor functions** (signals), not plain values.
+
+### 5. Sync state helper
+
+```tsx
+import { createQuery } from "@tanstack/solid-query";
+import { useSyncClient } from "./useBaresyncQuery";
+
+export function useSyncState() {
+  const client = useSyncClient();
+
+  const query = createQuery(() => ({
+    queryKey: ["sync-state"],
+    queryFn: async () => {
+      const [localState, pollingStatus] = await Promise.all([
+        client.getState(),
+        client.getPollingStatus().catch(() => null),
+      ]);
+      return { localState, pollingStatus };
+    },
+  }));
+
+  return {
+    localState: () => query.data?.localState ?? null,
+    pollingStatus: () => query.data?.pollingStatus ?? null,
+    loading: () => query.isPending,
+  };
+}
+```
+
+## Using in components
+
+### Wire up the provider tree
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/solid-query";
+import { SyncClientProvider } from "./hooks/useBaresyncQuery";
+
+const queryClient = new QueryClient();
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SyncClientProvider>
+        <InventoryApp />
+      </SyncClientProvider>
+    </QueryClientProvider>
+  );
+}
+```
+
+### Query data
+
+```tsx
+import { For, Show } from "solid-js";
+import { useDrizzleQuery } from "./hooks/useBaresyncQuery";
+import { db, TABLE } from "./lib/db";
+
+function ItemsList() {
+  const items = useDrizzleQuery(["inventory", "items"], () =>
+    db.select().from(TABLE.items)
+  );
+
+  return (
+    <>
+      <Show when={items.loading()}>
+        <p>Loading...</p>
+      </Show>
+      <Show when={items.error()}>
+        <p>Error: {items.error()}</p>
+      </Show>
+      <ul>
+        <For each={items.rows()}>
+          {(item) => <li>{item.name}</li>}
+        </For>
+      </ul>
+    </>
+  );
+}
+```
+
+### Write data (insert)
+
+```tsx
+import { useSyncClient } from "./hooks/useBaresyncQuery";
+import { db, TABLE } from "./lib/db";
+
+function AddItemButton() {
+  const client = useSyncClient();
+
+  async function handleAdd() {
+    const id = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    await client.writeTransaction(db, async (tx) => {
+      await client.writeLocalChange(tx, {
+        operation: "insert",
+        rowId: id,
+        table: TABLE.items,
+        write: (writeTx) =>
+          writeTx.insert(TABLE.items).values({
+            id,
+            name: "New item",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }),
+      });
+    });
+  }
+
+  return <button onClick={handleAdd}>Add item</button>;
+}
+```
+
+### Write data (soft delete)
+
+```tsx
+import { eq } from "drizzle-orm";
+
+async function handleDelete(client: SyncClient, rowId: string) {
+  const timestamp = new Date().toISOString();
+
+  await client.writeTransaction(db, async (tx) => {
+    await client.writeLocalChange(tx, {
+      operation: "update",
+      rowId,
+      table: TABLE.items,
+      write: (writeTx) =>
+        writeTx
+          .update(TABLE.items)
+          .set({
+            deletedAt: timestamp,
+            isSynced: false,
+            updatedAt: timestamp,
+          })
+          .where(eq(TABLE.items.id, rowId)),
+    });
+  });
+}
+```
+
+### Sync status panel
+
+```tsx
+import { createSignal } from "solid-js";
+import { useSyncClient } from "./hooks/useBaresyncQuery";
+import { useSyncState } from "./hooks/useSyncState";
+
+function SyncPanel() {
+  const client = useSyncClient();
+  const { localState, pollingStatus } = useSyncState();
+  const [syncing, setSyncing] = createSignal(false);
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      await client.syncNow();
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={handleSync} disabled={syncing()}>
+        {syncing() ? "Syncing..." : "Sync now"}
+      </button>
+      <p>Pending: {localState()?.local_dirty_count ?? 0} rows</p>
+      <p>
+        Polling:{" "}
+        {pollingStatus()?.running
+          ? pollingStatus()?.paused ? "Paused" : "Active"
+          : "Stopped"}
+      </p>
+    </div>
+  );
+}
+```
+
+## Key differences from React
+
+| Concern | React | Solid |
+|---|---|---|
+| State primitive | `useState` | `createSignal` |
+| Side effects | `useEffect` | `createEffect` + `onCleanup` |
+| Context | `createContext` + `useContext` | `createContext` + `useContext` |
+| Query result | Plain object `{ rows, loading }` | Accessor functions `rows()`, `loading()` |
+| List rendering | `map()` | `<For each={}>` |
+| Conditional | `&&` or ternary | `<Show when={}>` |
+| Provider type | Function component | `ParentComponent` |
+| Query hook | `useQuery` | `createQuery` (returns a reactive object) |
+
+The write patterns (`writeTransaction`, `writeLocalChange`) are identical — they don't use any framework primitives.
+
+Next: [Framework-Agnostic Patterns](/docs/ui-frameworks/framework-agnostic-patterns).

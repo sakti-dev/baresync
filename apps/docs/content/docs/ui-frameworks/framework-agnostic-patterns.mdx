@@ -1,6 +1,242 @@
 ---
-title: Framework Agnostic Patterns
-description: TODO
+title: Framework-Agnostic Patterns
+description: SyncClient setup, event handling, and write patterns that work with any UI framework.
 ---
 
-TODO: Write this page.
+# Framework-Agnostic Patterns
+
+These patterns don't depend on React or Solid. Use them with any framework, or in framework-less code.
+
+## Creating a SyncClient
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+import { invoke } from "@tauri-apps/api/core";
+
+const client = createSyncClient({
+  apiUrl: "http://127.0.0.1:18181",
+  encoding: "json",
+  scopeId: "merchant-1",
+  invoke,
+});
+```
+
+The `invoke` parameter is required in a Tauri app. If you're testing outside Tauri (e.g. in a Node test), pass a mock:
+
+```ts
+const client = createSyncClient({
+  apiUrl: "http://localhost:3000",
+  encoding: "json",
+  scopeId: "test-scope",
+  invoke: async (cmd, args) => {
+    // your mock implementation
+  },
+});
+```
+
+## Creating the Drizzle database
+
+```ts
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { items, locations } from "@your-app/sync-contract/local-synced-schema";
+import { syncOutbox, syncCursors } from "@your-app/sync-contract/local-schema";
+
+const schema = { items, locations, syncOutbox, syncCursors };
+
+const db = createTauriDrizzleDatabase({ schema, invoke });
+```
+
+## Writing data
+
+### Insert a row
+
+```ts
+import { eq } from "drizzle-orm";
+
+const id = crypto.randomUUID();
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: id,
+    table: schema.items,
+    write: (writeTx) =>
+      writeTx.insert(schema.items).values({
+        id,
+        name: "Widget",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+### Update a row
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "update",
+    rowId: "item-1",
+    table: schema.items,
+    write: (writeTx) =>
+      writeTx
+        .update(schema.items)
+        .set({ name: "Updated Widget", updatedAt: new Date().toISOString() })
+        .where(eq(schema.items.id, "item-1")),
+  });
+});
+```
+
+### Soft-delete a row
+
+```ts
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "update",
+    rowId: "item-1",
+    table: schema.items,
+    write: (writeTx) =>
+      writeTx
+        .update(schema.items)
+        .set({
+          deletedAt: timestamp,
+          isSynced: false,
+          updatedAt: timestamp,
+        })
+        .where(eq(schema.items.id, "item-1")),
+  });
+});
+```
+
+### Multiple changes in one transaction
+
+All changes inside `writeTransaction` are atomic. The outbox entries are created in order.
+
+```ts
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: locationId,
+    table: schema.locations,
+    write: (writeTx) =>
+      writeTx.insert(schema.locations).values({
+        id: locationId,
+        name: "Warehouse A",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+
+  await client.writeLocalChange(tx, {
+    operation: "insert",
+    rowId: itemId,
+    table: schema.items,
+    write: (writeTx) =>
+      writeTx.insert(schema.items).values({
+        id: itemId,
+        locationId,
+        name: "Widget",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+## Triggering sync
+
+```ts
+await client.syncNow();
+
+await client.push();
+
+await client.pull();
+
+await client.fullResync();
+```
+
+## Polling control
+
+```ts
+await client.startPolling({ scopeId: "merchant-1" });
+await client.stopPolling();
+await client.pausePolling();
+await client.resumePolling();
+
+const status = await client.getPollingStatus();
+// { running: boolean, paused: boolean, last_sync_at: string | null }
+```
+
+## Reading sync state
+
+```ts
+const state = await client.getState();
+// {
+//   local_dirty_count: number,
+//   last_server_watermark: string,
+//   needs_baseline_sync: boolean,
+// }
+```
+
+## Listening for events without a framework
+
+Use `@tauri-apps/api/event` directly:
+
+```ts
+import { listen } from "@tauri-apps/api/event";
+
+const unlisten = await listen("baresync://data-changed", (event) => {
+  // Re-fetch your data
+  refreshData();
+});
+
+const unlistenStatus = await listen("baresync://sync-status-changed", (event) => {
+  // Update sync UI
+  updateSyncStatus();
+});
+
+// Later, cleanup:
+unlisten();
+unlistenStatus();
+```
+
+### Event payloads
+
+Both events currently emit without a typed payload. The event itself is the signal — you respond by re-querying your data or sync state. The actual data comes from the local SQLite database via Drizzle, not from the event.
+
+## The write-then-sync cycle
+
+```txt
+User action
+  │
+  ▼
+client.writeTransaction(db, callback)
+  │ 1. Begin SQLite transaction
+  │ 2. Run your callback (inserts/updates via Drizzle)
+  │ 3. Write outbox entries for each writeLocalChange
+  │ 4. Commit transaction
+  ▼
+Tauri event: baresync://data-changed
+  │ (emitted because rows_affected > 0)
+  ▼
+Query invalidation
+  │ (framework-specific)
+  ▼
+UI re-renders with new data + outbox pending
+  │
+  ▼
+Background polling picks up the outbox
+  │ (push → server acknowledgment → mark synced)
+  ▼
+Tauri event: baresync://sync-status-changed
+  │
+  ▼
+UI updates sync indicator
+```
+
+This cycle is the same regardless of framework. The only difference is how you wire up the invalidation and re-render.
