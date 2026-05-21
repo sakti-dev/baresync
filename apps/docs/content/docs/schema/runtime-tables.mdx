@@ -94,16 +94,6 @@ import { createSyncBatchRequestsTable } from "baresync/schema";
 export const syncBatchRequests = createSyncBatchRequestsTable();
 ```
 
-### Pre-built instances
-
-Baresync also exports ready-made instances if you do not need to customize:
-
-```ts
-import { syncOutbox, syncCursors, syncBatchRequests } from "baresync/schema";
-```
-
-These are the same as calling the factory functions yourself. Use whichever style you prefer.
-
 ### Typical local-schema.ts
 
 ```ts
