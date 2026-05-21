@@ -1,0 +1,13 @@
+{
+  "title": "Reference",
+  "pages": [
+    "overview",
+    "typescript-api",
+    "rust-api",
+    "generated-artifacts",
+    "commands",
+    "events",
+    "errors",
+    "glossary"
+  ]
+}

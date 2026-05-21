@@ -1,0 +1,16 @@
+{
+  "title": "Server",
+  "pages": [
+    "overview",
+    "route-shape",
+    "status-handler",
+    "pull-handler",
+    "push-handler",
+    "scope-resolution",
+    "idempotency",
+    "cursors",
+    "drizzle-repository-helper",
+    "low-level-primitives",
+    "errors"
+  ]
+}

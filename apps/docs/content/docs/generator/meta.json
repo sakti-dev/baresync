@@ -1,0 +1,12 @@
+{
+  "title": "Generator",
+  "pages": [
+    "overview",
+    "define-sync-config",
+    "define-protobuf-sync-config",
+    "cli",
+    "generated-files",
+    "protobuf-workspace",
+    "diagnostics"
+  ]
+}

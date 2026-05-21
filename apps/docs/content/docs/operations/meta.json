@@ -1,0 +1,14 @@
+{
+  "title": "Operations",
+  "pages": [
+    "overview",
+    "versioning-contracts",
+    "regenerating-artifacts",
+    "managing-migrations",
+    "resetting-local-db",
+    "debugging-outbox",
+    "debugging-cursors",
+    "network-failures",
+    "performance"
+  ]
+}

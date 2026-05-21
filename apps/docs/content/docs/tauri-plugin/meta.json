@@ -1,0 +1,13 @@
+{
+  "title": "Tauri Plugin",
+  "pages": [
+    "overview",
+    "installation",
+    "builder",
+    "commands",
+    "migrations",
+    "polling",
+    "events",
+    "host-testing"
+  ]
+}

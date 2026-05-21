@@ -1,0 +1,12 @@
+{
+  "title": "Local Database",
+  "pages": [
+    "overview",
+    "create-tauri-drizzle-database",
+    "table-registry-pattern",
+    "transactions",
+    "migrations",
+    "db-info",
+    "debugging"
+  ]
+}

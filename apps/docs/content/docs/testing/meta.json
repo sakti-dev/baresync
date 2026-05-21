@@ -1,0 +1,12 @@
+{
+  "title": "Testing",
+  "pages": [
+    "overview",
+    "js-client-tests",
+    "server-tests",
+    "rust-core-simulation",
+    "tauri-plugin-host-tests",
+    "inventory-app-tests",
+    "e2e-runbook"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "title": "Protobuf",
+  "pages": [
+    "overview",
+    "generator-outputs",
+    "typescript-runtime",
+    "rust-mappers",
+    "server-helpers",
+    "json-compatibility"
+  ]
+}

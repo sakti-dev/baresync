@@ -1,4 +1,24 @@
 {
   "title": "Baresync",
-  "pages": ["index", "quickstart", "concepts", "architecture", "examples"]
+  "pages": [
+    "index",
+    "quickstart",
+    "concepts",
+    "architecture",
+    "getting-started",
+    "schema",
+    "generator",
+    "local-database",
+    "js-client",
+    "tauri-plugin",
+    "server",
+    "ui-frameworks",
+    "sync-engine",
+    "protobuf",
+    "examples",
+    "testing",
+    "operations",
+    "reference",
+    "migration-guides"
+  ]
 }

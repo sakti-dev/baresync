@@ -1,0 +1,13 @@
+{
+  "title": "Sync Engine",
+  "pages": [
+    "overview",
+    "sync-modes",
+    "status-flow",
+    "pull-flow",
+    "push-flow",
+    "chunking",
+    "reconciliation",
+    "cleanup"
+  ]
+}

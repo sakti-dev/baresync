@@ -1,0 +1,15 @@
+{
+  "title": "Getting Started",
+  "pages": [
+    "introduction",
+    "install",
+    "first-sync-contract",
+    "generate-artifacts",
+    "register-tauri-plugin",
+    "query-sqlite",
+    "write-local-changes",
+    "add-server-routes",
+    "run-sync",
+    "troubleshooting-first-run"
+  ]
+}

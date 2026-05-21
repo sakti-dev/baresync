@@ -1,0 +1,13 @@
+{
+  "title": "JS Client",
+  "pages": [
+    "overview",
+    "create-sync-client",
+    "sync-commands",
+    "polling",
+    "local-write-helpers",
+    "bulk-mutations",
+    "error-handling",
+    "testing"
+  ]
+}
