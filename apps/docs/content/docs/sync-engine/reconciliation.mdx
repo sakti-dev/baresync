@@ -1,6 +1,79 @@
 ---
 title: Reconciliation
-description: TODO
+description: How the engine handles conflicting local and server changes.
 ---
 
-TODO: Write this page.
+# Reconciliation
+
+Baresync uses a **server-wins** reconciliation strategy. When the server rejects a pushed row, the engine pulls the server's version and overwrites the local copy.
+
+## When conflicts happen
+
+A conflict occurs when:
+1. A local row is modified (outbox entry created)
+2. The same row is modified on the server before the local push arrives
+3. The server rejects the local push because its version is newer
+
+## How server-wins works
+
+### During push
+
+The push response includes `rejected` IDs:
+
+```json
+{
+  "table": "items",
+  "acceptedCreatedIds": ["item-1"],
+  "acceptedUpdatedIds": [],
+  "acceptedDeletedIds": [],
+  "rejected": [
+    { "id": "item-7", "reason": "server_newer" }
+  ]
+}
+```
+
+The rejected row stays in the local database with `is_synced = 0` and its outbox entries remain unsynced.
+
+### Automatic re-pull
+
+After push completes, if any tables had rejections, the engine automatically pulls from baseline for those specific tables:
+
+```txt
+push() → rejected tables = ["items"]
+  └→ pull(startCursor: Baseline, tableFilter: ["items"])
+```
+
+This baseline pull fetches the server's current version of every row in those tables. The upsert logic overwrites the local row because:
+
+- The server row is newer (`updated_at` comparison passes)
+- Or the local row is already marked `is_synced = 1` (always overwritten)
+
+### After reconciliation
+
+The server's version of the row is now local. The outbox entries for the rejected row remain, but the next push will send the server's version (since the outbox payload may be stale — the engine reads the current row state from the table at push time).
+
+## Pull-time conflict protection
+
+During pull, the upsert query has a `WHERE` clause:
+
+```sql
+ON CONFLICT(id) DO UPDATE SET ...
+WHERE {table}.is_synced = 1
+   OR excluded.updated_at >= {table}.updated_at
+```
+
+This means:
+- Rows already synced to the server (`is_synced = 1`) are always overwritten by server data
+- Rows with pending local edits (`is_synced = 0`) are only overwritten if the server version is newer
+
+## No merge, no field-level diff
+
+Baresync does not merge individual fields. The entire row is treated as a single unit. Server-wins means the server's row replaces the local row entirely. If you need field-level merge, handle it at the application layer before writing to the outbox.
+
+## What this means for your app
+
+- **Design for idempotent writes.** If the user edits a row that gets overwritten by a server-wins reconciliation, the local edit is lost.
+- **Use optimistic UI.** Show local changes immediately, but handle the case where sync reconciliation overwrites them.
+- **Consider debouncing rapid edits.** Multiple rapid edits to the same row are coalesced in the outbox, but the final state is what gets pushed.
+
+Next: [Cleanup](/docs/sync-engine/cleanup).

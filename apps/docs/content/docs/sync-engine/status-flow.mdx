@@ -1,6 +1,75 @@
 ---
 title: Status Flow
-description: TODO
+description: How the engine checks whether the server has changes.
 ---
 
-TODO: Write this page.
+# Status Flow
+
+Before choosing a sync mode, the engine calls the server's status endpoint to ask "has anything changed since my last cursor?"
+
+## What happens
+
+1. Engine reads the stored cursor from `sync_cursors` for the given scope
+2. Sends a POST to `/sync/status` with `{ scopeId, cursor }`
+3. Server compares the cursor against its data and returns:
+   - `hasChanges` — boolean
+   - `changedTables` — list of table names that changed
+   - `cursor` — the server's current cursor (may be the same or newer)
+   - `serverTime` — ISO timestamp
+
+## Request shape
+
+```json
+{
+  "scopeId": "merchant-1",
+  "cursor": "sync:1747894800000:items:item-99"
+}
+```
+
+If no cursor exists (first sync), the engine sends an empty string.
+
+## Response shape
+
+```json
+{
+  "hasChanges": true,
+  "changedTables": ["items", "locations"],
+  "cursor": "sync:1747894900000:items:item-105",
+  "serverTime": "2026-05-22T10:00:00.000Z"
+}
+```
+
+| Field | Description |
+|---|---|
+| `hasChanges` | Whether any table has rows newer than the cursor |
+| `changedTables` | Specific tables with changes (used as pull filter) |
+| `cursor` | Server's latest cursor |
+| `serverTime` | Server clock at response time |
+
+## How changedTables is used
+
+When `changedTables` is non-empty, the engine uses it as a filter for the pull request. This avoids pulling data from tables that have not changed. When the list is empty but `hasChanges` is true, the engine falls back to pulling all contract tables.
+
+## Status is always called first
+
+Both `sync_now` and the automatic polling loop call status before deciding what to do. The `sync_push` and `sync_pull` commands skip the status check entirely — they run their respective operations unconditionally.
+
+## Local state check
+
+After status, the engine reads `LocalSyncState` from the local database:
+
+```ts
+interface LocalSyncState {
+  localDirtyCount: number;
+  lastServerWatermark: string;
+  needsBaselineSync: boolean;
+}
+```
+
+- `localDirtyCount` — rows in `sync_outbox` where `synced_at IS NULL`
+- `lastServerWatermark` — the stored cursor value
+- `needsBaselineSync` — `true` if the cursor is empty (first sync)
+
+Together, the status response and local state determine the [sync mode](/docs/sync-engine/sync-modes).
+
+Next: [Pull Flow](/docs/sync-engine/pull-flow).

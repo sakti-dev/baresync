@@ -1,6 +1,86 @@
 ---
 title: Cleanup
-description: TODO
+description: Garbage collection, outbox purging, and local database maintenance.
 ---
 
-TODO: Write this page.
+# Cleanup
+
+After every sync operation (push, pull, or full sync), the engine runs cleanup to keep the local database small and consistent.
+
+## Garbage collection
+
+Garbage collection hard-deletes rows that have been both soft-deleted and synced:
+
+```sql
+DELETE FROM {table}
+WHERE deleted_at IS NOT NULL
+  AND deleted_at != ''
+  AND deleted_at != 'null'
+  AND is_synced = 1
+```
+
+A row is only garbage-collected when:
+- `deleted_at` has a real value (not NULL, not empty, not the string `"null"`)
+- `is_synced = 1` — the deletion has been confirmed by the server
+
+### When GC runs
+
+GC runs automatically after every sync mode except NoOp. You can also trigger it manually:
+
+```ts
+await client.runGarbageCollection({ scopeId: "merchant-1" });
+```
+
+### What GC does not delete
+
+- Active rows (`deleted_at IS NULL`)
+- Rows with pending local edits (`is_synced = 0`)
+- Soft-deleted rows that have not been synced yet
+
+## Outbox purging
+
+Over time, the `sync_outbox` table accumulates entries that have been marked as synced. These entries are kept for auditing but can be purged:
+
+```ts
+await client.purgeSyncedOutbox({ olderThan: "2026-01-01T00:00:00.000Z" });
+```
+
+This deletes all outbox entries where `synced_at IS NOT NULL AND synced_at < olderThan`.
+
+### When to purge
+
+- Periodically (e.g. weekly) via a background task
+- After confirming that recent syncs are stable
+- Never during active debugging — old outbox entries help trace issues
+
+## Outbox mark-synced
+
+During push, the engine marks accepted outbox entries as synced:
+
+```sql
+UPDATE sync_outbox
+SET synced_at = {serverTime}
+WHERE synced_at IS NULL AND id IN ({outboxIds})
+```
+
+This is done in the same transaction as marking rows as `is_synced = 1`. If the transaction fails, neither the outbox entries nor the rows are marked, and the next sync will retry them.
+
+## Routine maintenance checklist
+
+| Task | How | When |
+|---|---|---|
+| GC | Automatic after sync, or `runGarbageCollection` | Continuous |
+| Outbox purge | `purgeSyncedOutbox` | Periodic |
+| DB info check | `getDbInfo` | Monitoring |
+| Migration check | `getMigrationStatus` | App startup |
+
+## Monitoring outbox size
+
+A growing outbox (`localDirtyCount` in `getSyncLocalState`) indicates that pushes are failing or not running. Use this as a health metric in your app:
+
+```ts
+const state = await client.getSyncLocalState({ scopeId: "merchant-1" });
+if (state.localDirtyCount > 100) {
+  // warn: sync may be stuck
+}
+```

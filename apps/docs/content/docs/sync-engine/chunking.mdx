@@ -1,6 +1,60 @@
 ---
 title: Chunking
-description: TODO
+description: How the engine splits large pushes into server-safe chunks.
 ---
 
-TODO: Write this page.
+# Chunking
+
+When the outbox contains many rows or large payloads, the engine automatically splits them into chunks that fit within the configured byte and row limits.
+
+## Why chunking exists
+
+Servers have request body limits. Baresync enforces two constraints on each push request:
+
+| Limit | Default | Config field |
+|---|---|---|
+| Max rows per chunk | 2000 | `max_push_rows` |
+| Target bytes per chunk | 256 KB | `target_push_bytes` |
+| Hard byte ceiling | 2 MB | `max_push_bytes` |
+
+A single sync with 5000 changed rows will produce multiple HTTP requests, each within these limits.
+
+## How it works
+
+1. The engine reads all pending outbox entries and flattens them into individual push units (one per row or deletion)
+2. It iterates through units, building up a chunk
+3. Before adding each unit, it checks:
+   - Would the chunk exceed `max_push_rows`?
+   - Would the serialized envelope exceed `target_push_bytes`?
+4. If either limit is exceeded, the current chunk is finalized and a new chunk starts
+
+## Retry on 413
+
+If the server rejects a chunk with HTTP 413 (Payload Too Large), the engine splits that chunk in half and retries both halves. This handles cases where the actual serialized size exceeds the estimate.
+
+The splitting continues recursively until either:
+- The chunk succeeds
+- A single row exceeds `max_push_bytes` — this produces a `SingleRowTooLarge` error
+
+## Chunk boundaries and idempotency
+
+Each chunk gets its own `idempotencyKey` derived from its outbox IDs. If the engine splits a chunk on retry, the two halves have different keys because they contain different outbox IDs.
+
+## Order is preserved
+
+Units are processed in `upsert_order` across tables, and in `changed_at` order within each table. Chunking does not reorder operations — it only splits them at boundaries.
+
+## Configuring limits
+
+Set these on the Tauri plugin builder:
+
+```rust
+builder
+    .max_push_rows(1000)
+    .target_push_bytes(128 * 1024)
+    .max_push_bytes(1024 * 1024)
+```
+
+Lower limits mean more HTTP requests but smaller payloads. The defaults work well for most apps.
+
+Next: [Reconciliation](/docs/sync-engine/reconciliation).

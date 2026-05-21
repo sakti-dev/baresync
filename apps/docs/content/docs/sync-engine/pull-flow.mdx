@@ -1,6 +1,99 @@
 ---
 title: Pull Flow
-description: TODO
+description: How the engine downloads server changes and applies them locally.
 ---
 
-TODO: Write this page.
+# Pull Flow
+
+The pull flow downloads changed rows from the server and applies them to the local SQLite database.
+
+## Steps
+
+1. Read the stored cursor (or use empty string for baseline)
+2. Send POST to `/sync/pull` with `{ scopeId, tables, cursor, limit }`
+3. Server returns changed rows and deleted IDs grouped by table
+4. Engine applies changes in a transaction:
+   - Upsert changed rows (respecting `is_synced` flag and `updated_at`)
+   - Soft-delete rows in `deletedIds`
+5. Store the new cursor in `sync_cursors`
+
+## Pull request
+
+```json
+{
+  "scopeId": "merchant-1",
+  "tables": ["items", "locations"],
+  "cursor": "sync:1747894800000:items:item-99",
+  "limit": 1000
+}
+```
+
+- `tables` — filtered list from the status response's `changedTables`, or all contract tables
+- `cursor` — empty string for baseline pulls
+- `limit` — max rows per table (from engine config)
+
+## Pull response
+
+```json
+{
+  "cursor": "sync:1747894900000:items:item-105",
+  "hasMore": false,
+  "serverTime": "2026-05-22T10:00:00.000Z",
+  "tables": [
+    {
+      "table": "items",
+      "changedRows": [
+        { "id": "item-1", "name": "Widget", "updatedAt": "..." }
+      ],
+      "deletedIds": ["item-5"]
+    }
+  ]
+}
+```
+
+## Upsert logic
+
+For each changed row, the engine runs:
+
+```sql
+INSERT INTO {table} ({columns}) VALUES ({placeholders})
+ON CONFLICT(id) DO UPDATE SET {set_clause}
+WHERE {table}.is_synced = 1 OR excluded.updated_at >= {table}.updated_at
+```
+
+This means:
+
+- **Server rows always overwrite synced local rows** (`is_synced = 1`)
+- **Server rows overwrite unsynced local rows only if the server row is newer** (`updated_at` comparison)
+- **Local unsynced edits that are newer are preserved** — this is the conflict resolution
+
+The engine also sets `is_synced = 1` on upserted rows to mark them as synchronized.
+
+## Soft-delete logic
+
+For each ID in `deletedIds`:
+
+```sql
+UPDATE {table}
+SET deleted_at = {serverTime}, updated_at = {serverTime}, is_synced = 1
+WHERE id = {id}
+```
+
+The row is marked deleted but not removed. Garbage collection later hard-deletes synced soft-deleted rows.
+
+## Column name conversion
+
+The engine converts between `camelCase` (API) and `snake_case` (SQLite) automatically:
+
+- API sends `{ "merchantId": "..." }` → stored as `merchant_id`
+- Server receives `snake_case` from your repository, sends `camelCase` in the response
+
+## Cursor is only stored for incremental pulls
+
+When using `PullStartCursor::Stored` (the normal path), the engine stores the new cursor after applying changes. For baseline pulls (`PullStartCursor::Baseline`), the cursor from the response is **not** stored — this prevents a baseline pull from overwriting the cursor if one already exists from a previous partial sync.
+
+## Table ordering
+
+Upserts are applied in `upsert_order` (the contract's table order). Deletes are applied in `delete_order` (reverse of upsert order). This respects foreign key dependencies.
+
+Next: [Push Flow](/docs/sync-engine/push-flow).

@@ -1,6 +1,94 @@
 ---
 title: Sync Modes
-description: TODO
+description: How the engine decides between NoOp, PushOnly, PullOnly, FullSync, and FullResync.
 ---
 
-TODO: Write this page.
+# Sync Modes
+
+When you call `sync_now`, the engine inspects local and server state, then picks one of five modes. Each mode determines which operations run and in what order.
+
+## Decision logic
+
+```txt
+sync_now()
+  │
+  ├─ needs_baseline_sync? ──→ FullResync
+  │
+  ├─ local dirty = 0 AND server has no changes ──→ NoOp
+  │
+  ├─ local dirty > 0 AND server has no changes ──→ PushOnly
+  │
+  ├─ local dirty = 0 AND server has changes ──→ PullOnly
+  │
+  └─ local dirty > 0 AND server has changes ──→ FullSync
+```
+
+The engine calls the status endpoint first, then reads the outbox count. It does not decide the mode before checking the server.
+
+## Mode summary
+
+### NoOp
+
+Nothing to sync. Both sides are up to date.
+
+Returns `SyncNoOpResult` with:
+- `localDirtyCount` — confirmed 0
+- `serverHasChanges` — confirmed false
+
+### PushOnly
+
+Local writes pending, no server changes.
+
+1. Push all outbox rows to the server
+2. If any rows are rejected, pull those rejected tables from baseline (server-wins reconciliation)
+3. Run garbage collection
+
+### PullOnly
+
+No local writes, server has changes.
+
+1. Pull changed rows from the stored cursor
+2. Apply upserts and soft-deletes to local tables
+3. Update the stored cursor
+4. Run garbage collection
+
+### FullSync
+
+Both sides have changes. The engine pulls first to minimize rejections.
+
+1. Pull changed rows from the stored cursor
+2. Push all outbox rows
+3. If any rows are rejected, re-pull those tables from baseline
+4. Run garbage collection
+
+### FullResync
+
+Used on first sync or when explicitly requested (`sync_full_resync`). Starts from an empty cursor.
+
+1. Pull from baseline (empty cursor) — all server data
+2. Push all local outbox rows
+3. Run garbage collection
+
+This is also triggered automatically when `needs_baseline_sync` is true (i.e. no stored cursor exists).
+
+## When to use each command
+
+| Scenario | Command |
+|---|---|
+| General use, let the engine decide | `sync_now` |
+| Force a baseline refresh | `sync_full_resync` |
+| Push without checking status | `sync_push` |
+| Pull without pushing | `sync_pull` |
+
+## The mode is in the result
+
+Every `sync_now` result includes the resolved mode:
+
+```ts
+const result = await client.syncNow({ scopeId: "merchant-1" });
+// result.mode → "push_only" | "pull_only" | "full_sync" | "full_resync" | "no_op"
+```
+
+Use this to drive UI state (e.g. show a spinner only when mode is not `no_op`).
+
+Next: [Status Flow](/docs/sync-engine/status-flow).

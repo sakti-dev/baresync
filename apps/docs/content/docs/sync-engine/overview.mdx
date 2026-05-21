@@ -1,6 +1,81 @@
 ---
-title: Overview
-description: TODO
+title: Sync Engine Overview
+description: How the Rust sync engine orchestrates push, pull, and reconciliation.
 ---
 
-TODO: Write this page.
+# Sync Engine Overview
+
+The sync engine lives in `baresync-core` (Rust). It is the logic layer between your local SQLite database and your server's sync endpoints. The Tauri plugin exposes it through commands; you rarely call engine internals directly.
+
+## What the engine does
+
+Given a local SQLite database and a configured scope, the engine:
+
+1. Reads the outbox for pending local changes
+2. Reads the stored cursor for the server's last known state
+3. Calls the server's status endpoint to check for remote changes
+4. Picks a [sync mode](/docs/sync-engine/sync-modes) (NoOp, PushOnly, PullOnly, FullSync, FullResync)
+5. Executes push and/or pull in the correct order
+6. Reconciles conflicts (server-wins by default)
+7. Runs garbage collection to hard-delete synced soft-deleted rows
+
+## Architecture
+
+```txt
+┌─────────────┐    commands     ┌──────────────┐    HTTP     ┌──────────┐
+│  JS Client   │ ──────────────→ │ Tauri Plugin  │ ──────────→ │  Server   │
+│  SyncClient  │ ←────────────── │ (Rust)        │ ←────────── │  Routes   │
+└─────────────┘    events        └──────────────┘             └──────────┘
+                                    │
+                                    ▼
+                               ┌──────────┐
+                               │ Engine    │
+                               │ ─ status  │
+                               │ ─ push    │
+                               │ ─ pull    │
+                               │ ─ gc      │
+                               └──────────┘
+                                    │
+                                    ▼
+                               ┌──────────┐
+                               │ SQLite   │
+                               │ ─ tables │
+                               │ ─ outbox │
+                               │ ─ cursors│
+                               └──────────┘
+```
+
+## Key runtime tables
+
+The engine manages these internal tables automatically:
+
+| Table | Purpose |
+|---|---|
+| `sync_outbox` | Queues local writes that need pushing |
+| `sync_cursors` | Stores the last server cursor per scope |
+| `sync_client_identity` | Stable client ID for idempotency |
+
+These are created by the migration system at startup. See [Runtime Tables](/docs/schema/runtime-tables).
+
+## Entry points
+
+| Command | What it does |
+|---|---|
+| `sync_now` | Auto-selects the best mode and runs it |
+| `sync_push` | Push-only, no status check |
+| `sync_pull` | Pull-only using stored cursor |
+| `sync_full_resync` | Baseline pull from scratch, then push |
+
+## Limits and tuning
+
+The engine uses configurable limits from `SyncEngineConfig`:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `max_push_rows` | 2000 | Max rows per push chunk |
+| `target_push_bytes` | 256 KB | Target byte size per push chunk |
+| `max_push_bytes` | 2 MB | Hard byte limit per push chunk |
+
+These are set on the [Tauri Plugin Builder](/docs/tauri-plugin/builder). The engine automatically splits oversized pushes into chunks.
+
+Next: [Sync Modes](/docs/sync-engine/sync-modes).

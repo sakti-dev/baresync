@@ -1,6 +1,99 @@
 ---
 title: Push Flow
-description: TODO
+description: How the engine reads the outbox, sends local changes, and processes server acknowledgments.
 ---
 
-TODO: Write this page.
+# Push Flow
+
+The push flow reads pending local changes from the outbox, sends them to the server, and processes the server's acknowledgment.
+
+## Steps
+
+1. For each contract table in `upsert_order`, read unsynced outbox entries
+2. Coalesce multiple operations on the same row into a single change
+3. Filter out local-only columns
+4. Chunk the changes to fit byte and row limits
+5. Send each chunk to `/sync/push`
+6. Process accepted and rejected IDs
+7. Mark accepted outbox entries as synced
+8. Mark accepted rows as `is_synced = 1`
+
+## Outbox coalescing
+
+When a row has multiple outbox entries (e.g. insert then update), the engine coalesces them:
+
+| Previous | Next | Result |
+|---|---|---|
+| `insert` | `update` | `insert` (treat as create) |
+| `insert` | `delete` | cancelled (row never existed) |
+| `update` | `update` | `update` |
+| `update` | `delete` | `delete` |
+| `delete` | `insert` | `update` (re-create) |
+| `delete` | `update` | `update` |
+| `delete` | `delete` | `delete` |
+
+This means the server sees the net effect, not every intermediate state. An insert-then-delete pair is silently dropped — the server never sees it.
+
+## Local-only columns are stripped
+
+Columns marked as `localOnly` in the sync config are removed before the data leaves the device. The engine filters them from both the outbox read and the push payload.
+
+## Push envelope
+
+Each chunk is sent as:
+
+```json
+{
+  "scopeId": "merchant-1",
+  "clientId": "uuid-of-device",
+  "idempotencyKey": "sha256-of-sorted-outbox-ids",
+  "tables": [
+    {
+      "table": "items",
+      "changedRows": [{ "id": "item-10", "name": "New item" }],
+      "deletedIds": ["item-3"]
+    }
+  ]
+}
+```
+
+### Idempotency key
+
+The `idempotencyKey` is a SHA-256 hash of the sorted outbox IDs in the chunk. If a push request fails and is retried with the same outbox entries, the server can detect the duplicate using this key. See [Idempotency](/docs/server/idempotency).
+
+## Server response
+
+```json
+{
+  "serverTime": "2026-05-22T10:00:00.000Z",
+  "tables": [
+    {
+      "table": "items",
+      "acceptedCreatedIds": ["item-10"],
+      "acceptedUpdatedIds": [],
+      "acceptedDeletedIds": ["item-3"],
+      "rejected": [
+        { "id": "item-7", "reason": "server_newer" }
+      ]
+    }
+  ]
+}
+```
+
+## Accepted IDs
+
+For each accepted ID, the engine:
+1. Marks the corresponding `sync_outbox` entries as `synced_at = {serverTime}`
+2. Marks the row in the table as `is_synced = 1` (only if no other pending outbox entries exist for that row)
+
+The `is_synced` check prevents marking a row as synced if a new local write happened while the push was in flight.
+
+## Rejected IDs (server-wins)
+
+When the server rejects a row (typically because `server_newer`), the row stays in the local database but remains `is_synced = 0`. The engine then pulls the server's version for rejected tables — see [Reconciliation](/docs/sync-engine/reconciliation).
+
+## Empty push
+
+If the outbox is empty, the push returns immediately with zero tables synced and no network request.
+
+Next: [Chunking](/docs/sync-engine/chunking).
