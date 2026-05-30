@@ -61,7 +61,7 @@ const info = await invoke("get_db_info");
 
 ### `run_migrations`
 
-Runs embedded and file-based migrations. No parameters.
+Runs the configured migration source, either `migrations_path(...)` or embedded migrations. No parameters.
 
 ```ts
 await invoke("run_migrations");

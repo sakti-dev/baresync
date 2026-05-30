@@ -2,10 +2,11 @@ use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{
+    path::BaseDirectory,
     plugin::{Builder as TauriPluginBuilder, TauriPlugin},
     AppHandle, Emitter, Manager, Runtime,
 };
@@ -38,7 +39,7 @@ pub struct Builder {
     db_path: Option<String>,
     contract_tables: Option<SyncContractTables>,
     embedded_migrations: Vec<EmbeddedMigration>,
-    migrations_dir: Option<PathBuf>,
+    migrations_path: Option<PathBuf>,
     transport: Option<Arc<dyn SyncHttpTransport>>,
     poll_interval_secs: Option<u64>,
     poll_on_background: Option<bool>,
@@ -54,7 +55,7 @@ impl Builder {
             db_path: None,
             contract_tables: None,
             embedded_migrations: Vec::new(),
-            migrations_dir: None,
+            migrations_path: None,
             transport: None,
             poll_interval_secs: None,
             poll_on_background: None,
@@ -96,8 +97,8 @@ impl Builder {
         self
     }
 
-    pub fn migrations_dir(mut self, dir: impl Into<PathBuf>) -> Self {
-        self.migrations_dir = Some(dir.into());
+    pub fn migrations_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.migrations_path = Some(path.into());
         self
     }
 
@@ -134,11 +135,30 @@ impl Builder {
         };
 
         let embedded_migrations = self.embedded_migrations;
-        let migrations_dir = self.migrations_dir;
+        let migrations_path = self.migrations_path;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
             .setup(move |app, _api| {
                 let config = config.clone();
+                validate_migration_sources(&embedded_migrations, migrations_path.as_deref())
+                    .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
+
+                let resolved_migrations_path = migrations_path.as_deref().map_or(Ok(None), |path| {
+                    resolve_migrations_path(path, |relative| {
+                        app.path()
+                            .resolve(relative, BaseDirectory::Resource)
+                            .map_err(|error| {
+                                format!(
+                                    "Failed to resolve migrations path {}: {}",
+                                    relative.display(),
+                                    error
+                                )
+                                .into()
+                            })
+                    })
+                    .map(Some)
+                })?;
+
                 let pool = tauri::async_runtime::block_on(async {
                     baresync_core::db::connect_db(&config.db_path)
                         .await
@@ -165,11 +185,11 @@ impl Builder {
                         .map_err(|e| -> Box<dyn std::error::Error> {
                             format!("Failed to run embedded migrations: {}", e).into()
                         })?;
-                    if let Some(dir) = &migrations_dir {
-                        migrations::run_migration_files(&pool, &migration_config, dir)
+                    if let Some(path) = &resolved_migrations_path {
+                        migrations::run_migration_files(&pool, &migration_config, path)
                             .await
                             .map_err(|e| -> Box<dyn std::error::Error> {
-                                format!("Failed to run migrations from {}: {}", dir.display(), e)
+                                format!("Failed to run migrations from {}: {}", path.display(), e)
                                     .into()
                             })?;
                     }
@@ -182,7 +202,7 @@ impl Builder {
                     contract_tables: config.contract_tables.clone(),
                     db_path: PathBuf::from(&config.db_path),
                     embedded_migrations: Arc::new(embedded_migrations),
-                    migrations_dir: migrations_dir.clone(),
+                    migrations_path: resolved_migrations_path.clone(),
                     poll_notify: Arc::new(Notify::new()),
                     sync_in_progress: Arc::new(AtomicBool::new(false)),
                     poll_control_tx: tokio::sync::Mutex::new(None),
@@ -205,6 +225,31 @@ impl Builder {
     }
 }
 
+fn validate_migration_sources(
+    embedded_migrations: &[EmbeddedMigration],
+    migrations_path: Option<&Path>,
+) -> Result<(), String> {
+    if !embedded_migrations.is_empty() && migrations_path.is_some() {
+        return Err(
+            "Baresync builder configured both embedded migrations and migrations_path; choose one source."
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn resolve_migrations_path(
+    path: &Path,
+    resolve_relative: impl FnOnce(&Path) -> Result<PathBuf, Box<dyn std::error::Error>>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+
+    resolve_relative(path)
+}
+
 fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
     if config.encoding == "protobuf" {
         return config.transport.clone().ok_or_else(|| {
@@ -222,10 +267,13 @@ fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_transport;
+    use super::{resolve_transport, resolve_migrations_path, validate_migration_sources};
     use crate::config::PluginConfig;
+    use baresync_core::migrations::EmbeddedMigration;
     use baresync_core::engine::SyncContractTables;
     use baresync_core::http::SyncHttpTransport;
+    use std::cell::Cell;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     #[derive(Debug)]
@@ -299,5 +347,50 @@ mod tests {
     #[test]
     fn json_uses_default_transport_when_missing() {
         assert!(resolve_transport(&test_config("json", None)).is_ok());
+    }
+
+    #[test]
+    fn absolute_migrations_path_skips_resource_resolution() {
+        let path = PathBuf::from("/tmp/baresync-migrations");
+        let called = Cell::new(false);
+        let resolved = resolve_migrations_path(&path, |_| {
+            called.set(true);
+            Ok(PathBuf::from("/should/not/be/used"))
+        })
+        .expect("absolute path should resolve directly");
+
+        assert_eq!(resolved, path);
+        assert!(!called.get());
+    }
+
+    #[test]
+    fn relative_migrations_path_uses_resource_resolution() {
+        let path = Path::new("migrations");
+        let called = Cell::new(false);
+        let resolved = resolve_migrations_path(path, |relative| {
+            called.set(true);
+            assert_eq!(relative, path);
+            Ok(PathBuf::from("/app/resources/migrations"))
+        })
+        .expect("relative path should use resource resolution");
+
+        assert_eq!(resolved, PathBuf::from("/app/resources/migrations"));
+        assert!(called.get());
+    }
+
+    #[test]
+    fn combined_embedded_and_path_migrations_are_rejected() {
+        let embedded = vec![EmbeddedMigration {
+            name: "0001_init",
+            sql: "SELECT 1;",
+        }];
+
+        let error = validate_migration_sources(&embedded, Some(Path::new("migrations")))
+            .expect_err("combined migration sources should be rejected");
+
+        assert!(
+            error.contains("embedded migrations") && error.contains("migrations_path"),
+            "unexpected error message: {error}"
+        );
     }
 }

@@ -5,7 +5,7 @@ description: Add the Baresync crates to your Tauri app.
 
 # Installation
 
-Add both crates to your `Cargo.toml`. Your app needs `baresync-core` in both `[dependencies]` and `[build-dependencies]` because the build script uses it to discover migration files.
+Add the runtime crates to your `Cargo.toml`. You only need `baresync-core` in `[build-dependencies]` if you are embedding migrations from a `build.rs` script.
 
 ## Cargo.toml
 
@@ -16,27 +16,15 @@ tauri-plugin-baresync = { version = "0.1.0" }
 tauri = { version = "2", features = [] }
 
 [build-dependencies]
-baresync-core = { version = "0.1.0" }
 tauri-build = { version = "2", features = [] }
 ```
-
-### Developing inside the Baresync repo
-
-Add `path` to point at the local crates:
-
-```toml
-baresync-core = { version = "0.1.0", path = "../../../../../crates/baresync-core" }
-tauri-plugin-baresync = { version = "0.1.0", path = "../../../../../crates/tauri-plugin-baresync" }
-```
-
-The path will differ depending on where your Tauri app lives relative to the repo root.
 
 ## What you need next
 
 After adding the dependencies, you need:
 
-1. A `build.rs` that embeds migrations — see [Migrations](/docs/tauri-plugin/migrations)
-2. A `lib.rs` that configures the builder and registers commands — see [Builder](/docs/tauri-plugin/builder) and [Commands](/docs/tauri-plugin/commands)
-3. `.sql` migration files in a `migrations/` directory — see [Migrations](/docs/tauri-plugin/migrations)
+1. A `lib.rs` that configures the builder and registers commands — see [Builder](/docs/tauri-plugin/builder) and [Commands](/docs/tauri-plugin/commands)
+2. `.sql` migration files in a `migrations/` directory if you are using `migrations_path(...)` — see [Migrations](/docs/tauri-plugin/migrations)
+3. A `build.rs` only if you are embedding migrations — see [Migrations](/docs/tauri-plugin/migrations)
 
 Next: [Builder](/docs/tauri-plugin/builder).

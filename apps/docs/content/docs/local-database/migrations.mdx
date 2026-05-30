@@ -11,13 +11,12 @@ Baresync runs SQL migrations at plugin startup to create and update the local SQ
 
 1. Plugin connects to the SQLite database
 2. Creates `__drizzle_migrations` tracking table (if not exists)
-3. Runs **embedded migrations** (compiled into the binary) in strict mode
-4. Runs **file-based migrations** (from a directory) in strict mode (if configured)
-5. Skips any migration whose hash is already recorded in `__drizzle_migrations`
+3. Runs configured migrations in strict mode, either from `migrations_path(...)` or embedded migrations
+4. Skips any migration whose hash is already recorded in `__drizzle_migrations`
 
 ## Embedded migrations
 
-Embedded migrations are Rust constants compiled into your app binary. They always run first.
+Embedded migrations are Rust constants compiled into your app binary. Use them when you want SQL compiled directly into the executable instead of bundled as resource files.
 
 ```rust
 use baresync_core::migrations::EmbeddedMigration;
@@ -66,10 +65,10 @@ builder.migrations(vec![
 
 ## File-based migrations
 
-For app-specific tables that aren't part of the sync contract, use file-based migrations:
+For the simplest production setup, bundle `.sql` files as Tauri resources and point the plugin at that directory:
 
 ```rust
-builder.migrations_dir("migrations")
+builder.migrations_path("migrations")
 ```
 
 This reads all `.sql` files from the `migrations/` directory, sorted by filename:
@@ -81,7 +80,7 @@ migrations/
   0003_create_search_index.sql
 ```
 
-File-based migrations run after embedded migrations. They use the same tracking table and skip logic.
+Path-based migrations use the same tracking table and skip logic as embedded migrations. Configure either `migrations_path(...)` or `migrations(...)`, not both.
 
 ## Statement breakpoints
 

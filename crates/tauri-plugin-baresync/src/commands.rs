@@ -39,7 +39,7 @@ pub struct PluginState {
     pub contract_tables: SyncContractTables,
     pub db_path: PathBuf,
     pub embedded_migrations: Arc<Vec<EmbeddedMigration>>,
-    pub migrations_dir: Option<PathBuf>,
+    pub migrations_path: Option<PathBuf>,
     pub poll_notify: Arc<Notify>,
     pub sync_in_progress: Arc<AtomicBool>,
     pub poll_control_tx: tokio::sync::Mutex<Option<mpsc::Sender<ControlMsg>>>,
@@ -128,15 +128,15 @@ pub async fn get_db_info(
 
 pub async fn run_migrations_with_state(state: &PluginState) -> Result<(), String> {
     let config = MigrationConfig::strict();
-    migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
-        .await
-        .map_err(|e| e.to_string())?;
-    if let Some(dir) = &state.migrations_dir {
-        migrations::run_migration_files(&state.pool, &config, dir)
+    if let Some(path) = &state.migrations_path {
+        migrations::run_migration_files(&state.pool, &config, path)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())
+    } else {
+        migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
+            .await
+            .map_err(|e| e.to_string())
     }
-    Ok(())
 }
 
 #[command]

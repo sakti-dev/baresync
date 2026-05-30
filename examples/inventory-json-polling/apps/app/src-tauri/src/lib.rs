@@ -5,8 +5,6 @@ use tauri::{command, generate_context, generate_handler, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, PluginState};
 
-include!(concat!(env!("OUT_DIR"), "/inventory_migrations.rs"));
-
 fn inventory_db_path() -> String {
     let base = env::var("INVENTORY_DB_PATH").unwrap_or_else(|_| {
         let mut path = std::env::temp_dir();
@@ -161,7 +159,7 @@ pub fn run() {
                 .encoding("json")
                 .db_path(inventory_db_path())
                 .contract_tables(inventory_contract_tables())
-                .migrations(inventory_migrations())
+                .migrations_path("migrations")
                 .poll_interval_secs(30)
                 .build(),
         )

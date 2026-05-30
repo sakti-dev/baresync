@@ -5,78 +5,27 @@ description: How the plugin discovers, embeds, and applies SQL migrations.
 
 # Migrations
 
-The plugin applies SQL migrations at startup, before any JS code runs. Migrations are embedded into the binary at compile time so the app works offline.
+The plugin applies SQL migrations at startup, before any JS code runs. You can either ship `.sql` files as Tauri resources with `migrations_path(...)` or embed the SQL into the binary with `migrations(...)`.
 
-## Migration discovery
+## Path-based migrations
 
-### Build script
-
-Write a `build.rs` that reads `.sql` files from your `migrations/` directory and generates a Rust function:
+Path-based migrations are the simplest production-ready setup. Put your `.sql` files in a `migrations/` directory, bundle them with Tauri, and point the builder at that folder:
 
 ```rust
-use std::{env, fmt::Write as _, fs, path::PathBuf};
+builder.migrations_path("migrations")
+```
 
-fn main() {
-    generate_migration_manifest();
-    tauri_build::build()
-}
+Relative paths are resolved from the Tauri resource directory during plugin setup. Add the files to your Tauri bundle resources so they are available in production:
 
-fn generate_migration_manifest() {
-    let manifest_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
-    let migration_dir = manifest_dir.join("migrations");
-    println!("cargo:rerun-if-changed={}", migration_dir.display());
-
-    let migrations = baresync_core::migrations::collect_migration_files(&migration_dir)
-        .expect("failed to discover migrations");
-
-    for migration in &migrations {
-        println!("cargo:rerun-if-changed={}", migration.path.display());
-    }
-
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-    let generated = out_dir.join("my_migrations.rs");
-
-    let mut source = String::new();
-    source.push_str(
-        "pub fn my_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {\n",
-    );
-    source.push_str("    vec![\n");
-
-    for migration in migrations {
-        writeln!(
-            source,
-            "        baresync_core::migrations::EmbeddedMigration {{ name: {:?}, sql: include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/migrations/\", {:?})) }},",
-            migration.name,
-            migration.file_name
-        )
-        .expect("failed to write migration manifest");
-    }
-
-    source.push_str("    ]\n");
-    source.push_str("}\n");
-
-    fs::write(&generated, source).expect("failed to write generated migration manifest");
+```json
+{
+  "bundle": {
+    "resources": ["migrations/*.sql"]
+  }
 }
 ```
 
-This produces `my_migrations()` — a function that returns the embedded migrations.
-
-### Include in lib.rs
-
-```rust
-include!(concat!(env!("OUT_DIR"), "/my_migrations.rs"));
-```
-
-Then pass the function to the builder:
-
-```rust
-.migrations(my_migrations())
-```
-
-## Migration files
-
-Place `.sql` files in `src-tauri/migrations/`:
+This reads all `.sql` files from the `migrations/` directory, sorted by filename:
 
 ```txt
 migrations/
@@ -114,7 +63,7 @@ Migrations run in **strict mode** by default:
 - If any statement fails, the entire migration rolls back
 - Already-applied migrations are skipped (tracked by hash in `__drizzle_migrations`)
 
-The plugin calls `run_migrations` during setup, so migrations are applied before your JS code loads.
+The plugin calls `run_migrations` during setup, so migrations are applied before your JS code loads. It uses either the configured path-based migrations or the embedded migrations, depending on how you set up the builder.
 
 ## Migration tracking
 
@@ -138,8 +87,53 @@ const status = await invoke("get_migration_status");
 2. Rebuild — the build script picks it up automatically
 3. The plugin applies it on next launch
 
-## Filesystem migrations
+## Embedded migrations
 
-If you set `migrations_dir` on the builder, the plugin also reads `.sql` files from that directory at runtime. This is useful for development or dynamic schemas. Embedded migrations run first, then filesystem migrations.
+Embedded migrations are the advanced option when you want the SQL compiled into the binary instead of shipped as files.
+
+```rust
+use baresync_core::migrations::EmbeddedMigration;
+
+let migrations = vec![
+    EmbeddedMigration {
+        name: "0001_create_items",
+        sql: "CREATE TABLE items (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            deleted_at TEXT,
+            is_synced INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    },
+];
+
+builder.migrations(migrations)
+```
+
+### Where the SQL comes from
+
+In practice, you generate these from your Baresync sync contract:
+
+```bash
+bunx baresync generate --config baresync.config.ts
+```
+
+The generator produces:
+- `local-schema.ts` — `syncOutbox` and `syncCursors` Drizzle table definitions
+- `local-synced-schema.ts` — Drizzle table definitions for each synced table (with `localSyncColumns`)
+- `migrations.ts` — `EmbeddedMigration` array with `CREATE TABLE` SQL for all tables
+
+You then include the generated migrations in your Rust `lib.rs`:
+
+```rust
+// Typically auto-generated or copy-pasted from the TS generator output
+builder.migrations(vec![
+    EmbeddedMigration { name: "0001_sync_outbox", sql: "CREATE TABLE IF NOT EXISTS sync_outbox (...)" },
+    EmbeddedMigration { name: "0002_sync_cursors", sql: "CREATE TABLE IF NOT EXISTS sync_cursors (...)" },
+    EmbeddedMigration { name: "0003_items", sql: "CREATE TABLE IF NOT EXISTS items (...)" },
+])
+```
 
 Next: [Polling](/docs/tauri-plugin/polling).

@@ -16,14 +16,14 @@ use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 
 tauri::Builder::default()
     .plugin(
-        BaresyncBuilder::new()
-            .api_base_url("https://api.example.com")
-            .db_path("baresync.db")
-            .poll_interval_secs(30)
-            .migrations(migrations)
-            .contract_tables(tables)
-            .build(),
-    )
+BaresyncBuilder::new()
+    .api_base_url("https://api.example.com")
+    .db_path("baresync.db")
+    .poll_interval_secs(30)
+    .migrations_path("migrations")
+    .contract_tables(tables)
+    .build(),
+)
 ```
 
 ### All options
@@ -37,8 +37,8 @@ tauri::Builder::default()
 | `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
 | `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
 | `.max_push_rows(rows)` | `usize` | `2000` | Maximum rows per push chunk. Works with `max_push_bytes` — whichever limit is hit first. |
-| `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_dir()`, not both. |
-| `.migrations_dir(dir)` | `String` | `""` | Directory of `.sql` migration files. Sorted by filename. |
+| `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_path()`, not both. |
+| `.migrations_path(path)` | `String` | `""` | Path to `.sql` migration files. Relative paths resolve from Tauri resources. |
 | `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
 | `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Required for protobuf apps; optional for JSON apps and tests. |
 
@@ -92,6 +92,7 @@ The client's `max_push_bytes` should be smaller than the server's `maxBytes`. Th
 BaresyncBuilder::new()
     .api_base_url("http://localhost:3000")
     .db_path(":memory:")  // fresh DB on every restart
+    .migrations_path("migrations")
     .poll_interval_secs(10)  // fast feedback loop
     .poll_on_background(true)  // don't pause when you switch to the terminal
 ```
@@ -102,6 +103,7 @@ BaresyncBuilder::new()
 BaresyncBuilder::new()
     .api_base_url("https://api.example.com")
     .db_path("baresync.db")
+    .migrations_path("migrations")
     .poll_interval_secs(30)
     .poll_on_background(false)  // save battery on mobile
     .max_push_bytes(262_144)

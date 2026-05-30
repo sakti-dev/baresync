@@ -23,7 +23,7 @@ tauri::Builder::default()
             .encoding("json")
             .db_path(db_path())
             .contract_tables(contract_tables())
-            .migrations(my_migrations())
+            .migrations_path("migrations")
             .poll_interval_secs(30)
             .build(),
     )
@@ -41,7 +41,7 @@ tauri::Builder::default()
 | `db_path` | `impl Into<String>` | Yes | `"baresync.db"` | Path to the local SQLite file |
 | `contract_tables` | `SyncContractTables` | Yes | empty | Upsert order, delete order, local-only columns |
 | `migrations` | `Vec<EmbeddedMigration>` | Yes | empty | Embedded SQL migrations |
-| `migrations_dir` | `impl Into<PathBuf>` | No | `None` | Additional filesystem-based migrations |
+| `migrations_path` | `impl Into<PathBuf>` | No | `None` | Path to `.sql` migrations bundled with the app or resolved absolutely |
 | `poll_interval_secs` | `u64` | No | `30` | Seconds between polling cycles |
 | `poll_on_background` | `bool` | No | `false` | Whether to poll when the window is unfocused |
 | `max_push_bytes` | `usize` | No | `262144` | Maximum push payload size in bytes |
@@ -91,15 +91,24 @@ fn contract_tables() -> SyncContractTables {
 
 These values come from your generated `sync-table-order.ts`. See [Generated Files](/docs/generator/generated-files).
 
+### migrations_path
+
+Path-based migrations are the simplest production setup. Relative paths are resolved from the Tauri resource directory, so you can bundle a `migrations/` folder with your app and point the plugin at it:
+
+```rust
+BaresyncBuilder::new()
+    .migrations_path("migrations")
+```
+
+See [Migrations](/docs/tauri-plugin/migrations) for the production and advanced migration options.
+
 ### migrations
 
-Embedded migrations are compiled into the binary. Use a build script to generate them:
+Embedded migrations are compiled into the binary. Use this if you want the SQL stored in the Rust app instead of shipped as files:
 
 ```rust
 include!(concat!(env!("OUT_DIR"), "/my_migrations.rs"));
 ```
-
-See [Migrations](/docs/tauri-plugin/migrations) for the build script.
 
 ### poll_on_background
 
@@ -128,8 +137,8 @@ For JSON, you can omit `transport` and the plugin uses `JsonHttpTransport` by de
 The builder's `setup` closure runs during Tauri initialization:
 
 1. Connects to SQLite at `db_path` (creates the file if missing, sets WAL mode, foreign keys on)
-2. Runs embedded migrations in strict mode
-3. Runs filesystem migrations (if `migrations_dir` is set) in strict mode
+2. Runs `migrations_path` migrations in strict mode, if configured
+3. Runs embedded migrations in strict mode, if no migration path is configured
 4. Stores `PluginState` in Tauri's managed state
 
 If any step fails, the app panics with a descriptive error.

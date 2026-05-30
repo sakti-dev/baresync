@@ -13,7 +13,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-baresync = { version = "0.1.0", path = "../../../../../crates/tauri-plugin-baresync" }
 
 [build-dependencies]
-baresync-core = { version = "0.1.0", path = "../../../../../crates/baresync-core" }
 tauri-build = { version = "2", features = [] }
 
 [workspace]

@@ -46,7 +46,7 @@ The plugin SHALL run configured migrations during plugin setup before exposing m
 
 #### Scenario: setup runs migrations
 
-- **WHEN** the plugin is registered with embedded migrations or `migrations_dir`
+- **WHEN** the plugin is registered with embedded migrations or a migration path
 - **THEN** setup SHALL connect to SQLite, apply all pending migrations, and only then manage `PluginState`
 
 #### Scenario: setup migration failure stops startup
@@ -77,14 +77,31 @@ The plugin SHALL expose a `get_migration_status` Tauri command that returns the 
 - **WHEN** the JS client calls `invoke("get_migration_status")`
 - **THEN** the plugin SHALL return the list of applied migration hashes and timestamps
 
-### Requirement: Builder accepts migrations directory
+### Requirement: Builder accepts migration path
 
-The `Builder` SHALL accept a `migrations_dir` method that configures a path to SQL migration files loaded by the Rust plugin.
+The `Builder` SHALL accept a `migrations_path` method that configures a path to SQL migration files loaded by the Rust plugin.
 
-#### Scenario: Builder with migrations
+#### Scenario: Builder with relative migration path
 
-- **WHEN** `Builder::new().api_base_url("...").migrations_dir("./drizzle").build()` is called
-- **THEN** the plugin SHALL register the directory and apply its `.sql` migrations in filename order during setup and explicit migration commands
+- **WHEN** `Builder::new().api_base_url("...").migrations_path("migrations").build()` is registered in a Tauri app
+- **THEN** the plugin SHALL resolve `migrations` from the Tauri resource directory during setup
+- **AND** the plugin SHALL apply `.sql` migrations in filename order during setup and explicit migration commands
+
+#### Scenario: Builder with absolute migration path
+
+- **WHEN** `Builder::new().api_base_url("...").migrations_path("/tmp/app-migrations").build()` is registered in a Tauri app
+- **THEN** the plugin SHALL read migration files directly from `/tmp/app-migrations`
+- **AND** the plugin SHALL apply `.sql` migrations in filename order during setup and explicit migration commands
+
+### Requirement: Builder rejects multiple migration sources
+
+The `Builder` SHALL reject configurations that provide both embedded migrations and a migration path.
+
+#### Scenario: Embedded and path migrations configured together
+
+- **WHEN** `Builder::new().migrations(vec![...]).migrations_path("migrations").build()` is registered in a Tauri app
+- **THEN** plugin setup SHALL fail before exposing managed command state
+- **AND** the error message SHALL tell the consumer to choose either embedded migrations or `migrations_path`
 
 ### Requirement: Polling config
 

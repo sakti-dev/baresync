@@ -5,6 +5,7 @@ use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::migrations::EmbeddedMigration;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -202,7 +203,7 @@ impl TestCommandState {
                     );
                 ",
             }]),
-            migrations_dir: None,
+            migrations_path: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
@@ -596,6 +597,77 @@ async fn migration_commands_apply_embedded_migrations_and_report_status() {
     .await
     .unwrap();
     assert_eq!(item_table_count, 1);
+}
+
+#[tokio::test]
+async fn migration_commands_apply_filesystem_migrations_from_path() {
+    let migration_dir = std::env::temp_dir().join(format!(
+        "baresync-migration-path-test-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&migration_dir).unwrap();
+    fs::write(
+        migration_dir.join("0001_create_path_items.sql"),
+        "CREATE TABLE path_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+    )
+    .unwrap();
+
+    let db_path = temp_db_path();
+    let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
+        .unwrap()
+        .create_if_missing(true)
+        .pragma("foreign_keys", "ON");
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let harness = TestCommandState {
+        state: PluginState {
+            pool: Arc::new(pool),
+            sync_config: SyncEngineConfig {
+                api_url: "http://127.0.0.1:9/sync".to_string(),
+                scope_id: "scope-1".to_string(),
+                transport: baresync_core::http::default_transport(),
+                ..Default::default()
+            },
+            contract_tables: SyncContractTables {
+                upsert_order: vec!["path_items".to_string()],
+                delete_order: vec!["path_items".to_string()],
+                local_only_columns: vec![],
+            },
+            db_path,
+            embedded_migrations: Arc::new(vec![]),
+            migrations_path: Some(migration_dir.clone()),
+            poll_notify: Arc::new(Notify::new()),
+            sync_in_progress: Arc::new(AtomicBool::new(false)),
+            poll_control_tx: tokio::sync::Mutex::new(None),
+            poll_task_handle: tokio::sync::Mutex::new(None),
+            poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
+                paused: false,
+                last_sync_at: None,
+            })),
+            poll_interval_secs: 30,
+            poll_on_background: false,
+            event_sink: Arc::new(RecordingEventSink::default()),
+        },
+        event_sink: RecordingEventSink::default(),
+    };
+
+    run_migrations_with_state(&harness.state).await.unwrap();
+
+    let table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'path_items'",
+    )
+    .fetch_one(&*harness.state.pool)
+    .await
+    .unwrap();
+    assert_eq!(table_count, 1);
+
+    let _ = fs::remove_dir_all(&migration_dir);
 }
 
 #[tokio::test]

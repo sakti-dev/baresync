@@ -22,7 +22,7 @@ Builder::new()
     .db_path("baresync.db")
     .poll_interval_secs(30)
     .poll_on_background(false)
-    .migrations(vec![/* ... */])
+    .migrations_path("migrations")
     .contract_tables(SyncContractTables { upsert_order, delete_order, local_only_columns })
     .build()
 ```
@@ -38,7 +38,7 @@ Builder::new()
 | `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
 | `max_push_rows(n)` | `usize` | `2000` | Maximum rows per push batch |
 | `migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations |
-| `migrations_dir(dir)` | `impl Into<PathBuf>` | - | Directory of `.sql` migration files |
+| `migrations_path(path)` | `impl Into<PathBuf>` | - | Path to `.sql` migration files. Relative paths resolve from Tauri resources |
 | `contract_tables(t)` | `SyncContractTables` | - | Table ordering and column config |
 | `transport(t)` | `Arc<dyn SyncHttpTransport>` | `JsonHttpTransport` | Custom HTTP transport |
 | `poll_interval_secs(n)` | `u64` | `30` | Seconds between automatic syncs |

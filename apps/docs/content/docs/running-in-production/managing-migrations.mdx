@@ -9,7 +9,7 @@ Baresync uses SQL migrations to set up and evolve your local SQLite schema. Migr
 
 ## How migrations work
 
-1. The plugin reads your migration files (embedded or from a directory)
+1. The plugin reads your migration files from `migrations_path` or embedded migrations
 2. It checks the `__drizzle_migrations` table for already-applied migrations
 3. It runs any new migrations in order, one at a time
 4. Each successful migration is recorded in the `hash` column
@@ -18,7 +18,20 @@ A migration is **new** if its name doesn't exist in `__drizzle_migrations.hash`.
 
 ## Migration formats
 
-### Embedded migrations (recommended for production)
+### Path-based migrations (recommended for production)
+
+Bundle a `migrations/` folder with your Tauri app and point the builder at it:
+
+```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+BaresyncBuilder::new()
+    .migrations_path("migrations")
+```
+
+Relative paths resolve from the Tauri resource directory, so the same config works in packaged apps once the SQL files are bundled as resources.
+
+### Embedded migrations (advanced)
 
 Compiled into your binary. No files to ship:
 
@@ -43,16 +56,16 @@ BaresyncBuilder::new()
     .migrations(app_migrations())
 ```
 
-### Directory migrations (useful during development)
+## File-based migrations
 
 Read from `.sql` files at runtime, sorted by filename:
 
 ```rust
 BaresyncBuilder::new()
-    .migrations_dir("/path/to/migrations")
+    .migrations_path("/path/to/migrations")
 ```
 
-File naming convention: `0001_create_tables.sql`, `0002_add_indexes.sql`, etc. The sort is alphabetical, so zero-padded numbers keep the order correct.
+Add the files to your Tauri bundle resources for production. File naming convention: `0001_create_tables.sql`, `0002_add_indexes.sql`, etc. The sort is alphabetical, so zero-padded numbers keep the order correct.
 
 ## Migration SQL format
 

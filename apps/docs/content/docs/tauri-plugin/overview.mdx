@@ -14,12 +14,12 @@ The Baresync Tauri plugin owns the local SQLite database. It opens the database,
 | `baresync-core` | Sync engine, push/pull logic, migrations, drizzle proxy, state |
 | `tauri-plugin-baresync` | Tauri plugin builder, command handlers, polling loop, event emission |
 
-Your app depends on both: `baresync-core` for the build script and type definitions, `tauri-plugin-baresync` for the runtime plugin.
+Your app depends on `tauri-plugin-baresync` for the runtime plugin. Add `baresync-core` directly only when you need its Rust types or advanced embedded migration helpers.
 
 ## What the plugin owns
 
 - Local SQLite connection (single-pool, WAL mode, foreign keys on)
-- Migration discovery and execution (embedded at compile time)
+- Migration discovery and execution from bundled `.sql` files or embedded migrations
 - Sync engine lifecycle (push, pull, full resync)
 - Polling loop with pause/resume/stop
 - Event emission (`baresync://data-changed`, `baresync://sync-status-changed`)

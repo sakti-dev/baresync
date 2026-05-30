@@ -81,7 +81,7 @@ impl SimulationHarness {
                     );
                 ",
             }]),
-            migrations_dir: None,
+            migrations_path: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),

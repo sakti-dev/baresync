@@ -43,7 +43,7 @@ async fn test_state(pool: SqlitePool) -> PluginState {
         },
         db_path: std::path::PathBuf::from(":memory:"),
         embedded_migrations: Arc::new(vec![]),
-        migrations_dir: None,
+        migrations_path: None,
         poll_notify: Arc::new(Notify::new()),
         sync_in_progress: Arc::new(AtomicBool::new(false)),
         poll_control_tx: tokio::sync::Mutex::new(None),
