@@ -6,13 +6,12 @@ import {
   applyNodeChanges,
   Background,
   type Connection,
-  Controls,
   type Edge,
   type EdgeChange,
   type EdgeTypes,
-  MiniMap,
   type Node,
   type NodeChange,
+  type NodeMouseHandler,
   type NodeTypes,
   type OnConnect,
   ReactFlow,
@@ -25,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 interface BasicFlowProps {
   children?: ReactNode;
   className?: string;
+  debugNodeLayout?: boolean;
   edgeTypes?: EdgeTypes;
   initialEdges: Edge[];
   initialNodes: Node[];
@@ -36,6 +36,7 @@ export function BasicFlow({
   initialEdges,
   nodeTypes,
   edgeTypes,
+  debugNodeLayout = false,
   children,
   className,
 }: BasicFlowProps) {
@@ -79,10 +80,29 @@ export function BasicFlow({
     []
   );
 
+  const onNodeDragStop: NodeMouseHandler = useCallback(() => {
+    if (!debugNodeLayout) {
+      return;
+    }
+
+    const snapshot = nodes.map((node) => ({
+      id: node.id,
+      type: node.type ?? "default",
+      parentId: node.parentId ?? null,
+      position: node.position,
+      style: node.style ?? null,
+    }));
+
+    console.log("[flow layout snapshot]", snapshot);
+  }, [debugNodeLayout, nodes]);
+
   const defaultEdgeOptions = useMemo(
     () => ({
-      animated: true,
+      animated: false,
       type: "smoothstep",
+      style: {
+        strokeWidth: 1.75,
+      },
     }),
     []
   );
@@ -101,24 +121,31 @@ export function BasicFlow({
   })();
 
   return (
-    <div className={className ?? "h-[600px] w-full"}>
+    <div
+      className={
+        className ??
+        "h-[640px] w-full overflow-hidden rounded-2xl border border-border/70 bg-background shadow-sm"
+      }
+    >
       <ReactFlow
         colorMode={colorMode}
         defaultEdgeOptions={defaultEdgeOptions}
         edges={edges}
         edgeTypes={edgeTypes}
+        elementsSelectable={false}
         fitView
-        fitViewOptions={{ padding: 0.4, maxZoom: 1.2 }}
+        fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
         nodes={nodes}
+        nodesConnectable={false}
+        nodesDraggable={debugNodeLayout}
         nodeTypes={nodeTypes}
         onConnect={onConnect}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
         onNodesChange={onNodesChange}
         proOptions={{ hideAttribution: true }}
       >
-        <Controls />
-        <MiniMap className="hidden md:block" />
-        <Background gap={16} size={1} />
+        <Background gap={24} size={1} />
         {children}
       </ReactFlow>
     </div>

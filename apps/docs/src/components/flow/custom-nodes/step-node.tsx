@@ -27,28 +27,30 @@ function StepNodeComponent({ data, selected }: NodeProps<StepNode>) {
 
   return (
     <div
-      className={`min-w-[200px] rounded-lg border-2 px-4 py-3 ${variantStyles[v]} ${selected ? "ring-2 ring-blue-500" : ""}`}
+      className={`min-w-[220px] rounded-2xl border border-border/70 px-4 py-3 shadow-black/5 shadow-sm dark:shadow-black/20 ${variantStyles[v]} ${selected ? "ring-2 ring-primary/30" : ""}`}
     >
       <Handle
-        className="!bg-muted-foreground"
+        className="!bg-muted-foreground/70"
         position={Position.Top}
         type="target"
       />
       <div className="flex items-center gap-2">
         {data.step !== undefined && (
-          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary font-bold text-[10px] text-primary-foreground">
+          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-[10px] text-primary">
             {data.step}
           </span>
         )}
-        <span className="font-medium text-sm">{data.label}</span>
+        <span className="font-semibold text-[13px] text-foreground tracking-tight">
+          {data.label}
+        </span>
       </div>
       {data.detail && (
-        <div className="mt-1 ml-7 text-muted-foreground text-xs">
+        <div className="mt-1 ml-8 text-[11px] text-muted-foreground leading-snug">
           {data.detail}
         </div>
       )}
       <Handle
-        className="!bg-muted-foreground"
+        className="!bg-muted-foreground/70"
         position={Position.Bottom}
         type="source"
       />

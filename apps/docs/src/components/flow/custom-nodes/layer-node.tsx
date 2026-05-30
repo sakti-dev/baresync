@@ -17,21 +17,24 @@ function LayerNodeComponent({ data, selected }: NodeProps<LayerNode>) {
 
   return (
     <div
-      className={`min-w-[180px] rounded-lg border-2 px-6 py-3 text-center ${bg} ${selected ? "ring-2 ring-blue-500" : ""}`}
+      className={`min-w-[220px] rounded-2xl border border-border/70 px-6 py-4 text-center shadow-black/5 shadow-sm dark:shadow-black/20 ${bg} ${selected ? "ring-2 ring-primary/30" : ""}`}
     >
       <Handle
-        className="!bg-muted-foreground"
+        className="!bg-muted-foreground/70"
         position={Position.Top}
         type="target"
       />
-      <div className="font-semibold text-sm">{data.label}</div>
+      <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-foreground/10" />
+      <div className="font-semibold text-[15px] text-foreground tracking-tight">
+        {data.label}
+      </div>
       {data.sublabel && (
-        <div className="mt-1 text-muted-foreground text-xs">
+        <div className="mt-1 text-[11px] text-muted-foreground leading-snug">
           {data.sublabel}
         </div>
       )}
       <Handle
-        className="!bg-muted-foreground"
+        className="!bg-muted-foreground/70"
         position={Position.Bottom}
         type="source"
       />
