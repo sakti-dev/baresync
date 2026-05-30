@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{Column, Row, SqlitePool};
 
-use crate::db;
+use crate::db::{DbClient, DbRow};
 use crate::error::SyncError;
 
 #[derive(Debug, Deserialize)]
@@ -30,8 +29,8 @@ pub struct BatchResult {
     pub rows_affected: u64,
 }
 
-pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError> {
-    Ok(run_sql_execution(pool, query).await?.rows)
+pub async fn run_sql(db: &DbClient, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError> {
+    Ok(run_sql_execution(db, query).await?.rows)
 }
 
 #[derive(Debug)]
@@ -41,54 +40,31 @@ pub struct SqlExecutionResult {
 }
 
 pub async fn run_sql_with_metadata(
-    pool: &SqlitePool,
+    db: &DbClient,
     query: SqlQuery,
 ) -> Result<SqlExecutionResult, SyncError> {
-    run_sql_execution(pool, query).await
+    run_sql_execution(db, query).await
 }
 
 async fn run_sql_execution(
-    pool: &SqlitePool,
+    db: &DbClient,
     query: SqlQuery,
 ) -> Result<SqlExecutionResult, SyncError> {
-    let mut q = sqlx::query(&query.sql);
-    for param in &query.params {
-        q = bind_value(q, param);
-    }
-
     if query.method == "run" {
-        let result = q
-            .execute(pool)
-            .await
-            .map_err(|e| SyncError::Database(format!("Query failed: {}", e)))?;
+        let result = db.execute(&query.sql, query.params).await?;
         return Ok(SqlExecutionResult {
             rows: vec![],
-            rows_affected: result.rows_affected(),
+            rows_affected: result.rows_affected,
         });
     }
 
-    let rows = q
-        .fetch_all(pool)
-        .await
-        .map_err(|e| SyncError::Database(format!("Query failed: {}", e)))?;
+    let rows = db.query(&query.sql, query.params).await?;
 
     let result: Vec<SqlRow> = rows
-        .iter()
-        .map(|row| {
-            let columns = row
-                .columns()
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect::<Vec<_>>();
-
-            let values = (0..row.len())
-                .map(|i| match row.try_get_raw(i) {
-                    Ok(_) => db::sqlx_value_to_json(row, i),
-                    Err(_) => Value::Null,
-                })
-                .collect::<Vec<_>>();
-
-            SqlRow { columns, values }
+        .into_iter()
+        .map(|row: DbRow| SqlRow {
+            columns: row.columns,
+            values: row.values,
         })
         .collect();
 
@@ -99,94 +75,52 @@ async fn run_sql_execution(
 }
 
 pub async fn run_sql_batch(
-    pool: &SqlitePool,
+    db: &DbClient,
     statements: Vec<SqlStatement>,
 ) -> Result<BatchResult, SyncError> {
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-    let mut last_insert_id: i64 = 0;
-    let mut total_rows_affected: u64 = 0;
-
-    for stmt in &statements {
-        let mut q = sqlx::query(&stmt.sql);
-        for param in &stmt.params {
-            q = bind_value(q, param);
-        }
-        let result = q
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| SyncError::Database(format!("Batch statement failed: {}", e)))?;
-        last_insert_id = result.last_insert_rowid();
-        total_rows_affected += result.rows_affected();
-    }
-
-    tx.commit()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to commit transaction: {}", e)))?;
+    let result = db
+        .batch(
+            statements
+                .into_iter()
+                .map(|stmt| (stmt.sql, stmt.params))
+                .collect(),
+        )
+        .await?;
 
     Ok(BatchResult {
-        last_insert_id,
-        rows_affected: total_rows_affected,
+        last_insert_id: result.last_insert_id,
+        rows_affected: result.rows_affected,
     })
-}
-
-fn bind_value<'q>(
-    query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
-    value: &'q Value,
-) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
-    match value {
-        Value::Null => query.bind(None::<String>),
-        Value::Bool(b) => query.bind(*b),
-        Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                query.bind(i)
-            } else if let Some(f) = n.as_f64() {
-                query.bind(f)
-            } else {
-                query
-            }
-        }
-        Value::String(s) => query.bind(s),
-        _ => query,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
-    use std::str::FromStr;
-
-    async fn test_pool() -> SqlitePool {
-        let options = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite::memory:")
-            .unwrap()
-            .pragma("foreign_keys", "ON");
-        SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap()
+    use crate::db::DbClient;
+    async fn test_pool() -> DbClient {
+        DbClient::connect(":memory:").await.unwrap()
     }
 
-    async fn test_pool_with_table() -> SqlitePool {
+    async fn test_pool_with_table() -> DbClient {
         let pool = test_pool().await;
-        sqlx::query("CREATE TABLE items (id TEXT PRIMARY KEY, name TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0)")
-            .execute(&pool)
-            .await
-            .unwrap();
+        pool.execute(
+            "CREATE TABLE items (id TEXT PRIMARY KEY, name TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0)",
+            vec![],
+        )
+        .await
+        .unwrap();
         pool
     }
 
     #[tokio::test]
     async fn run_sql_select_returns_rows() {
         let pool = test_pool_with_table().await;
-        sqlx::query("INSERT INTO items (id, name, count) VALUES ('1', 'widget', 5)")
-            .execute(&pool)
-            .await
-            .unwrap();
+        pool.execute(
+            "INSERT INTO items (id, name, count) VALUES ('1', 'widget', 5)",
+            vec![],
+        )
+        .await
+        .unwrap();
 
         let rows = run_sql(
             &pool,
@@ -299,10 +233,7 @@ mod tests {
 
         assert_eq!(result.rows_affected, 2);
 
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM items")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let count = count_rows(&pool, "SELECT COUNT(*) FROM items").await;
         assert_eq!(count, 2);
     }
 
@@ -325,10 +256,7 @@ mod tests {
         .await;
 
         assert!(result.is_err());
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM items")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let count = count_rows(&pool, "SELECT COUNT(*) FROM items").await;
         assert_eq!(count, 0, "Valid insert should have been rolled back");
     }
 
@@ -365,5 +293,15 @@ mod tests {
         assert_eq!(rows[0].values[0], Value::String("p1".to_string()));
         assert_eq!(rows[0].values[1], Value::String("param_item".to_string()));
         assert_eq!(rows[0].values[2], Value::Number(42.into()));
+    }
+
+    async fn count_rows(db: &DbClient, sql: &str) -> i64 {
+        db.query(sql, vec![])
+            .await
+            .unwrap()
+            .first()
+            .and_then(|row| row.values.first())
+            .and_then(|value| value.as_i64())
+            .unwrap_or_default()
     }
 }

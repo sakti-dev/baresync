@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::db::DbClient;
 use crate::error::SyncError;
 
 #[derive(Clone, Debug)]
@@ -81,25 +81,25 @@ pub fn collect_migration_files(dir: impl AsRef<Path>) -> Result<Vec<MigrationFil
 }
 
 pub async fn run_migrations(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &MigrationConfig,
     migrations: &[EmbeddedMigration],
 ) -> Result<(), SyncError> {
-    ensure_migration_table(pool).await?;
+    ensure_migration_table(db).await?;
 
     for migration in migrations {
-        apply_migration(pool, config, migration.name, migration.sql).await?;
+        apply_migration(db, config, migration.name, migration.sql).await?;
     }
 
     Ok(())
 }
 
 pub async fn run_migration_files(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &MigrationConfig,
     dir: impl AsRef<Path>,
 ) -> Result<(), SyncError> {
-    ensure_migration_table(pool).await?;
+    ensure_migration_table(db).await?;
 
     let migrations = collect_migration_files(dir).map_err(SyncError::Migration)?;
     for migration in migrations {
@@ -110,21 +110,21 @@ pub async fn run_migration_files(
                 e
             ))
         })?;
-        apply_migration(pool, config, &migration.name, &sql).await?;
+        apply_migration(db, config, &migration.name, &sql).await?;
     }
 
     Ok(())
 }
 
-async fn ensure_migration_table(pool: &SqlitePool) -> Result<(), SyncError> {
-    sqlx::query(
+async fn ensure_migration_table(db: &DbClient) -> Result<(), SyncError> {
+    db.execute(
         "CREATE TABLE IF NOT EXISTS __drizzle_migrations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             hash TEXT NOT NULL UNIQUE,
             created_at INTEGER NOT NULL
         )",
+        vec![],
     )
-    .execute(pool)
     .await
     .map_err(|e| {
         SyncError::Migration(format!("Failed to create migration tracking table: {}", e))
@@ -134,72 +134,42 @@ async fn ensure_migration_table(pool: &SqlitePool) -> Result<(), SyncError> {
 }
 
 async fn apply_migration(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &MigrationConfig,
     name: &str,
     sql: &str,
 ) -> Result<(), SyncError> {
-    let applied: bool =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM __drizzle_migrations WHERE hash = $1")
-            .bind(name)
-            .fetch_one(pool)
-            .await
-            .map(|c| c > 0)
-            .map_err(|e| {
-                SyncError::Migration(format!("Failed to check migration status: {}", e))
-            })?;
-
-    if applied {
-        return Ok(());
-    }
-
-    let mut tx = pool.begin().await.map_err(|e| {
-        SyncError::Migration(format!("Failed to begin migration transaction: {}", e))
-    })?;
-
-    for statement in sql.split("--> statement-breakpoint") {
-        let stmt = statement.trim();
-        if !stmt.is_empty() {
-            if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
-                let msg = e.to_string();
-                if !config.strict
-                    && (msg.contains("already exists") || msg.contains("duplicate column"))
-                {
-                    continue;
-                }
-                return Err(SyncError::Migration(format!(
-                    "Migration {} failed: {}",
-                    name, e
-                )));
-            }
-        }
-    }
-
-    sqlx::query("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ($1, $2)")
-        .bind(name)
-        .bind(chrono_now_ms())
-        .execute(&mut *tx)
+    db.apply_migration(name, sql, config.strict, chrono_now_ms())
         .await
-        .map_err(|e| SyncError::Migration(format!("Failed to record migration {}: {}", name, e)))?;
-
-    tx.commit()
-        .await
-        .map_err(|e| SyncError::Migration(format!("Failed to commit migration {}: {}", name, e)))?;
+        .map_err(|e| SyncError::Migration(e.to_string()))?;
 
     Ok(())
 }
 
-pub async fn get_migration_status(pool: &SqlitePool) -> Result<Vec<MigrationRecord>, SyncError> {
-    let rows = sqlx::query_as::<_, (String, i64)>(
-        "SELECT hash, created_at FROM __drizzle_migrations ORDER BY id",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| SyncError::Migration(format!("Failed to query migration status: {}", e)))?;
+pub async fn get_migration_status(db: &DbClient) -> Result<Vec<MigrationRecord>, SyncError> {
+    let rows = db
+        .query(
+            "SELECT hash, created_at FROM __drizzle_migrations ORDER BY id",
+            vec![],
+        )
+        .await
+        .map_err(|e| SyncError::Migration(format!("Failed to query migration status: {}", e)))?;
 
     Ok(rows
         .into_iter()
-        .map(|(hash, created_at)| MigrationRecord { hash, created_at })
+        .map(|row| MigrationRecord {
+            hash: row
+                .values
+                .first()
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            created_at: row
+                .values
+                .get(1)
+                .and_then(|value| value.as_i64())
+                .unwrap_or_default(),
+        })
         .collect())
 }
 
@@ -211,21 +181,36 @@ fn chrono_now_ms() -> i64 {
 }
 
 #[cfg(test)]
+async fn scalar_i64(db: &DbClient, sql: &str) -> i64 {
+    db.query(sql, vec![])
+        .await
+        .unwrap()
+        .first()
+        .and_then(|row| row.values.first())
+        .and_then(|value| value.as_i64())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+async fn scalar_string(db: &DbClient, sql: &str) -> String {
+    db.query(sql, vec![])
+        .await
+        .unwrap()
+        .first()
+        .and_then(|row| row.values.first())
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
-    use std::str::FromStr;
+    use crate::db::DbClient;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    async fn test_pool() -> SqlitePool {
-        let options = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite::memory:")
-            .unwrap()
-            .pragma("foreign_keys", "ON");
-        SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap()
+    async fn test_pool() -> DbClient {
+        DbClient::connect(":memory:").await.unwrap()
     }
 
     #[test]
@@ -284,18 +269,15 @@ mod tests {
         )
         .unwrap();
 
-        let pool = test_pool().await;
-        run_migration_files(&pool, &MigrationConfig::strict(), &dir)
+        let db = test_pool().await;
+        run_migration_files(&db, &MigrationConfig::strict(), &dir)
             .await
             .unwrap();
 
-        let name: String = sqlx::query_scalar("SELECT name FROM items WHERE id = 'item-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let name = scalar_string(&db, "SELECT name FROM items WHERE id = 'item-1'").await;
         assert_eq!(name, "Coffee");
 
-        let status = get_migration_status(&pool).await.unwrap();
+        let status = get_migration_status(&db).await.unwrap();
         assert_eq!(status.len(), 2);
         assert_eq!(status[0].hash, "0001_create_items");
         assert_eq!(status[1].hash, "0002_insert_item");
@@ -305,7 +287,7 @@ mod tests {
 
     #[tokio::test]
     async fn fresh_db_applies_all_migrations() {
-        let pool = test_pool().await;
+        let db = test_pool().await;
         let migrations = vec![
             EmbeddedMigration {
                 name: "0001_create_categories",
@@ -316,86 +298,147 @@ mod tests {
                 sql: "CREATE TABLE products (id TEXT PRIMARY KEY, name TEXT NOT NULL, category_id TEXT)",
             },
         ];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations)
             .await
             .unwrap();
 
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-            .fetch_one(&pool)
+        let count = scalar_i64(&db, "SELECT COUNT(*) FROM __drizzle_migrations").await;
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn migration_without_breakpoints_applies_all_semicolon_statements() {
+        let db = test_pool().await;
+        let migrations = vec![EmbeddedMigration {
+            name: "0001_plain_sql",
+            sql: "
+                CREATE TABLE first_table (id TEXT PRIMARY KEY);
+                CREATE TABLE second_table (id TEXT PRIMARY KEY);
+            ",
+        }];
+
+        run_migrations(&db, &MigrationConfig::strict(), &migrations)
             .await
             .unwrap();
-        assert_eq!(count, 2);
+
+        let first_exists = scalar_i64(
+            &db,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='first_table'",
+        )
+        .await;
+        let second_exists = scalar_i64(
+            &db,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='second_table'",
+        )
+        .await;
+        assert_eq!(first_exists, 1);
+        assert_eq!(second_exists, 1);
     }
 
     #[tokio::test]
     async fn strict_mode_failing_second_statement_rolls_back() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let migrations = vec![EmbeddedMigration {
             name: "0001_strict_fail",
             sql: "CREATE TABLE strict_table (id TEXT PRIMARY KEY)\n--> statement-breakpoint\nSELECT * FROM nonexistent_xyz",
         }];
 
-        let result = run_migrations(&pool, &MigrationConfig::strict(), &migrations).await;
+        let result = run_migrations(&db, &MigrationConfig::strict(), &migrations).await;
         assert!(result.is_err());
 
-        let exists: bool = sqlx::query_scalar::<_, i64>(
+        let exists = scalar_i64(
+            &pool,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='strict_table'",
         )
-        .fetch_one(&pool)
         .await
-        .map(|c| c > 0)
-        .unwrap_or(false);
+            > 0;
         assert!(!exists, "First statement should have been rolled back");
+    }
+
+    #[tokio::test]
+    async fn migration_sql_rolls_back_when_recording_fails() {
+        let db = test_pool().await;
+        run_migrations(&db, &MigrationConfig::strict(), &[])
+            .await
+            .unwrap();
+        db.execute(
+            "CREATE TRIGGER fail_migration_record
+             BEFORE INSERT ON __drizzle_migrations
+             BEGIN
+                SELECT RAISE(ABORT, 'record blocked');
+             END",
+            vec![],
+        )
+        .await
+        .unwrap();
+
+        let migrations = vec![EmbeddedMigration {
+            name: "0001_create_atomic_table",
+            sql: "CREATE TABLE atomic_table (id TEXT PRIMARY KEY)",
+        }];
+
+        let result = run_migrations(&db, &MigrationConfig::strict(), &migrations).await;
+
+        assert!(result.is_err());
+        let exists = scalar_i64(
+            &db,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='atomic_table'",
+        )
+        .await;
+        assert_eq!(
+            exists, 0,
+            "migration SQL should roll back when migration recording fails"
+        );
     }
 
     #[tokio::test]
     async fn second_run_skips_applied_migrations() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let migrations = vec![EmbeddedMigration {
             name: "0001_create_table",
             sql: "CREATE TABLE test_table (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations)
             .await
             .unwrap();
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations)
             .await
             .unwrap();
 
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let count = scalar_i64(&db, "SELECT COUNT(*) FROM __drizzle_migrations").await;
         assert_eq!(count, 1);
     }
 
     #[tokio::test]
     async fn tolerant_mode_skips_already_exists() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let migrations = vec![EmbeddedMigration {
             name: "0001_tolerant_exists",
             sql: "CREATE TABLE tolerant_t (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations)
             .await
             .unwrap();
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations)
             .await
             .unwrap();
 
-        let exists: bool = sqlx::query_scalar::<_, i64>(
+        let exists = scalar_i64(
+            &db,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tolerant_t'",
         )
-        .fetch_one(&pool)
         .await
-        .map(|c| c > 0)
-        .unwrap_or(false);
+            > 0;
         assert!(exists);
     }
 
     #[tokio::test]
     async fn tolerant_mode_skips_duplicate_column() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let migrations_first = vec![EmbeddedMigration {
             name: "0001_setup",
             sql: "CREATE TABLE dup_col_t (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
@@ -405,10 +448,10 @@ mod tests {
             sql: "ALTER TABLE dup_col_t ADD COLUMN name TEXT",
         }];
 
-        run_migrations(&pool, &MigrationConfig::tolerant(), &migrations_first)
+        run_migrations(&db, &MigrationConfig::tolerant(), &migrations_first)
             .await
             .unwrap();
-        let result = run_migrations(&pool, &MigrationConfig::tolerant(), &migrations_dup).await;
+        let result = run_migrations(&db, &MigrationConfig::tolerant(), &migrations_dup).await;
         assert!(
             result.is_ok(),
             "Tolerant mode should skip duplicate column error"
@@ -418,6 +461,7 @@ mod tests {
     #[tokio::test]
     async fn get_migration_status_returns_applied() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let migrations = vec![
             EmbeddedMigration {
                 name: "0001_alpha",
@@ -432,11 +476,11 @@ mod tests {
                 sql: "CREATE TABLE gamma (id TEXT PRIMARY KEY)",
             },
         ];
-        run_migrations(&pool, &MigrationConfig::strict(), &migrations)
+        run_migrations(&db, &MigrationConfig::strict(), &migrations)
             .await
             .unwrap();
 
-        let status = get_migration_status(&pool).await.unwrap();
+        let status = get_migration_status(&db).await.unwrap();
         assert_eq!(status.len(), 3);
         assert_eq!(status[0].hash, "0001_alpha");
         assert_eq!(status[1].hash, "0002_beta");
@@ -446,11 +490,12 @@ mod tests {
     #[tokio::test]
     async fn rerun_after_fix_succeeds() {
         let pool = test_pool().await;
+        let db = pool.clone();
         let bad = vec![EmbeddedMigration {
             name: "0001_fixable",
             sql: "INVALID SQL",
         }];
-        assert!(run_migrations(&pool, &MigrationConfig::tolerant(), &bad)
+        assert!(run_migrations(&db, &MigrationConfig::tolerant(), &bad)
             .await
             .is_err());
 
@@ -458,14 +503,11 @@ mod tests {
             name: "0001_fixable",
             sql: "CREATE TABLE fixed_table (id TEXT PRIMARY KEY)",
         }];
-        run_migrations(&pool, &MigrationConfig::tolerant(), &good)
+        run_migrations(&db, &MigrationConfig::tolerant(), &good)
             .await
             .unwrap();
 
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let count = scalar_i64(&db, "SELECT COUNT(*) FROM __drizzle_migrations").await;
         assert_eq!(count, 1);
     }
 }

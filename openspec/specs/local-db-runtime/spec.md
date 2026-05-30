@@ -1,20 +1,19 @@
 ## ADDED Requirements
 
-### Requirement: SQLite pool initialization
+### Requirement: SQLite database client initialization
 
-The `crates/baresync-core/src/db.rs` module SHALL export a `connect_db(path: &str)` function that creates a SQLite pool with:
-- `create_if_missing(true)`
+The `crates/baresync-core/src/db.rs` module SHALL export a `connect_db(path)` function that creates a `DbClient` backed by `rusqlite` with:
+- create database file if missing
 - WAL journal mode
 - Normal synchronous mode
 - 5-second busy timeout
 - `foreign_keys = ON`
-- `max_connections = 1`
-- 3-second acquire timeout
+- a single worker-owned SQLite connection
 
 #### Scenario: Pool created with correct settings
 
 - **WHEN** `connect_db` is called with a valid path
-- **THEN** a `SqlitePool` SHALL be returned with WAL mode, foreign_keys ON, and max_connections 1
+- **THEN** a `DbClient` SHALL be returned with WAL mode, foreign_keys ON, and serialized `rusqlite` worker execution
 
 #### Scenario: Missing parent directory causes error
 
@@ -36,7 +35,7 @@ The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL define:
 
 ### Requirement: run_sql execution
 
-The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export `run_sql(pool, query)` that executes a `SqlQuery` against the pool. When `method` is `"run"`, it SHALL execute without returning rows. Otherwise, it SHALL return `Vec<SqlRow>`.
+The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export `run_sql(db, query)` that executes a `SqlQuery` against a `rusqlite` worker-backed `DbClient`. When `method` is `"run"`, it SHALL execute without returning rows. Otherwise, it SHALL return `Vec<SqlRow>`.
 
 #### Scenario: run method returns empty rows
 
@@ -55,7 +54,7 @@ The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export `run_sql(poo
 
 ### Requirement: run_sql_batch execution
 
-The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export `run_sql_batch(pool, statements)` that executes all statements in a single transaction. If any statement fails, the entire transaction SHALL roll back.
+The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export `run_sql_batch(db, statements)` that executes all statements through a `rusqlite` worker-backed `DbClient` in a single transaction. If any statement fails, the entire transaction SHALL roll back.
 
 #### Scenario: All statements succeed
 

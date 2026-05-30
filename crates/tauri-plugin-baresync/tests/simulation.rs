@@ -1,9 +1,8 @@
 use baresync_core::config::SyncEngineConfig;
+use baresync_core::db::DbClient;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::migrations::EmbeddedMigration;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -21,18 +20,10 @@ struct SimulationHarness {
 impl SimulationHarness {
     async fn new() -> Self {
         let db_path = temp_db_path();
-        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
-            .unwrap()
-            .create_if_missing(true)
-            .pragma("foreign_keys", "ON");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap();
+        let db = DbClient::connect(&db_path).await.unwrap();
 
         let state = PluginState {
-            pool: Arc::new(pool),
+            db: Arc::new(db),
             sync_config: SyncEngineConfig {
                 api_url: "http://127.0.0.1:9/sync".to_string(),
                 scope_id: "scope-1".to_string(),
@@ -129,22 +120,20 @@ async fn background_polling_simulation_pauses_and_resumes_in_rust() {
         .await
         .unwrap();
 
-    assert_eq!(
+    assert!(
         get_polling_status_with_state(&harness.state)
             .await
             .unwrap()
-            .running,
-        true
+            .running
     );
 
     handle_window_focus_for_state(&harness.state, false);
     tokio::time::sleep(Duration::from_millis(250)).await;
-    assert_eq!(
+    assert!(
         get_polling_status_with_state(&harness.state)
             .await
             .unwrap()
-            .paused,
-        true
+            .paused
     );
 
     let paused_status = get_polling_status_with_state(&harness.state).await.unwrap();

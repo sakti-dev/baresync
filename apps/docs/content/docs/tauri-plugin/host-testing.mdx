@@ -15,6 +15,7 @@ The `_with_state` functions work with a manually constructed `PluginState`:
 use tauri_plugin_baresync::commands::{
     sync_now_with_state, run_sql_with_state, PluginState, PluginEventSink,
 };
+use baresync_core::db::DbClient;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::config::SyncEngineConfig;
 use std::sync::atomic::AtomicBool;
@@ -27,9 +28,10 @@ impl PluginEventSink for NoopSink {
     fn emit(&self, _event: PluginEvent) {}
 }
 
-async fn test_state(pool: SqlitePool) -> PluginState {
+async fn test_state() -> PluginState {
+    let db = DbClient::connect(":memory:").await.unwrap();
     PluginState {
-        pool: Arc::new(pool),
+        db: Arc::new(db),
         sync_config: SyncEngineConfig {
             api_url: "http://localhost:0".to_string(),
             encoding: "json".to_string(),

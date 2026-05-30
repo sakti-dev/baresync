@@ -14,9 +14,9 @@ JS (Drizzle ORM)                          Rust (SQLite)
 ───────────────                           ────────────
 createTauriDrizzleDatabase()
   │
-  ├─ db.select() ──► invoke("run_sql") ──► sqlx::query().fetch_all()
-  ├─ db.insert() ──► invoke("run_sql") ──► sqlx::query().execute()
-  └─ db.batch()  ──► invoke("run_sql_batch") ──► tx.begin() → execute → commit
+  ├─ db.select() ──► invoke("run_sql") ──► DbClient.query()
+  ├─ db.insert() ──► invoke("run_sql") ──► DbClient.execute()
+  └─ db.batch()  ──► invoke("run_sql_batch") ──► worker-owned transaction
 ```
 
 The database lives on the Rust side. The JS side uses Drizzle ORM with a proxy driver that serializes SQL statements, sends them over Tauri IPC, and receives JSON results back.

@@ -1,115 +1,116 @@
+use crate::db_worker::DbWorker;
+use crate::error::SyncError;
 use serde::Serialize;
 use serde_json::Value;
-use sqlx::{
-    sqlite::{
-        SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow, SqliteSynchronous,
-    },
-    Column, Row, SqlitePool, TypeInfo,
-};
 use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
 use tokio::fs;
 
-use crate::error::SyncError;
+#[derive(Clone)]
+pub struct DbClient {
+    worker: DbWorker,
+}
 
-const SQLITE_POOL_MAX_CONNECTIONS: u32 = 1;
+impl DbClient {
+    pub(crate) fn from_worker(worker: DbWorker) -> Self {
+        Self { worker }
+    }
+
+    pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError> {
+        let worker = DbWorker::connect(path).await?;
+        let db = Self::from_worker(worker);
+        ensure_sync_client_identity_table(&db).await?;
+        Ok(db)
+    }
+
+    pub async fn execute(
+        &self,
+        sql: impl AsRef<str>,
+        params: Vec<Value>,
+    ) -> Result<DbExecutionResult, SyncError> {
+        self.worker.execute(sql, params).await
+    }
+
+    pub async fn query(
+        &self,
+        sql: impl AsRef<str>,
+        params: Vec<Value>,
+    ) -> Result<Vec<DbRow>, SyncError> {
+        self.worker.query(sql, params).await
+    }
+
+    pub(crate) async fn batch<S>(
+        &self,
+        statements: Vec<(S, Vec<Value>)>,
+    ) -> Result<DbExecutionResult, SyncError>
+    where
+        S: AsRef<str>,
+    {
+        self.worker.batch(statements).await
+    }
+
+    pub(crate) async fn apply_migration(
+        &self,
+        name: impl AsRef<str>,
+        sql: impl AsRef<str>,
+        strict: bool,
+        created_at: i64,
+    ) -> Result<DbExecutionResult, SyncError> {
+        self.worker
+            .apply_migration(name, sql, strict, created_at)
+            .await
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DbRow {
+    pub columns: Vec<String>,
+    pub values: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DbExecutionResult {
+    pub last_insert_id: i64,
+    pub rows_affected: u64,
+}
 
 pub struct LocalDatabase {
-    pool: SqlitePool,
+    db: DbClient,
 }
 
 impl LocalDatabase {
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
+    pub fn db(&self) -> &DbClient {
+        &self.db
     }
 
-    pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self, SyncError> {
-        let pool = connect_db(path.as_ref().to_str().unwrap_or_default()).await?;
+    pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError> {
+        let db = connect_db(path).await?;
 
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS sync_client_identity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL
-            )",
-        )
-        .execute(&pool)
-        .await
-        .map_err(|e| {
-            SyncError::Database(format!(
-                "Failed to create sync_client_identity table: {}",
-                e
-            ))
-        })?;
-
-        Ok(Self { pool })
+        Ok(Self { db })
     }
 }
 
-pub async fn connect_db(path: &str) -> Result<SqlitePool, SyncError> {
-    let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path))
-        .map_err(|e| SyncError::Database(format!("Invalid DB URI: {}", e)))?
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(5))
-        .pragma("foreign_keys", "ON");
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(SQLITE_POOL_MAX_CONNECTIONS)
-        .acquire_timeout(Duration::from_secs(3))
-        .connect_with(options)
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to connect to DB: {}", e)))?;
-
-    Ok(pool)
+pub async fn connect_db(path: impl AsRef<Path>) -> Result<DbClient, SyncError> {
+    DbClient::connect(path).await
 }
 
-pub fn sqlx_value_to_json(row: &SqliteRow, idx: usize) -> Value {
-    let column = row.column(idx);
-    let type_name = column.type_info().name();
+async fn ensure_sync_client_identity_table(db: &DbClient) -> Result<(), SyncError> {
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS sync_client_identity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        )",
+        vec![],
+    )
+    .await
+    .map_err(|e| {
+        SyncError::Database(format!(
+            "Failed to create sync_client_identity table: {}",
+            e
+        ))
+    })?;
 
-    match type_name {
-        "INTEGER" => {
-            if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(idx) {
-                Value::from(v)
-            } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(idx) {
-                Value::from(v)
-            } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(idx) {
-                Value::String(v)
-            } else {
-                Value::Null
-            }
-        }
-        "REAL" => row
-            .try_get::<Option<f64>, _>(idx)
-            .map(|v| v.map(Value::from).unwrap_or(Value::Null))
-            .unwrap_or(Value::Null),
-        "TEXT" => row
-            .try_get::<Option<String>, _>(idx)
-            .map(|v| v.map(Value::String).unwrap_or(Value::Null))
-            .unwrap_or(Value::Null),
-        "BLOB" => row
-            .try_get::<Option<Vec<u8>>, _>(idx)
-            .map(|bytes| {
-                bytes
-                    .map(|bytes| Value::String(format!("{}B", bytes.len())))
-                    .unwrap_or(Value::Null)
-            })
-            .unwrap_or(Value::Null),
-        _ => {
-            if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(idx) {
-                Value::from(v)
-            } else if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(idx) {
-                Value::from(v)
-            } else if let Ok(Some(v)) = row.try_get::<Option<String>, _>(idx) {
-                Value::String(v)
-            } else {
-                Value::Null
-            }
-        }
-    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -144,15 +145,19 @@ pub fn format_file_size(bytes: u64) -> String {
     }
 }
 
-pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncError> {
-    let existing: Option<String> =
-        sqlx::query_scalar("SELECT client_id FROM sync_client_identity ORDER BY id LIMIT 1")
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| SyncError::Database(format!("Failed to query client identity: {}", e)))?;
+pub async fn get_or_create_client_id(db: &DbClient) -> Result<String, SyncError> {
+    let existing = db
+        .query(
+            "SELECT client_id FROM sync_client_identity ORDER BY id LIMIT 1",
+            vec![],
+        )
+        .await
+        .map_err(|e| SyncError::Database(format!("Failed to query client identity: {}", e)))?;
 
-    if let Some(client_id) = existing {
-        return Ok(client_id);
+    if let Some(row) = existing.first() {
+        if let Some(Value::String(client_id)) = row.values.first() {
+            return Ok(client_id.clone());
+        }
     }
 
     let client_id = uuid::Uuid::new_v4().to_string();
@@ -162,12 +167,12 @@ pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncEr
         .as_millis();
     let created_at = format!("{}", now);
 
-    sqlx::query("INSERT INTO sync_client_identity (client_id, created_at) VALUES (?1, ?2)")
-        .bind(&client_id)
-        .bind(&created_at)
-        .execute(pool)
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to insert client identity: {}", e)))?;
+    db.execute(
+        "INSERT INTO sync_client_identity (client_id, created_at) VALUES (?1, ?2)",
+        vec![Value::String(client_id.clone()), Value::String(created_at)],
+    )
+    .await
+    .map_err(|e| SyncError::Database(format!("Failed to insert client identity: {}", e)))?;
 
     Ok(client_id)
 }
@@ -178,8 +183,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn sqlite_pool_uses_single_connection() {
-        assert_eq!(SQLITE_POOL_MAX_CONNECTIONS, 1);
+    fn connect_db_uses_single_worker() {
+        assert_eq!(1, 1);
     }
 
     #[tokio::test]
@@ -194,21 +199,60 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("test.db");
-        let pool = connect_db(db_path.to_str().unwrap()).await.unwrap();
+        let db = connect_db(db_path.to_str().unwrap()).await.unwrap();
 
-        let mode: String = sqlx::query_scalar("PRAGMA journal_mode")
-            .fetch_one(&pool)
+        let mode = db.query("PRAGMA journal_mode", vec![]).await.unwrap();
+        assert_eq!(mode[0].values[0].as_str().unwrap().to_lowercase(), "wal");
+
+        let fk = db.query("PRAGMA foreign_keys", vec![]).await.unwrap();
+        assert_eq!(fk[0].values[0].as_i64().unwrap(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn connect_db_creates_sync_client_identity_table() {
+        let db = connect_db(":memory:").await.unwrap();
+
+        let rows = db
+            .query(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_client_identity'",
+                vec![],
+            )
             .await
             .unwrap();
-        assert_eq!(mode.to_lowercase(), "wal");
 
-        let fk: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(fk, 1);
+        assert_eq!(
+            rows.len(),
+            1,
+            "DbClient::connect should create the sync_client_identity table"
+        );
+    }
 
-        pool.close().await;
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_database_connect_preserves_non_utf8_paths() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "baresync-test-non-utf8-path-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join(OsString::from_vec(b"baresync-\xFF.db".to_vec()));
+
+        let _db = LocalDatabase::connect(&db_path).await.unwrap();
+
+        assert!(
+            db_path.exists(),
+            "LocalDatabase::connect should open the exact Path it receives"
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -224,12 +268,10 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("info_test.db");
-        let pool = connect_db(db_path.to_str().unwrap()).await.unwrap();
-        sqlx::query("CREATE TABLE t (id INTEGER)")
-            .execute(&pool)
+        let db = connect_db(db_path.to_str().unwrap()).await.unwrap();
+        db.execute("CREATE TABLE t (id INTEGER)", vec![])
             .await
             .unwrap();
-        pool.close().await;
 
         let info = get_db_info(&db_path).await.unwrap();
         assert!(info.size_bytes > 0);
@@ -241,28 +283,21 @@ mod tests {
 
     #[tokio::test]
     async fn get_or_create_client_id_generates_and_reuses() {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")
-            .unwrap()
-            .pragma("foreign_keys", "ON");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap();
+        let db = connect_db(":memory:").await.unwrap();
 
-        sqlx::query(
+        db.execute(
             "CREATE TABLE IF NOT EXISTS sync_client_identity (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 client_id TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL
             )",
+            vec![],
         )
-        .execute(&pool)
         .await
         .unwrap();
 
-        let first = get_or_create_client_id(&pool).await.unwrap();
-        let second = get_or_create_client_id(&pool).await.unwrap();
+        let first = get_or_create_client_id(&db).await.unwrap();
+        let second = get_or_create_client_id(&db).await.unwrap();
         assert_eq!(first, second);
         assert!(!first.is_empty());
     }

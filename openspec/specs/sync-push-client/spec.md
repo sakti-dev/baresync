@@ -2,7 +2,7 @@
 
 ### Requirement: Generic push engine with JSON encoding
 
-The `crates/baresync-core/src/push.rs` module SHALL export a `push` function that accepts a `SqlitePool`, a `SyncEngineConfig` (containing `scope_id`, `api_url`, `client_id`, `encoding: "json"`), and a `SyncContract` (with `upsert_order`, `delete_order`, `tables`, and `local_only_columns`).
+The `crates/baresync-core/src/push.rs` module SHALL export a `push` function that accepts a `DbClient`, a `SyncEngineConfig` (containing `scope_id`, `api_url`, `client_id`, `encoding: "json"`), and sync contract metadata (with `upsert_order`, `delete_order`, and `local_only_columns`).
 
 The push engine SHALL:
 1. Iterate tables in `upsert_order`

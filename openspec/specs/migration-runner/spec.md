@@ -25,7 +25,7 @@ The migration runner SHALL create a `__drizzle_migrations` table with columns `i
 
 ### Requirement: Transactional migration execution
 
-Each migration SHALL execute within a transaction. SQL statements SHALL be split by `--> statement-breakpoint`. If any statement fails in strict mode, the transaction SHALL roll back and no migration record SHALL be written. If any statement fails in tolerant mode, errors matching `"already exists"` or `"duplicate column"` SHALL be silently skipped.
+Each migration SHALL execute within a transaction on the `rusqlite` worker. SQL statements SHALL be split by `--> statement-breakpoint`. If any statement fails in strict mode, the transaction SHALL roll back and no migration record SHALL be written. If any statement fails in tolerant mode, errors matching `"already exists"` or `"duplicate column"` SHALL be silently skipped.
 
 #### Scenario: Successful migration recorded
 
@@ -67,7 +67,7 @@ The `crates/baresync-core/src/migrations.rs` module SHALL define `EmbeddedMigrat
 
 ### Requirement: Migration directory execution
 
-The `crates/baresync-core/src/migrations.rs` module SHALL export `run_migration_files(pool, config, dir)` that collects `.sql` files from a directory, reads each file, and applies them with the same tracking, ordering, statement splitting, and transaction semantics as embedded migrations.
+The `crates/baresync-core/src/migrations.rs` module SHALL export `run_migration_files(db, config, dir)` that collects `.sql` files from a directory, reads each file, and applies them with the same tracking, ordering, statement splitting, and transaction semantics as embedded migrations through a `rusqlite` worker-backed `DbClient`.
 
 #### Scenario: Directory migrations apply in filename order
 
@@ -81,7 +81,7 @@ The `crates/baresync-core/src/migrations.rs` module SHALL export `run_migration_
 
 ### Requirement: Migration status query
 
-The `crates/baresync-core/src/migrations.rs` module SHALL export `get_migration_status(pool)` that returns the list of applied migration hashes and timestamps.
+The `crates/baresync-core/src/migrations.rs` module SHALL export `get_migration_status(db)` that returns the list of applied migration hashes and timestamps through a `DbClient`.
 
 #### Scenario: Applied migrations returned
 

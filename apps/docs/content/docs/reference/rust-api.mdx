@@ -72,7 +72,7 @@ pub struct SyncEngine { /* private fields */ }
 
 | Method | Returns | Description |
 |---|---|---|
-| `new(pool, config, tables)` | `Self` | Create engine with SQLite pool, config, and table ordering |
+| `new(db, config, tables)` | `Self` | Create engine with database client, config, and table ordering |
 | `push()` | `Result<PushResult>` | Push local outbox to server |
 | `pull(limit)` | `Result<PullResult>` | Pull server changes to local |
 | `sync_now(limit)` | `Result<SyncNowResult>` | Intelligent sync — decides push/pull/full based on state |
@@ -80,7 +80,6 @@ pub struct SyncEngine { /* private fields */ }
 | `get_sync_local_state()` | `Result<LocalSyncState>` | Dirty count, cursor, baseline flag |
 | `purge_synced_outbox(older_than)` | `Result<u64>` | Delete synced outbox entries |
 | `run_garbage_collection()` | `Result<usize>` | Remove soft-deleted synced rows |
-| `pool()` | `&SqlitePool` | Access the underlying SQLite pool |
 
 ### `SyncEngineConfig`
 
@@ -136,7 +135,7 @@ Wraps a SQLite connection pool with Baresync's settings (WAL mode, foreign keys,
 pub struct LocalDatabase { /* private */ }
 
 impl LocalDatabase {
-    pub fn pool(&self) -> &SqlitePool;
+    pub fn db(&self) -> &DbClient;
     pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError>;
 }
 ```
@@ -144,9 +143,9 @@ impl LocalDatabase {
 ### Database functions
 
 ```rust
-pub async fn connect_db(path: &str) -> Result<SqlitePool, SyncError>;
+pub async fn connect_db(path: &str) -> Result<DbClient, SyncError>;
 pub async fn get_db_info(path: impl AsRef<Path>) -> Result<DbInfo, SyncError>;
-pub async fn get_or_create_client_id(pool: &SqlitePool) -> Result<String, SyncError>;
+pub async fn get_or_create_client_id(db: &DbClient) -> Result<String, SyncError>;
 ```
 
 ### `DbInfo`
@@ -196,9 +195,9 @@ pub struct MigrationRecord {
 
 ```rust
 pub fn collect_migration_files(dir: impl AsRef<Path>) -> Result<Vec<MigrationFile>, String>;
-pub async fn run_migrations(pool: &SqlitePool, config: &MigrationConfig, migrations: &[EmbeddedMigration]) -> Result<(), SyncError>;
-pub async fn run_migration_files(pool: &SqlitePool, config: &MigrationConfig, dir: impl AsRef<Path>) -> Result<(), SyncError>;
-pub async fn get_migration_status(pool: &SqlitePool) -> Result<Vec<MigrationRecord>, SyncError>;
+pub async fn run_migrations(db: &DbClient, config: &MigrationConfig, migrations: &[EmbeddedMigration]) -> Result<(), SyncError>;
+pub async fn run_migration_files(db: &DbClient, config: &MigrationConfig, dir: impl AsRef<Path>) -> Result<(), SyncError>;
+pub async fn get_migration_status(db: &DbClient) -> Result<Vec<MigrationRecord>, SyncError>;
 ```
 
 `MigrationConfig` has two constructors:
@@ -228,7 +227,7 @@ pub struct PushResult {
 | `build_json_push_envelope(scope_id, client_id, key, changes)` | Constructs the JSON push request body |
 | `chunk_pending_push_tables(units, max_rows, max_bytes, ...)` | Splits pending changes into chunks within size limits |
 | `split_push_chunk_for_retry(chunk)` | Splits a failed chunk in half for retry |
-| `push(pool, config, upsert_order, local_only_columns)` | Full push cycle — read outbox, chunk, send, mark synced |
+| `push(db, config, upsert_order, local_only_columns)` | Full push cycle — read outbox, chunk, send, mark synced |
 
 ---
 
@@ -253,7 +252,7 @@ pub enum PullStartCursor {
 
 ```rust
 pub async fn pull(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &SyncEngineConfig,
     upsert_order: &[String],
     delete_order: &[String],
@@ -264,7 +263,7 @@ pub async fn pull(
 ) -> Result<PullResult, SyncError>;
 
 pub async fn apply_pull_batch_tables_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     upsert_order: &[String],
     delete_order: &[String],
     response_tables: &Value,
@@ -285,7 +284,7 @@ pub struct LocalSyncState {
     pub needs_baseline_sync: bool,
 }
 
-pub async fn get_sync_local_state(pool: &SqlitePool, scope_id: &str) -> Result<LocalSyncState, SyncError>;
+pub async fn get_sync_local_state(db: &DbClient, scope_id: &str) -> Result<LocalSyncState, SyncError>;
 ```
 
 ---
@@ -301,7 +300,7 @@ pub struct SyncStatusResult {
     pub server_time: String,
 }
 
-pub async fn status(pool: &SqlitePool, config: &SyncEngineConfig) -> Result<SyncStatusResult, SyncError>;
+pub async fn status(db: &DbClient, config: &SyncEngineConfig) -> Result<SyncStatusResult, SyncError>;
 ```
 
 ---
@@ -309,9 +308,9 @@ pub async fn status(pool: &SqlitePool, config: &SyncEngineConfig) -> Result<Sync
 ## Cursor
 
 ```rust
-pub async fn get_last_cursor(pool: &SqlitePool, scope_id: &str) -> Result<String, String>;
+pub async fn get_last_cursor(db: &DbClient, scope_id: &str) -> Result<String, String>;
 pub async fn set_last_cursor_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     scope_id: &str,
     cursor: &str,
 ) -> Result<(), String>;
@@ -324,13 +323,13 @@ Cursor format: `sync:{unixTimestampMs}:{tableName}:{rowId}`
 ## Outbox
 
 ```rust
-pub async fn count_pending_outbox(pool: &SqlitePool, scope_id: &str) -> Result<i64, String>;
+pub async fn count_pending_outbox(db: &DbClient, scope_id: &str) -> Result<i64, String>;
 pub async fn mark_outbox_synced_by_outbox_ids_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     synced_at: &str,
     outbox_ids: &[String],
 ) -> Result<u64, String>;
-pub async fn purge_synced_outbox(pool: &SqlitePool, older_than: &str) -> Result<u64, SyncError>;
+pub async fn purge_synced_outbox(db: &DbClient, older_than: &str) -> Result<u64, SyncError>;
 ```
 
 ---
@@ -339,7 +338,7 @@ pub async fn purge_synced_outbox(pool: &SqlitePool, older_than: &str) -> Result<
 
 ```rust
 pub async fn run_garbage_collection(
-    pool: &SqlitePool,
+    db: &DbClient,
     tables: &[String],
     scope_id: &str,
 ) -> Result<usize, SyncError>;
@@ -383,9 +382,9 @@ pub struct BatchResult {
 ### Functions
 
 ```rust
-pub async fn run_sql(pool: &SqlitePool, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError>;
-pub async fn run_sql_with_metadata(pool: &SqlitePool, query: SqlQuery) -> Result<SqlExecutionResult, SyncError>;
-pub async fn run_sql_batch(pool: &SqlitePool, statements: Vec<SqlStatement>) -> Result<BatchResult, SyncError>;
+pub async fn run_sql(db: &DbClient, query: SqlQuery) -> Result<Vec<SqlRow>, SyncError>;
+pub async fn run_sql_with_metadata(db: &DbClient, query: SqlQuery) -> Result<SqlExecutionResult, SyncError>;
+pub async fn run_sql_batch(db: &DbClient, statements: Vec<SqlStatement>) -> Result<BatchResult, SyncError>;
 ```
 
 ---

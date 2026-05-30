@@ -6,12 +6,12 @@ Tauri plugin builder configuration and command behavior for Baresync apps.
 
 ### Requirement: DB proxy commands
 
-The plugin SHALL expose `run_sql`, `run_sql_batch`, and `get_db_info` Tauri commands that delegate to `baresync-core` DB functions using the plugin's pool.
+The plugin SHALL expose `run_sql`, `run_sql_batch`, and `get_db_info` Tauri commands that delegate to `baresync-core` DB functions using the plugin's `rusqlite` worker-backed `DbClient`.
 
 #### Scenario: run_sql through plugin
 
 - **WHEN** the JS client calls `invoke("run_sql", { query })`
-- **THEN** the plugin SHALL execute the query using the shared pool and return rows
+- **THEN** the plugin SHALL execute the query using the shared database client and return rows
 
 #### Scenario: run_sql_batch through plugin
 
@@ -47,7 +47,7 @@ The plugin SHALL run configured migrations during plugin setup before exposing m
 #### Scenario: setup runs migrations
 
 - **WHEN** the plugin is registered with embedded migrations or a migration path
-- **THEN** setup SHALL connect to SQLite, apply all pending migrations, and only then manage `PluginState`
+- **THEN** setup SHALL connect to SQLite through the `rusqlite` worker-backed `DbClient`, apply all pending migrations, and only then manage `PluginState`
 
 #### Scenario: setup migration failure stops startup
 
@@ -56,7 +56,7 @@ The plugin SHALL run configured migrations during plugin setup before exposing m
 
 ### Requirement: run_migrations command
 
-The plugin SHALL expose a `run_migrations` Tauri command that calls `baresync-core` migration runner using the plugin's pool and configured migrations.
+The plugin SHALL expose a `run_migrations` Tauri command that calls `baresync-core` migration runner using the plugin's `DbClient` and configured migrations.
 
 #### Scenario: run_migrations through plugin
 
@@ -164,7 +164,7 @@ The `run_sql` and `run_sql_batch` commands SHALL notify the polling task after e
 The Tauri plugin command surface SHALL be testable from host Rust tests without launching a full Tauri app or WebView.
 
 #### Scenario: Construct command test state
-- **WHEN** a Rust test constructs plugin command state with a temporary SQLite database, sync config, contract tables, DB path, and embedded migrations
+- **WHEN** a Rust test constructs plugin command state with a temporary SQLite database client, sync config, contract tables, DB path, and embedded migrations
 - **THEN** command logic SHALL be callable with that state and return command-compatible result values
 
 #### Scenario: Exercise command behavior through host tests

@@ -7,7 +7,7 @@ use baresync_core::drizzle_proxy::{self, BatchResult, SqlQuery, SqlStatement};
 use baresync_core::pull::PullResult;
 use baresync_core::push::PushResult;
 
-use sqlx::SqlitePool;
+use baresync_core::db::DbClient;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ impl PluginEventSink for NoopPluginEventSink {
 }
 
 pub struct PluginState {
-    pub pool: Arc<SqlitePool>,
+    pub db: Arc<DbClient>,
     pub sync_config: SyncEngineConfig,
     pub contract_tables: SyncContractTables,
     pub db_path: PathBuf,
@@ -57,7 +57,12 @@ fn make_engine(
     Box::pin(async move {
         let mut config = state.sync_config.clone();
         config.scope_id = scope_id;
-        SyncEngine::new((*state.pool).clone(), config, state.contract_tables.clone()).await
+        SyncEngine::new(
+            state.db.as_ref().clone(),
+            config,
+            state.contract_tables.clone(),
+        )
+        .await
     })
 }
 
@@ -65,7 +70,7 @@ pub async fn run_sql_with_state(
     state: &PluginState,
     query: SqlQuery,
 ) -> Result<Vec<drizzle_proxy::SqlRow>, String> {
-    let result = drizzle_proxy::run_sql_with_metadata(&state.pool, query)
+    let result = drizzle_proxy::run_sql_with_metadata(&state.db, query)
         .await
         .map_err(|e| e.to_string())?;
     if result.rows_affected > 0 {
@@ -90,7 +95,7 @@ pub async fn run_sql_batch_with_state(
     state: &PluginState,
     statements: Vec<SqlStatement>,
 ) -> Result<BatchResult, String> {
-    let result = drizzle_proxy::run_sql_batch(&state.pool, statements)
+    let result = drizzle_proxy::run_sql_batch(&state.db, statements)
         .await
         .map_err(|e| e.to_string())?;
     if result.rows_affected > 0 {
@@ -129,11 +134,11 @@ pub async fn get_db_info(
 pub async fn run_migrations_with_state(state: &PluginState) -> Result<(), String> {
     let config = MigrationConfig::strict();
     if let Some(path) = &state.migrations_path {
-        migrations::run_migration_files(&state.pool, &config, path)
+        migrations::run_migration_files(&state.db, &config, path)
             .await
             .map_err(|e| e.to_string())
     } else {
-        migrations::run_migrations(&state.pool, &config, &state.embedded_migrations)
+        migrations::run_migrations(&state.db, &config, &state.embedded_migrations)
             .await
             .map_err(|e| e.to_string())
     }
@@ -147,7 +152,7 @@ pub async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String>
 pub async fn get_migration_status_with_state(
     state: &PluginState,
 ) -> Result<Vec<MigrationRecord>, String> {
-    migrations::get_migration_status(&state.pool)
+    migrations::get_migration_status(&state.db)
         .await
         .map_err(|e| e.to_string())
 }
@@ -329,7 +334,7 @@ pub async fn start_polling_with_state(state: &PluginState, scope_id: String) -> 
     }
 
     let (tx, rx) = mpsc::channel(10);
-    let pool = state.pool.clone();
+    let db = state.db.clone();
     let sync_config = state.sync_config.clone();
     let contract_tables = state.contract_tables.clone();
     let notify = state.poll_notify.clone();
@@ -337,13 +342,13 @@ pub async fn start_polling_with_state(state: &PluginState, scope_id: String) -> 
     let interval_secs = state.poll_interval_secs;
 
     let sync_fn = move |scope: String| {
-        let pool = pool.clone();
+        let db = db.clone();
         let config = sync_config.clone();
         let tables = contract_tables.clone();
         async move {
             let mut cfg = config.clone();
             cfg.scope_id = scope;
-            let engine = SyncEngine::new((*pool).clone(), cfg, tables).await;
+            let engine = SyncEngine::new((*db).clone(), cfg, tables).await;
             engine
                 .sync_now(1000)
                 .await
@@ -492,7 +497,7 @@ pub fn handle_run_event_for_state(state: &PluginState, event: &RunEvent) {
             handle_window_focus_for_state(state, *focused);
         }
         RunEvent::Resumed => {
-            schedule_control_msg(&state, ControlMsg::Resume);
+            schedule_control_msg(state, ControlMsg::Resume);
         }
         _ => {}
     }

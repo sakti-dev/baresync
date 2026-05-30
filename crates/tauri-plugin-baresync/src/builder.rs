@@ -143,23 +143,24 @@ impl Builder {
                 validate_migration_sources(&embedded_migrations, migrations_path.as_deref())
                     .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
 
-                let resolved_migrations_path = migrations_path.as_deref().map_or(Ok(None), |path| {
-                    resolve_migrations_path(path, |relative| {
-                        app.path()
-                            .resolve(relative, BaseDirectory::Resource)
-                            .map_err(|error| {
-                                format!(
-                                    "Failed to resolve migrations path {}: {}",
-                                    relative.display(),
-                                    error
-                                )
-                                .into()
-                            })
-                    })
-                    .map(Some)
-                })?;
+                let resolved_migrations_path =
+                    migrations_path.as_deref().map_or(Ok(None), |path| {
+                        resolve_migrations_path(path, |relative| {
+                            app.path()
+                                .resolve(relative, BaseDirectory::Resource)
+                                .map_err(|error| {
+                                    format!(
+                                        "Failed to resolve migrations path {}: {}",
+                                        relative.display(),
+                                        error
+                                    )
+                                    .into()
+                                })
+                        })
+                        .map(Some)
+                    })?;
 
-                let pool = tauri::async_runtime::block_on(async {
+                let db = tauri::async_runtime::block_on(async {
                     baresync_core::db::connect_db(&config.db_path)
                         .await
                         .map_err(|e| -> Box<dyn std::error::Error> {
@@ -180,13 +181,13 @@ impl Builder {
 
                 let migration_config = MigrationConfig::strict();
                 tauri::async_runtime::block_on(async {
-                    migrations::run_migrations(&pool, &migration_config, &embedded_migrations)
+                    migrations::run_migrations(&db, &migration_config, &embedded_migrations)
                         .await
                         .map_err(|e| -> Box<dyn std::error::Error> {
                             format!("Failed to run embedded migrations: {}", e).into()
                         })?;
                     if let Some(path) = &resolved_migrations_path {
-                        migrations::run_migration_files(&pool, &migration_config, path)
+                        migrations::run_migration_files(&db, &migration_config, path)
                             .await
                             .map_err(|e| -> Box<dyn std::error::Error> {
                                 format!("Failed to run migrations from {}: {}", path.display(), e)
@@ -197,7 +198,7 @@ impl Builder {
                 })?;
 
                 app.manage(PluginState {
-                    pool: Arc::new(pool),
+                    db: Arc::new(db),
                     sync_config,
                     contract_tables: config.contract_tables.clone(),
                     db_path: PathBuf::from(&config.db_path),
@@ -222,6 +223,12 @@ impl Builder {
                 crate::commands::handle_run_event(app, event);
             })
             .build()
+    }
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -259,11 +266,11 @@ fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_transport, resolve_migrations_path, validate_migration_sources};
+    use super::{resolve_migrations_path, resolve_transport, validate_migration_sources};
     use crate::config::PluginConfig;
-    use baresync_core::migrations::EmbeddedMigration;
     use baresync_core::engine::SyncContractTables;
     use baresync_core::http::SyncHttpTransport;
+    use baresync_core::migrations::EmbeddedMigration;
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -315,7 +322,6 @@ mod tests {
         }
     }
 
-    #[test]
     #[test]
     fn json_uses_default_transport_when_missing() {
         assert!(resolve_transport(&test_config("json", None)).is_ok());

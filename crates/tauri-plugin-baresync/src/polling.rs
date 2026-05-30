@@ -55,6 +55,7 @@ async fn mark_sync_completed(state: &Arc<tokio::sync::Mutex<PollingState>>) {
     st.last_sync_at = Some(chrono::Utc::now().to_rfc3339());
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn polling_loop<F, Fut>(
     scope_id: String,
     interval_secs: u64,

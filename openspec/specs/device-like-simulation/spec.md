@@ -11,7 +11,7 @@ The system SHALL provide host-runnable tests for the Tauri plugin command surfac
 #### Scenario: DB proxy command simulation
 
 - **WHEN** plugin command tests call the DB proxy command handlers with test state
-- **THEN** `run_sql`, `run_sql_batch`, and `get_db_info` SHALL exercise the shared SQLite pool and return the same result shape exposed to Tauri callers
+- **THEN** `run_sql`, `run_sql_batch`, and `get_db_info` SHALL exercise the shared SQLite database client and return the same result shape exposed to Tauri callers
 
 #### Scenario: Migration command simulation
 

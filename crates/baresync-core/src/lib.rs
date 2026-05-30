@@ -1,6 +1,7 @@
 pub mod config;
 pub mod cursor;
 pub mod db;
+mod db_worker;
 pub mod drizzle_proxy;
 pub mod engine;
 pub mod error;

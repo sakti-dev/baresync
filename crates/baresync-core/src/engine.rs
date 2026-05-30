@@ -1,6 +1,5 @@
-use sqlx::SqlitePool;
-
 use crate::config::SyncEngineConfig;
+use crate::db::DbClient;
 use crate::error::SyncError;
 use crate::gc;
 use crate::pull::{self, PullResult};
@@ -31,7 +30,7 @@ pub struct SyncNoOpResult {
 }
 
 pub struct SyncEngine {
-    pool: SqlitePool,
+    db: DbClient,
     config: SyncEngineConfig,
     tables: SyncContractTables,
 }
@@ -48,18 +47,14 @@ pub struct SyncNowResult {
 
 impl SyncEngine {
     pub async fn new(
-        pool: SqlitePool,
+        db: DbClient,
         mut config: SyncEngineConfig,
         tables: SyncContractTables,
     ) -> Self {
-        config.client_id = crate::db::get_or_create_client_id(&pool)
+        config.client_id = crate::db::get_or_create_client_id(&db)
             .await
             .unwrap_or_default();
-        Self {
-            pool,
-            config,
-            tables,
-        }
+        Self { db, config, tables }
     }
 
     pub async fn push(&self) -> Result<PushResult, SyncError> {
@@ -70,7 +65,7 @@ impl SyncEngine {
             .map(|s| s.as_str())
             .collect();
         push::push(
-            &self.pool,
+            &self.db,
             &self.config,
             &self.tables.upsert_order,
             &local_only,
@@ -80,7 +75,7 @@ impl SyncEngine {
 
     pub async fn pull(&self, limit: i32) -> Result<PullResult, SyncError> {
         pull::pull(
-            &self.pool,
+            &self.db,
             &self.config,
             &self.tables.upsert_order,
             &self.tables.delete_order,
@@ -94,7 +89,7 @@ impl SyncEngine {
 
     pub async fn sync_now(&self, limit: i32) -> Result<SyncNowResult, SyncError> {
         let local_state = self.get_sync_local_state().await?;
-        let status_result = status::status(&self.pool, &self.config).await?;
+        let status_result = status::status(&self.db, &self.config).await?;
         let changed_tables = self.resolve_changed_tables(&status_result);
         let local_dirty_count = local_state.local_dirty_count;
 
@@ -146,7 +141,7 @@ impl SyncEngine {
             let rejected_filter: Vec<String> = push_result.rejected_tables.clone();
             Some(
                 pull::pull(
-                    &self.pool,
+                    &self.db,
                     &self.config,
                     &self.tables.upsert_order,
                     &self.tables.delete_order,
@@ -161,12 +156,9 @@ impl SyncEngine {
             None
         };
 
-        let purged = gc::run_garbage_collection(
-            &self.pool,
-            &self.tables.upsert_order,
-            &self.config.scope_id,
-        )
-        .await?;
+        let purged =
+            gc::run_garbage_collection(&self.db, &self.tables.upsert_order, &self.config.scope_id)
+                .await?;
 
         Ok(SyncNowResult {
             mode: SyncNowMode::PushOnly,
@@ -185,7 +177,7 @@ impl SyncEngine {
         status_result: Option<SyncStatusResult>,
     ) -> Result<SyncNowResult, SyncError> {
         let pull_result = pull::pull(
-            &self.pool,
+            &self.db,
             &self.config,
             &self.tables.upsert_order,
             &self.tables.delete_order,
@@ -196,12 +188,9 @@ impl SyncEngine {
         )
         .await?;
 
-        let purged = gc::run_garbage_collection(
-            &self.pool,
-            &self.tables.upsert_order,
-            &self.config.scope_id,
-        )
-        .await?;
+        let purged =
+            gc::run_garbage_collection(&self.db, &self.tables.upsert_order, &self.config.scope_id)
+                .await?;
 
         Ok(SyncNowResult {
             mode: SyncNowMode::PullOnly,
@@ -220,7 +209,7 @@ impl SyncEngine {
         status_result: Option<SyncStatusResult>,
     ) -> Result<SyncNowResult, SyncError> {
         let pull_result = pull::pull(
-            &self.pool,
+            &self.db,
             &self.config,
             &self.tables.upsert_order,
             &self.tables.delete_order,
@@ -236,7 +225,7 @@ impl SyncEngine {
             let rejected_filter: Vec<String> = push_result.rejected_tables.clone();
             Some(
                 pull::pull(
-                    &self.pool,
+                    &self.db,
                     &self.config,
                     &self.tables.upsert_order,
                     &self.tables.delete_order,
@@ -251,12 +240,9 @@ impl SyncEngine {
             Some(pull_result)
         };
 
-        let purged = gc::run_garbage_collection(
-            &self.pool,
-            &self.tables.upsert_order,
-            &self.config.scope_id,
-        )
-        .await?;
+        let purged =
+            gc::run_garbage_collection(&self.db, &self.tables.upsert_order, &self.config.scope_id)
+                .await?;
 
         Ok(SyncNowResult {
             mode: SyncNowMode::FullSync,
@@ -275,7 +261,7 @@ impl SyncEngine {
         status_result: Option<SyncStatusResult>,
     ) -> Result<SyncNowResult, SyncError> {
         let pull_result = pull::pull(
-            &self.pool,
+            &self.db,
             &self.config,
             &self.tables.upsert_order,
             &self.tables.delete_order,
@@ -288,12 +274,9 @@ impl SyncEngine {
 
         let push_result = self.push().await?;
 
-        let purged = gc::run_garbage_collection(
-            &self.pool,
-            &self.tables.upsert_order,
-            &self.config.scope_id,
-        )
-        .await?;
+        let purged =
+            gc::run_garbage_collection(&self.db, &self.tables.upsert_order, &self.config.scope_id)
+                .await?;
 
         Ok(SyncNowResult {
             mode: SyncNowMode::FullResync,
@@ -314,19 +297,14 @@ impl SyncEngine {
     }
 
     pub async fn get_sync_local_state(&self) -> Result<crate::state::LocalSyncState, SyncError> {
-        crate::state::get_sync_local_state(&self.pool, &self.config.scope_id).await
+        crate::state::get_sync_local_state(&self.db, &self.config.scope_id).await
     }
 
     pub async fn purge_synced_outbox(&self, older_than: &str) -> Result<u64, SyncError> {
-        crate::outbox::purge_synced_outbox(&self.pool, older_than).await
+        crate::outbox::purge_synced_outbox(&self.db, older_than).await
     }
 
     pub async fn run_garbage_collection(&self) -> Result<usize, SyncError> {
-        gc::run_garbage_collection(&self.pool, &self.tables.upsert_order, &self.config.scope_id)
-            .await
-    }
-
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
+        gc::run_garbage_collection(&self.db, &self.tables.upsert_order, &self.config.scope_id).await
     }
 }

@@ -2,7 +2,7 @@
 
 ### Requirement: Generic pull engine with JSON decoding
 
-The `crates/baresync-core/src/pull.rs` module SHALL export a `pull` function that accepts a `SqlitePool`, a `SyncEngineConfig`, a `SyncContract`, a `PullStartCursor` enum, and an optional table filter.
+The `crates/baresync-core/src/pull.rs` module SHALL export a `pull` function that accepts a `DbClient`, a `SyncEngineConfig`, sync contract metadata, a `PullStartCursor` enum, and an optional table filter.
 
 The pull engine SHALL:
 1. Resolve the start cursor from `PullStartCursor`: `Baseline` uses empty string, `Stored` reads from `sync_cursors`

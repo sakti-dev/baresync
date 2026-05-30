@@ -1,14 +1,141 @@
 mod fixtures;
 
+use baresync_core::db::DbClient;
+use baresync_core::error::SyncError;
 use baresync_core::gc;
 use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::pull;
 use baresync_core::push::{self, PendingTablePush};
 use baresync_core::schema;
 use serde_json::Value;
-use sqlx::SqlitePool;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+
+struct DbStatement {
+    sql: String,
+    params: Vec<Value>,
+}
+
+fn db_query(sql: impl Into<String>) -> DbStatement {
+    DbStatement {
+        sql: sql.into(),
+        params: Vec::new(),
+    }
+}
+
+impl DbStatement {
+    fn bind<T: Into<Value>>(mut self, value: T) -> Self {
+        self.params.push(value.into());
+        self
+    }
+
+    async fn execute(self, db: &DbClient) -> Result<(), SyncError> {
+        let statements: Vec<&str> = self
+            .sql
+            .split(';')
+            .map(str::trim)
+            .filter(|stmt| !stmt.is_empty())
+            .collect();
+
+        if statements.len() > 1 && !self.params.is_empty() {
+            return Err(SyncError::Database(
+                "Test helper does not support parameters across multi-statement SQL".to_string(),
+            ));
+        }
+
+        if statements.len() > 1 {
+            for statement in statements {
+                db.execute(statement, Vec::new()).await?;
+            }
+            return Ok(());
+        }
+
+        db.execute(&self.sql, self.params).await?;
+        Ok(())
+    }
+}
+
+trait FromDbValue: Sized {
+    fn from_db_value(value: &Value) -> Option<Self>;
+}
+
+impl FromDbValue for String {
+    fn from_db_value(value: &Value) -> Option<Self> {
+        value.as_str().map(|s| s.to_string())
+    }
+}
+
+impl FromDbValue for i64 {
+    fn from_db_value(value: &Value) -> Option<Self> {
+        value.as_i64()
+    }
+}
+
+impl<T: FromDbValue> FromDbValue for Option<T> {
+    fn from_db_value(value: &Value) -> Option<Self> {
+        if value.is_null() {
+            Some(None)
+        } else {
+            T::from_db_value(value).map(Some)
+        }
+    }
+}
+
+struct DbScalar<T> {
+    sql: String,
+    params: Vec<Value>,
+    _marker: PhantomData<T>,
+}
+
+fn db_scalar<T>(sql: impl Into<String>) -> DbScalar<T> {
+    DbScalar {
+        sql: sql.into(),
+        params: Vec::new(),
+        _marker: PhantomData,
+    }
+}
+
+impl<T> DbScalar<T> {
+    fn bind<U: Into<Value>>(mut self, value: U) -> Self {
+        self.params.push(value.into());
+        self
+    }
+}
+
+impl<T: FromDbValue> DbScalar<T> {
+    async fn fetch_one(self, db: &DbClient) -> Result<T, SyncError> {
+        let rows = db
+            .query(self.sql, self.params)
+            .await
+            .map_err(|e| SyncError::Database(format!("Scalar query failed: {}", e)))?;
+        let value = rows
+            .first()
+            .and_then(|row| row.values.first())
+            .ok_or_else(|| SyncError::Database("Scalar query returned no rows".to_string()))?;
+        T::from_db_value(value).ok_or_else(|| {
+            SyncError::Database("Scalar query returned value of unexpected type".to_string())
+        })
+    }
+
+    async fn fetch_optional(self, db: &DbClient) -> Result<Option<T>, SyncError> {
+        let rows = db
+            .query(self.sql, self.params)
+            .await
+            .map_err(|e| SyncError::Database(format!("Scalar query failed: {}", e)))?;
+        let Some(row) = rows.first() else {
+            return Ok(None);
+        };
+        let value = row
+            .values
+            .first()
+            .ok_or_else(|| SyncError::Database("Scalar query returned no columns".to_string()))?;
+        let value = T::from_db_value(value).ok_or_else(|| {
+            SyncError::Database("Scalar query returned value of unexpected type".to_string())
+        })?;
+        Ok(Some(value))
+    }
+}
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -99,14 +226,16 @@ impl SyncHttpTransport for RecordingTransport {
 }
 
 async fn test_engine_with_transport(
-    pool: SqlitePool,
+    pool: DbClient,
     transport: RecordingTransport,
     scope_id: &str,
 ) -> baresync_core::engine::SyncEngine {
-    let mut config = baresync_core::config::SyncEngineConfig::default();
-    config.api_url = "http://127.0.0.1:9".to_string();
-    config.scope_id = scope_id.to_string();
-    config.transport = Arc::new(transport);
+    let config = baresync_core::config::SyncEngineConfig {
+        api_url: "http://127.0.0.1:9".to_string(),
+        scope_id: scope_id.to_string(),
+        transport: Arc::new(transport),
+        ..Default::default()
+    };
 
     baresync_core::engine::SyncEngine::new(
         pool,
@@ -120,24 +249,22 @@ async fn test_engine_with_transport(
     .await
 }
 
-async fn temp_db() -> SqlitePool {
+async fn temp_db() -> DbClient {
     let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir =
         std::env::temp_dir().join(format!("baresync-test-{}-{}", std::process::id(), counter));
     let _ = std::fs::create_dir_all(&dir);
     let db_path = dir.join("test.db");
-    let db = baresync_core::db::LocalDatabase::connect(db_path.to_str().unwrap())
+    let db = DbClient::connect(db_path.to_str().unwrap()).await.unwrap();
+    db_query(fixtures::create_tables_sql())
+        .execute(&db)
         .await
         .unwrap();
-    sqlx::query(fixtures::create_tables_sql())
-        .execute(db.pool())
-        .await
-        .unwrap();
-    db.pool().clone()
+    db
 }
 
-async fn seed_cursor(pool: &SqlitePool, cursor: &str) {
-    sqlx::query(
+async fn seed_cursor(pool: &DbClient, cursor: &str) {
+    db_query(
         "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, ?2, '2026-05-19T12:00:00.000Z')",
     )
     .bind("merchant-1")
@@ -147,8 +274,8 @@ async fn seed_cursor(pool: &SqlitePool, cursor: &str) {
     .unwrap();
 }
 
-async fn seed_outbox_row(pool: &SqlitePool) {
-    sqlx::query(fixtures::insert_category_sql())
+async fn seed_outbox_row(pool: &DbClient) {
+    db_query(fixtures::insert_category_sql())
         .bind("cat-local-1")
         .bind("merchant-1")
         .bind("Local Category")
@@ -158,7 +285,7 @@ async fn seed_outbox_row(pool: &SqlitePool) {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-1")
         .bind("categories")
         .bind("cat-local-1")
@@ -180,8 +307,8 @@ async fn seed_outbox_row(pool: &SqlitePool) {
         .unwrap();
 }
 
-async fn seed_categories_and_products(pool: &SqlitePool) {
-    sqlx::query(fixtures::insert_category_sql())
+async fn seed_categories_and_products(pool: &DbClient) {
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -191,7 +318,7 @@ async fn seed_categories_and_products(pool: &SqlitePool) {
         .await
         .unwrap();
 
-    sqlx::query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7)")
+    db_query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7)")
         .bind("prod-1")
         .bind("merchant-1")
         .bind("cat-1")
@@ -209,9 +336,8 @@ async fn pull_baseline_applies_rows_in_fk_order() {
     let pool = temp_db().await;
     let response = fixtures::pull_response(true, true, None);
 
-    let mut tx = pool.begin().await.unwrap();
     let applied = pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         response.get("tables").unwrap(),
@@ -220,17 +346,16 @@ async fn pull_baseline_applies_rows_in_fk_order() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
     assert_eq!(applied, 2);
 
-    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let cat_name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(cat_name, "Drinks Updated");
 
-    let prod_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
+    let prod_name: String = db_scalar("SELECT name FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -478,9 +603,8 @@ async fn pull_upserted_rows_are_marked_synced() {
     let pool = temp_db().await;
     let response = fixtures::pull_response(true, false, None);
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         response.get("tables").unwrap(),
@@ -489,9 +613,8 @@ async fn pull_upserted_rows_are_marked_synced() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+    let is_synced: i64 = db_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -502,7 +625,7 @@ async fn pull_upserted_rows_are_marked_synced() {
 async fn pull_soft_deletes_in_reverse_fk_order() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -514,9 +637,8 @@ async fn pull_soft_deletes_in_reverse_fk_order() {
 
     let response = fixtures::pull_response(false, true, Some("prod-1"));
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         response.get("tables").unwrap(),
@@ -525,10 +647,9 @@ async fn pull_soft_deletes_in_reverse_fk_order() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
     let prod_deleted: Option<String> =
-        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+        db_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_optional(&pool)
             .await
             .unwrap()
@@ -540,19 +661,16 @@ async fn pull_soft_deletes_in_reverse_fk_order() {
 async fn pull_cursor_advances_after_success() {
     let pool = temp_db().await;
 
-    sqlx::query(
-        "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')",
-    )
-    .bind("merchant-1")
-    .execute(&pool)
-    .await
-    .unwrap();
+    db_query("INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')")
+        .bind("merchant-1")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let response = fixtures::pull_response(true, false, None);
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         response.get("tables").unwrap(),
@@ -562,17 +680,15 @@ async fn pull_cursor_advances_after_success() {
     .await
     .unwrap();
 
-    baresync_core::cursor::set_last_cursor_tx(&mut tx, "merchant-1", "sync:new-cursor")
+    baresync_core::cursor::set_last_cursor_tx(&pool, "merchant-1", "sync:new-cursor")
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    let cursor: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
-            .bind("merchant-1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cursor: String = db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
+        .bind("merchant-1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cursor, "sync:new-cursor");
 }
 
@@ -580,7 +696,7 @@ async fn pull_cursor_advances_after_success() {
 async fn pull_cursor_does_not_advance_on_failure() {
     let pool = temp_db().await;
 
-    sqlx::query(
+    db_query(
         "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, 'sync:original', '0')",
     )
     .bind("merchant-1")
@@ -589,7 +705,7 @@ async fn pull_cursor_does_not_advance_on_failure() {
     .unwrap();
 
     let cursor_before: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
+        db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
             .bind("merchant-1")
             .fetch_one(&pool)
             .await
@@ -601,7 +717,7 @@ async fn pull_cursor_does_not_advance_on_failure() {
 async fn push_builds_envelope_from_outbox() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -611,7 +727,7 @@ async fn push_builds_envelope_from_outbox() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-1")
         .bind("categories")
         .bind("cat-1")
@@ -623,9 +739,8 @@ async fn push_builds_envelope_from_outbox() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     let changes = baresync_core::schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
+        &pool,
         "categories",
         "merchant-1",
         &["is_synced"],
@@ -640,7 +755,7 @@ async fn push_builds_envelope_from_outbox() {
 async fn push_coalesces_insert_then_delete() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -650,7 +765,7 @@ async fn push_coalesces_insert_then_delete() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-1")
         .bind("categories")
         .bind("cat-1")
@@ -662,7 +777,7 @@ async fn push_coalesces_insert_then_delete() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-2")
         .bind("categories")
         .bind("cat-1")
@@ -674,9 +789,8 @@ async fn push_coalesces_insert_then_delete() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     let changes = baresync_core::schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
+        &pool,
         "categories",
         "merchant-1",
         &[],
@@ -700,19 +814,17 @@ async fn push_upsert_query_works() {
         "updatedAt": "2026-01-01T00:00:00.000Z"
     });
 
-    let mut tx = pool.begin().await.unwrap();
-    baresync_core::push::upsert_row(&mut tx, "categories", &row)
+    baresync_core::push::upsert_row(&pool, "categories", &row)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    let name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(name, "Drinks");
 
-    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+    let is_synced: i64 = db_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -723,7 +835,7 @@ async fn push_upsert_query_works() {
 async fn push_soft_delete_marks_row() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -733,25 +845,18 @@ async fn push_soft_delete_marks_row() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
-    baresync_core::push::soft_delete_row(
-        &mut tx,
-        "categories",
-        "cat-1",
-        "2026-05-19T12:00:00.000Z",
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
+    baresync_core::push::soft_delete_row(&pool, "categories", "cat-1", "2026-05-19T12:00:00.000Z")
+        .await
+        .unwrap();
 
     let deleted_at: Option<String> =
-        sqlx::query_scalar("SELECT deleted_at FROM categories WHERE id = 'cat-1'")
+        db_scalar("SELECT deleted_at FROM categories WHERE id = 'cat-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert_eq!(deleted_at, Some("2026-05-19T12:00:00.000Z".to_string()));
 
-    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+    let is_synced: i64 = db_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -763,7 +868,7 @@ async fn gc_after_pull_and_push_lifecycle() {
     let pool = temp_db().await;
     seed_categories_and_products(&pool).await;
 
-    sqlx::query("UPDATE products SET deleted_at = '2026-05-19T12:00:00.000Z', is_synced = 1 WHERE id = 'prod-1'")
+    db_query("UPDATE products SET deleted_at = '2026-05-19T12:00:00.000Z', is_synced = 1 WHERE id = 'prod-1'")
         .execute(&pool)
         .await
         .unwrap();
@@ -777,13 +882,13 @@ async fn gc_after_pull_and_push_lifecycle() {
     .unwrap();
     assert_eq!(purged, 1);
 
-    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+    let prod_count: i64 = db_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(prod_count, 0);
 
-    let cat_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
+    let cat_count: i64 = db_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -794,7 +899,7 @@ async fn gc_after_pull_and_push_lifecycle() {
 async fn baseline_pull_does_not_advance_stored_cursor() {
     let pool = temp_db().await;
 
-    sqlx::query(
+    db_query(
         "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES ('merchant-1', 'sync:original', '0')",
     )
     .execute(&pool)
@@ -802,9 +907,8 @@ async fn baseline_pull_does_not_advance_stored_cursor() {
     .unwrap();
 
     let response = fixtures::pull_response(true, false, None);
-    let mut tx = pool.begin().await.unwrap();
     let _ = pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         response.get("tables").unwrap(),
@@ -820,10 +924,8 @@ async fn baseline_pull_does_not_advance_stored_cursor() {
         .unwrap_or("");
     assert!(!new_cursor.is_empty());
 
-    tx.commit().await.unwrap();
-
     let cursor: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = 'merchant-1'")
+        db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = 'merchant-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -836,7 +938,7 @@ async fn push_flatten_chunk_roundtrip_from_outbox() {
     seed_categories_and_products(&pool).await;
 
     for i in 0..3 {
-        sqlx::query(fixtures::insert_outbox_sql())
+        db_query(fixtures::insert_outbox_sql())
             .bind(format!("outbox-cat-{}", i))
             .bind("categories")
             .bind("cat-1")
@@ -850,7 +952,7 @@ async fn push_flatten_chunk_roundtrip_from_outbox() {
     }
 
     for i in 0..2 {
-        sqlx::query(fixtures::insert_outbox_sql())
+        db_query(fixtures::insert_outbox_sql())
             .bind(format!("outbox-prod-del-{}", i))
             .bind("products")
             .bind(format!("prod-del-{}", i))
@@ -863,30 +965,26 @@ async fn push_flatten_chunk_roundtrip_from_outbox() {
             .unwrap();
     }
 
-    let mut tx = pool.begin().await.unwrap();
     let cat_changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
+        &pool,
         "categories",
         "merchant-1",
         &["is_synced"],
     )
     .await
     .unwrap();
-    drop(tx);
 
     let cat_units: Vec<PendingTablePush> = push::flatten_pending_tables("categories", &cat_changes);
     assert!(!cat_units.is_empty());
 
-    let mut tx = pool.begin().await.unwrap();
     let prod_changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
+        &pool,
         "products",
         "merchant-1",
         &["is_synced"],
     )
     .await
     .unwrap();
-    drop(tx);
 
     let prod_units: Vec<PendingTablePush> = push::flatten_pending_tables("products", &prod_changes);
     assert!(!prod_units.is_empty());
@@ -920,13 +1018,11 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
         "createdAt": "2026-01-01T00:00:00.000Z",
         "updatedAt": "2026-01-01T00:00:00.000Z"
     });
-    let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &cat_row)
+    push::upsert_row(&pool, "categories", &cat_row)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-cat-1")
         .bind("categories")
         .bind("cat-1")
@@ -947,13 +1043,11 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
         "createdAt": "2026-01-01T00:00:00.000Z",
         "updatedAt": "2026-01-01T00:00:00.000Z"
     });
-    let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "products", &prod_row)
+    push::upsert_row(&pool, "products", &prod_row)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-prod-1")
         .bind("products")
         .bind("prod-1")
@@ -965,14 +1059,13 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
         .await
         .unwrap();
 
-    let outbox_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let outbox_count: i64 = db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(outbox_count, 2);
 
-    let cat_outbox: i64 = sqlx::query_scalar(
+    let cat_outbox: i64 = db_scalar(
         "SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'categories' AND synced_at IS NULL",
     )
     .fetch_one(&pool)
@@ -980,7 +1073,7 @@ async fn sim_local_offline_inserts_create_outbox_entries() {
     .unwrap();
     assert_eq!(cat_outbox, 1);
 
-    let prod_outbox: i64 = sqlx::query_scalar(
+    let prod_outbox: i64 = db_scalar(
         "SELECT COUNT(*) FROM sync_outbox WHERE table_name = 'products' AND synced_at IS NULL",
     )
     .fetch_one(&pool)
@@ -994,7 +1087,7 @@ async fn sim_push_reads_outbox_in_upsert_order() {
     let pool = temp_db().await;
     seed_categories_and_products(&pool).await;
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-prod-1")
         .bind("products")
         .bind("prod-1")
@@ -1006,7 +1099,7 @@ async fn sim_push_reads_outbox_in_upsert_order() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-cat-1")
         .bind("categories")
         .bind("cat-1")
@@ -1022,12 +1115,10 @@ async fn sim_push_reads_outbox_in_upsert_order() {
     let mut all_units: Vec<PendingTablePush> = Vec::new();
 
     for table in &upsert_order {
-        let mut tx = pool.begin().await.unwrap();
         let changes =
-            schema::read_unsynced_table_changes_from_outbox_tx(&mut tx, table, "merchant-1", &[])
+            schema::read_unsynced_table_changes_from_outbox_tx(&pool, table, "merchant-1", &[])
                 .await
                 .unwrap();
-        drop(tx);
         all_units.push(
             push::flatten_pending_tables(table, &changes)
                 .into_iter()
@@ -1047,9 +1138,8 @@ async fn sim_pull_deleted_ids_soft_deletes_product() {
 
     let response = fixtures::soft_delete_pull_response();
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         response.get("tables").unwrap(),
@@ -1058,17 +1148,16 @@ async fn sim_pull_deleted_ids_soft_deletes_product() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
     let deleted_at: Option<String> =
-        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+        db_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert!(deleted_at.is_some());
-    assert!(deleted_at.unwrap().len() > 0);
+    assert!(!deleted_at.unwrap().is_empty());
 
-    let is_synced: i64 = sqlx::query_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
+    let is_synced: i64 = db_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1083,9 +1172,8 @@ async fn sim_server_wins_rejection_reconciled_by_pull() {
     let rejection = fixtures::push_rejection_response();
     let recon_pull = rejection.get("reconciliationPull").unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         recon_pull.get("tables").unwrap(),
@@ -1094,19 +1182,17 @@ async fn sim_server_wins_rejection_reconciled_by_pull() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let cat_name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(cat_name, "Drinks Server Version");
 
-    let cat_updated: String =
-        sqlx::query_scalar("SELECT updated_at FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat_updated: String = db_scalar("SELECT updated_at FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat_updated, "2026-05-19T12:00:02.000Z");
 }
 
@@ -1117,7 +1203,7 @@ async fn sim_adaptive_chunking_splits_on_413() {
 
     for i in 0..4 {
         if i != 1 {
-            sqlx::query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7)")
+            db_query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7)")
                 .bind(format!("prod-{}", i))
                 .bind("merchant-1")
                 .bind("cat-1")
@@ -1130,7 +1216,7 @@ async fn sim_adaptive_chunking_splits_on_413() {
                 .unwrap();
         }
 
-        sqlx::query(fixtures::insert_outbox_sql())
+        db_query(fixtures::insert_outbox_sql())
             .bind(format!("outbox-prod-{}", i))
             .bind("products")
             .bind(format!("prod-{}", i))
@@ -1143,12 +1229,10 @@ async fn sim_adaptive_chunking_splits_on_413() {
             .unwrap();
     }
 
-    let mut tx = pool.begin().await.unwrap();
     let changes =
-        schema::read_unsynced_table_changes_from_outbox_tx(&mut tx, "products", "merchant-1", &[])
+        schema::read_unsynced_table_changes_from_outbox_tx(&pool, "products", "merchant-1", &[])
             .await
             .unwrap();
-    drop(tx);
 
     let units = push::flatten_pending_tables("products", &changes);
     assert_eq!(units.len(), 4);
@@ -1190,20 +1274,17 @@ async fn sim_single_row_too_large_error() {
 async fn sim_cursor_advances_after_successful_pull() {
     let pool = temp_db().await;
 
-    sqlx::query(
-        "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')",
-    )
-    .bind("merchant-1")
-    .execute(&pool)
-    .await
-    .unwrap();
+    db_query("INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')")
+        .bind("merchant-1")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     let response = fixtures::baseline_pull_response();
     let new_cursor = response.get("cursor").and_then(|c| c.as_str()).unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         response.get("tables").unwrap(),
@@ -1212,17 +1293,15 @@ async fn sim_cursor_advances_after_successful_pull() {
     )
     .await
     .unwrap();
-    baresync_core::cursor::set_last_cursor_tx(&mut tx, "merchant-1", new_cursor)
+    baresync_core::cursor::set_last_cursor_tx(&pool, "merchant-1", new_cursor)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    let cursor: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
-            .bind("merchant-1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cursor: String = db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
+        .bind("merchant-1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cursor, new_cursor);
 }
 
@@ -1230,7 +1309,7 @@ async fn sim_cursor_advances_after_successful_pull() {
 async fn sim_cursor_does_not_advance_on_failure() {
     let pool = temp_db().await;
 
-    sqlx::query(
+    db_query(
         "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, 'sync:original', '0')",
     )
     .bind("merchant-1")
@@ -1238,12 +1317,11 @@ async fn sim_cursor_does_not_advance_on_failure() {
     .await
     .unwrap();
 
-    let cursor: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
-            .bind("merchant-1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cursor: String = db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
+        .bind("merchant-1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cursor, "sync:original");
 }
 
@@ -1252,7 +1330,7 @@ async fn sim_gc_purges_soft_deleted_synced_rows() {
     let pool = temp_db().await;
     seed_categories_and_products(&pool).await;
 
-    sqlx::query("UPDATE products SET deleted_at = '2026-05-19T12:00:00.000Z', is_synced = 1 WHERE id = 'prod-1'")
+    db_query("UPDATE products SET deleted_at = '2026-05-19T12:00:00.000Z', is_synced = 1 WHERE id = 'prod-1'")
         .execute(&pool)
         .await
         .unwrap();
@@ -1266,13 +1344,13 @@ async fn sim_gc_purges_soft_deleted_synced_rows() {
     .unwrap();
     assert_eq!(purged, 1);
 
-    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+    let prod_count: i64 = db_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(prod_count, 0);
 
-    let cat_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
+    let cat_count: i64 = db_scalar("SELECT COUNT(*) FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1287,17 +1365,14 @@ async fn sim_full_sync_lifecycle() {
     let server_time = response.get("serverTime").and_then(|t| t.as_str()).unwrap();
     let new_cursor = response.get("cursor").and_then(|c| c.as_str()).unwrap();
 
-    sqlx::query(
-        "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')",
-    )
-    .bind("merchant-1")
-    .execute(&pool)
-    .await
-    .unwrap();
+    db_query("INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES (?1, '', '0')")
+        .bind("merchant-1")
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     let applied = pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         response.get("tables").unwrap(),
@@ -1306,13 +1381,12 @@ async fn sim_full_sync_lifecycle() {
     )
     .await
     .unwrap();
-    baresync_core::cursor::set_last_cursor_tx(&mut tx, "merchant-1", new_cursor)
+    baresync_core::cursor::set_last_cursor_tx(&pool, "merchant-1", new_cursor)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
     assert_eq!(applied, 2);
 
-    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let cat_name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1325,13 +1399,11 @@ async fn sim_full_sync_lifecycle() {
         "createdAt": "2026-05-19T13:00:00.000Z",
         "updatedAt": "2026-05-19T13:00:00.000Z"
     });
-    let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &local_cat)
+    push::upsert_row(&pool, "categories", &local_cat)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-local-cat-1")
         .bind("categories")
         .bind("cat-local-1")
@@ -1343,29 +1415,27 @@ async fn sim_full_sync_lifecycle() {
         .await
         .unwrap();
 
-    let outbox_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let outbox_count: i64 = db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(outbox_count, 1);
 
-    sqlx::query("UPDATE sync_outbox SET synced_at = '2026-05-19T14:00:00.000Z' WHERE id = 'outbox-local-cat-1'")
+    db_query("UPDATE sync_outbox SET synced_at = '2026-05-19T14:00:00.000Z' WHERE id = 'outbox-local-cat-1'")
         .execute(&pool)
         .await
         .unwrap();
 
     let pending_after_push: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert_eq!(pending_after_push, 0);
 
     let soft_delete_response = fixtures::soft_delete_pull_response();
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string(), "categories".to_string()],
         soft_delete_response.get("tables").unwrap(),
@@ -1374,10 +1444,9 @@ async fn sim_full_sync_lifecycle() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
     let prod_deleted: Option<String> =
-        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+        db_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1392,17 +1461,16 @@ async fn sim_full_sync_lifecycle() {
     .unwrap();
     assert!(purged >= 1);
 
-    let prod_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
+    let prod_count: i64 = db_scalar("SELECT COUNT(*) FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(prod_count, 0);
 
-    let second_outbox: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let second_outbox: i64 = db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(second_outbox, 0);
 }
 
@@ -1421,7 +1489,7 @@ async fn sim_migrations_applied_once_skipped_on_second_run() {
         .await
         .unwrap();
 
-    let count1: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+    let count1: i64 = db_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1431,7 +1499,7 @@ async fn sim_migrations_applied_once_skipped_on_second_run() {
         .await
         .unwrap();
 
-    let count2: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
+    let count2: i64 = db_scalar("SELECT COUNT(*) FROM __drizzle_migrations")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1442,7 +1510,7 @@ async fn sim_migrations_applied_once_skipped_on_second_run() {
 async fn sim_push_deletes_only() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -1452,7 +1520,7 @@ async fn sim_push_deletes_only() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-del-1")
         .bind("categories")
         .bind("cat-1")
@@ -1464,21 +1532,15 @@ async fn sim_push_deletes_only() {
         .await
         .unwrap();
 
-    sqlx::query("DELETE FROM categories WHERE id = 'cat-1'")
+    db_query("DELETE FROM categories WHERE id = 'cat-1'")
         .execute(&pool)
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
-    let changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
-        "categories",
-        "merchant-1",
-        &[],
-    )
-    .await
-    .unwrap();
-    drop(tx);
+    let changes =
+        schema::read_unsynced_table_changes_from_outbox_tx(&pool, "categories", "merchant-1", &[])
+            .await
+            .unwrap();
 
     assert_eq!(changes.changes.deleted_ids, vec!["cat-1"]);
 
@@ -1492,23 +1554,20 @@ async fn sim_push_deletes_only() {
     assert!(envelope
         .get("tables")
         .and_then(|t| t.as_array())
-        .map_or(false, |a| !a.is_empty()));
+        .is_some_and(|a| !a.is_empty()));
 
-    let mut tx = pool.begin().await.unwrap();
     baresync_core::outbox::mark_outbox_synced_by_outbox_ids_tx(
-        &mut tx,
+        &pool,
         "2026-05-19T14:00:00.000Z",
         &units[0].outbox_ids,
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let pending: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let pending: i64 = db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(pending, 0);
 }
 
@@ -1516,7 +1575,7 @@ async fn sim_push_deletes_only() {
 async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -1526,7 +1585,7 @@ async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
         .await
         .unwrap();
 
-    sqlx::query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES ('prod-1', 'merchant-1', 'cat-1', 'Kopi Susu', 15000, NULL, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')")
+    db_query("INSERT INTO products (id, merchant_id, category_id, name, price_minor_units, deleted_at, is_synced, created_at, updated_at) VALUES ('prod-1', 'merchant-1', 'cat-1', 'Kopi Susu', 15000, NULL, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')")
         .execute(&pool)
         .await
         .unwrap();
@@ -1550,9 +1609,8 @@ async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
         }]
     });
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string(), "products".to_string()],
         &["products".to_string()],
         response.get("tables").unwrap(),
@@ -1561,33 +1619,30 @@ async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let prod2_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM products WHERE id = 'prod-2'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod2_synced: i64 = db_scalar("SELECT is_synced FROM products WHERE id = 'prod-2'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod2_synced, 1);
 
-    let prod2_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-2'")
+    let prod2_name: String = db_scalar("SELECT name FROM products WHERE id = 'prod-2'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(prod2_name, "Latte");
 
     let prod1_deleted: Option<String> =
-        sqlx::query_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
+        db_scalar("SELECT deleted_at FROM products WHERE id = 'prod-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
     assert!(prod1_deleted.is_some());
 
-    let prod1_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prod1_synced: i64 = db_scalar("SELECT is_synced FROM products WHERE id = 'prod-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(prod1_synced, 1);
 }
 
@@ -1595,7 +1650,7 @@ async fn sim_pull_mixed_changed_rows_and_deleted_ids_same_table() {
 async fn sim_paginated_pull_two_batches() {
     let pool = temp_db().await;
 
-    sqlx::query(
+    db_query(
         "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES ('merchant-1', '', '0')",
     )
     .execute(&pool)
@@ -1621,9 +1676,8 @@ async fn sim_paginated_pull_two_batches() {
         }]
     });
 
-    let mut tx = pool.begin().await.unwrap();
     let applied1 = pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["products".to_string()],
         &[],
         batch1.get("tables").unwrap(),
@@ -1632,10 +1686,9 @@ async fn sim_paginated_pull_two_batches() {
     )
     .await
     .unwrap();
-    baresync_core::cursor::set_last_cursor_tx(&mut tx, "merchant-1", "sync:step1")
+    baresync_core::cursor::set_last_cursor_tx(&pool, "merchant-1", "sync:step1")
         .await
         .unwrap();
-    tx.commit().await.unwrap();
     assert_eq!(applied1, 1);
 
     let batch2 = serde_json::json!({
@@ -1655,9 +1708,8 @@ async fn sim_paginated_pull_two_batches() {
         }]
     });
 
-    let mut tx = pool.begin().await.unwrap();
     let applied2 = pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         batch2.get("tables").unwrap(),
@@ -1666,26 +1718,25 @@ async fn sim_paginated_pull_two_batches() {
     )
     .await
     .unwrap();
-    baresync_core::cursor::set_last_cursor_tx(&mut tx, "merchant-1", "sync:step2")
+    baresync_core::cursor::set_last_cursor_tx(&pool, "merchant-1", "sync:step2")
         .await
         .unwrap();
-    tx.commit().await.unwrap();
     assert_eq!(applied2, 1);
 
-    let prod_name: String = sqlx::query_scalar("SELECT name FROM products WHERE id = 'prod-1'")
+    let prod_name: String = db_scalar("SELECT name FROM products WHERE id = 'prod-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(prod_name, "Kopi Susu");
 
-    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let cat_name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(cat_name, "Drinks");
 
     let cursor: String =
-        sqlx::query_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = 'merchant-1'")
+        db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = 'merchant-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1696,7 +1747,7 @@ async fn sim_paginated_pull_two_batches() {
 async fn sim_outbox_coalesce_insert_delete_insert() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -1708,7 +1759,7 @@ async fn sim_outbox_coalesce_insert_delete_insert() {
 
     let cat_row = serde_json::json!({"id":"cat-1","name":"Drinks"});
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-1")
         .bind("categories")
         .bind("cat-1")
@@ -1720,7 +1771,7 @@ async fn sim_outbox_coalesce_insert_delete_insert() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-2")
         .bind("categories")
         .bind("cat-1")
@@ -1732,7 +1783,7 @@ async fn sim_outbox_coalesce_insert_delete_insert() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-3")
         .bind("categories")
         .bind("cat-1")
@@ -1744,16 +1795,10 @@ async fn sim_outbox_coalesce_insert_delete_insert() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
-    let changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
-        "categories",
-        "merchant-1",
-        &[],
-    )
-    .await
-    .unwrap();
-    drop(tx);
+    let changes =
+        schema::read_unsynced_table_changes_from_outbox_tx(&pool, "categories", "merchant-1", &[])
+            .await
+            .unwrap();
 
     assert_eq!(changes.changes.changed_rows.len(), 1);
     assert!(changes.changes.deleted_ids.is_empty());
@@ -1770,9 +1815,8 @@ async fn sim_resync_after_server_wins_reconciliation() {
     let rejection = fixtures::push_rejection_response();
     let recon_pull = rejection.get("reconciliationPull").unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     pull::apply_pull_batch_tables_tx(
-        &mut tx,
+        &pool,
         &["categories".to_string()],
         &[],
         recon_pull.get("tables").unwrap(),
@@ -1781,9 +1825,8 @@ async fn sim_resync_after_server_wins_reconciliation() {
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let cat_name: String = sqlx::query_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
+    let cat_name: String = db_scalar("SELECT name FROM categories WHERE id = 'cat-1'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1796,13 +1839,11 @@ async fn sim_resync_after_server_wins_reconciliation() {
         "createdAt": "2026-05-19T15:00:00.000Z",
         "updatedAt": "2026-05-19T15:00:00.000Z"
     });
-    let mut tx = pool.begin().await.unwrap();
-    push::upsert_row(&mut tx, "categories", &new_cat)
+    push::upsert_row(&pool, "categories", &new_cat)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-cat-new-1")
         .bind("categories")
         .bind("cat-new-1")
@@ -1814,16 +1855,10 @@ async fn sim_resync_after_server_wins_reconciliation() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
-    let changes = schema::read_unsynced_table_changes_from_outbox_tx(
-        &mut tx,
-        "categories",
-        "merchant-1",
-        &[],
-    )
-    .await
-    .unwrap();
-    drop(tx);
+    let changes =
+        schema::read_unsynced_table_changes_from_outbox_tx(&pool, "categories", "merchant-1", &[])
+            .await
+            .unwrap();
 
     let units = push::flatten_pending_tables("categories", &changes);
     assert_eq!(units.len(), 1);
@@ -1842,23 +1877,20 @@ async fn sim_resync_after_server_wins_reconciliation() {
     assert!(envelope
         .get("tables")
         .and_then(|t| t.as_array())
-        .map_or(false, |a| !a.is_empty()));
+        .is_some_and(|a| !a.is_empty()));
 
-    let mut tx = pool.begin().await.unwrap();
     baresync_core::outbox::mark_outbox_synced_by_outbox_ids_tx(
-        &mut tx,
+        &pool,
         "2026-05-19T16:00:00.000Z",
         &units[0].outbox_ids,
     )
     .await
     .unwrap();
-    tx.commit().await.unwrap();
 
-    let pending: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let pending: i64 = db_scalar("SELECT COUNT(*) FROM sync_outbox WHERE synced_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(pending, 0);
 }
 
@@ -1866,7 +1898,7 @@ async fn sim_resync_after_server_wins_reconciliation() {
 async fn sim_push_partial_acceptance() {
     let pool = temp_db().await;
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-1")
         .bind("merchant-1")
         .bind("Drinks")
@@ -1876,7 +1908,7 @@ async fn sim_push_partial_acceptance() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_category_sql())
+    db_query(fixtures::insert_category_sql())
         .bind("cat-2")
         .bind("merchant-1")
         .bind("Food")
@@ -1886,7 +1918,7 @@ async fn sim_push_partial_acceptance() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-cat-1")
         .bind("categories")
         .bind("cat-1")
@@ -1898,7 +1930,7 @@ async fn sim_push_partial_acceptance() {
         .await
         .unwrap();
 
-    sqlx::query(fixtures::insert_outbox_sql())
+    db_query(fixtures::insert_outbox_sql())
         .bind("outbox-cat-2")
         .bind("categories")
         .bind("cat-2")
@@ -1910,9 +1942,8 @@ async fn sim_push_partial_acceptance() {
         .await
         .unwrap();
 
-    let mut tx = pool.begin().await.unwrap();
     baresync_core::outbox::mark_outbox_synced_by_outbox_ids_tx(
-        &mut tx,
+        &pool,
         "2026-05-19T14:00:00.000Z",
         &["outbox-cat-1".to_string()],
     )
@@ -1921,20 +1952,18 @@ async fn sim_push_partial_acceptance() {
 
     let mut accepted = std::collections::HashSet::new();
     accepted.insert("cat-1".to_string());
-    schema::mark_rows_synced_by_id_tx(&mut tx, "categories", &accepted)
+    schema::mark_rows_synced_by_id_tx(&pool, "categories", &accepted)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
 
-    let cat1_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat1_synced: i64 = db_scalar("SELECT is_synced FROM categories WHERE id = 'cat-1'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat1_synced, 1);
 
     let cat1_outbox_synced: Option<String> =
-        sqlx::query_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-1'")
+        db_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-1'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1943,15 +1972,14 @@ async fn sim_push_partial_acceptance() {
         Some("2026-05-19T14:00:00.000Z".to_string())
     );
 
-    let cat2_synced: i64 =
-        sqlx::query_scalar("SELECT is_synced FROM categories WHERE id = 'cat-2'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let cat2_synced: i64 = db_scalar("SELECT is_synced FROM categories WHERE id = 'cat-2'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(cat2_synced, 0);
 
     let cat2_outbox_synced: Option<String> =
-        sqlx::query_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-2'")
+        db_scalar("SELECT synced_at FROM sync_outbox WHERE id = 'outbox-cat-2'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1963,7 +1991,7 @@ async fn sim_run_sql_batch_rolls_back_on_failure() {
     use baresync_core::drizzle_proxy::{run_sql_batch, SqlStatement};
 
     let pool = temp_db().await;
-    sqlx::query("CREATE TABLE batch_test (id TEXT PRIMARY KEY, val INTEGER NOT NULL)")
+    db_query("CREATE TABLE batch_test (id TEXT PRIMARY KEY, val INTEGER NOT NULL)")
         .execute(&pool)
         .await
         .unwrap();
@@ -1989,7 +2017,7 @@ async fn sim_run_sql_batch_rolls_back_on_failure() {
 
     assert!(result.is_err());
 
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM batch_test")
+    let count: i64 = db_scalar("SELECT COUNT(*) FROM batch_test")
         .fetch_one(&pool)
         .await
         .unwrap();

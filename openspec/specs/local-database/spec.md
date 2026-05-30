@@ -4,33 +4,32 @@ Local SQLite runtime and Drizzle proxy behavior for Baresync Tauri apps.
 
 ## Requirements
 
-### Requirement: SQLite pool connection with standard configuration
+### Requirement: SQLite database client connection with standard configuration
 
-The `crates/baresync-core/src/db.rs` module SHALL export a `LocalDatabase` struct with a `connect` method that creates a SQLite pool configured with:
+The `crates/baresync-core/src/db.rs` module SHALL export a `LocalDatabase` struct with a `connect` method that creates a `DbClient` backed by `rusqlite` and configured with:
 
-- `create_if_missing(true)`
-- `journal_mode(Wal)`
-- `synchronous(Normal)`
-- `busy_timeout(5 seconds)`
-- `pragma("foreign_keys", "ON")`
-- `max_connections(1)` for Drizzle sqlite-proxy transaction safety
-- `acquire_timeout(3 seconds)`
+- create database file if missing
+- WAL journal mode
+- Normal synchronous mode
+- 5-second busy timeout
+- `PRAGMA foreign_keys = ON`
+- a single worker-owned SQLite connection for Drizzle sqlite-proxy transaction safety
 
 #### Scenario: Fresh database is created and configured
 
 - **WHEN** `LocalDatabase::connect` is called with a path to a non-existent file
-- **THEN** the SQLite database file is created, WAL mode is active, foreign keys are ON, and the pool has exactly 1 max connection
+- **THEN** the SQLite database file is created, WAL mode is active, foreign keys are ON, and the returned local database exposes a `DbClient`
 
 #### Scenario: Existing database is opened
 
 - **WHEN** `LocalDatabase::connect` is called with a path to an existing SQLite database
-- **THEN** the pool connects successfully without recreating the file, and WAL/foreign_keys settings are applied
+- **THEN** the `rusqlite` worker connection opens it successfully without recreating the file, and WAL/foreign_keys settings are applied
 
 ### Requirement: Drizzle proxy query execution
 
-The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export a `run_sql` function that accepts a `SqlQuery` struct (with `sql`, `params`, and `method` fields) and a `SqlitePool` reference, and returns `Vec<SqlRow>`.
+The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export a `run_sql` function that accepts a `SqlQuery` struct (with `sql`, `params`, and `method` fields) and a `DbClient` reference, and returns `Vec<SqlRow>`.
 
-For `method: "run"`, the function SHALL execute the query and return an empty vec. For other methods, it SHALL return rows with columns and JSON-converted values.
+For `method: "run"`, the function SHALL execute the query through the `rusqlite` worker and return an empty vec. For other methods, it SHALL return rows with columns and JSON-converted values.
 
 #### Scenario: Select query returns rows
 
@@ -44,9 +43,9 @@ For `method: "run"`, the function SHALL execute the query and return an empty ve
 
 ### Requirement: Drizzle proxy batch transaction execution
 
-The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export a `run_sql_batch` function that accepts a vec of `SqlStatement` structs and a `SqlitePool` reference, and returns a `BatchResult`.
+The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export a `run_sql_batch` function that accepts a vec of `SqlStatement` structs and a `DbClient` reference, and returns a `BatchResult`.
 
-All statements SHALL execute within a single transaction. If any statement fails, the entire batch SHALL roll back.
+All statements SHALL execute within a single `rusqlite` transaction on the worker thread. If any statement fails, the entire batch SHALL roll back.
 
 #### Scenario: Batch commits all statements
 
@@ -69,7 +68,7 @@ The `crates/baresync-core/src/drizzle_proxy.rs` module SHALL export a `get_db_in
 
 ### Requirement: Embedded migration discovery
 
-The `crates/baresync-core/src/migrations.rs` module SHALL export a `MigrationFile` struct (with `name` and `sql` fields) and a function to run migrations against a pool.
+The `crates/baresync-core/src/migrations.rs` module SHALL export migration types and functions that run migrations through a `DbClient`.
 
 Migrations SHALL be discovered from embedded SQL files provided by the consumer via `include_str!`. Migration filenames SHALL determine execution order (sorted lexicographically).
 
@@ -142,7 +141,7 @@ The local database JS helper SHALL support Drizzle sqlite-proxy transactions as 
 
 ### Requirement: Tauri plugin DB command wrappers
 
-The `crates/tauri-plugin-baresync` crate SHALL expose Tauri commands `run_sql`, `run_sql_batch`, and `get_db_info` that delegate to `baresync-core` functions.
+The `crates/tauri-plugin-baresync` crate SHALL expose Tauri commands `run_sql`, `run_sql_batch`, and `get_db_info` that delegate to `baresync-core` functions using the plugin's `DbClient`.
 
 #### Scenario: run_sql command executes query via core
 

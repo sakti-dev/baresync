@@ -1,8 +1,8 @@
 use serde_json::Value;
-use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::config::SyncEngineConfig;
 use crate::cursor;
+use crate::db::DbClient;
 use crate::error::SyncError;
 use serde_json::json;
 
@@ -19,7 +19,7 @@ pub struct PullResult {
 }
 
 pub async fn apply_pull_batch_tables_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     upsert_order: &[String],
     delete_order: &[String],
     response_tables: &Value,
@@ -27,6 +27,7 @@ pub async fn apply_pull_batch_tables_tx(
     _local_only_columns: &[&str],
 ) -> Result<usize, SyncError> {
     let mut applied = 0;
+    let mut statements: Vec<(String, Vec<Value>)> = Vec::new();
 
     if let Some(tables) = response_tables.as_array() {
         let ordered: Vec<&Value> = upsert_order
@@ -48,7 +49,10 @@ pub async fn apply_pull_batch_tables_tx(
 
             if let Some(changed_rows) = table_entry.get("changedRows").and_then(|r| r.as_array()) {
                 for row in changed_rows {
-                    super::push::upsert_row(conn, table_name, row).await?;
+                    let statement = super::push::build_upsert_statement(table_name, row)?;
+                    if !statement.0.is_empty() {
+                        statements.push(statement);
+                    }
                     applied += 1;
                 }
             }
@@ -67,16 +71,14 @@ pub async fn apply_pull_batch_tables_tx(
             if let Some(deleted_ids) = table_entry.get("deletedIds").and_then(|d| d.as_array()) {
                 for id in deleted_ids {
                     if let Some(id_str) = id.as_str() {
-                        super::push::soft_delete_row(
-                            conn,
+                        statements.push(super::push::build_soft_delete_statement(
                             table_entry
                                 .get("table")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or(""),
                             id_str,
                             server_time,
-                        )
-                        .await?;
+                        ));
                         applied += 1;
                     }
                 }
@@ -84,11 +86,16 @@ pub async fn apply_pull_batch_tables_tx(
         }
     }
 
+    if !statements.is_empty() {
+        db.batch(statements).await?;
+    }
+
     Ok(applied)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn pull(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &SyncEngineConfig,
     upsert_order: &[String],
     delete_order: &[String],
@@ -99,9 +106,9 @@ pub async fn pull(
 ) -> Result<PullResult, SyncError> {
     let cursor_value = match &start_cursor {
         PullStartCursor::Baseline => String::new(),
-        PullStartCursor::Stored => cursor::get_last_cursor(pool, &config.scope_id)
+        PullStartCursor::Stored => cursor::get_last_cursor(db, &config.scope_id)
             .await
-            .map_err(|e| SyncError::Database(e))?,
+            .map_err(SyncError::Database)?,
     };
 
     let tables_to_pull: &[String] = match table_filter {
@@ -139,13 +146,8 @@ pub async fn pull(
         .cloned()
         .unwrap_or(Value::Array(Vec::new()));
 
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to begin pull tx: {}", e)))?;
-
     let applied = apply_pull_batch_tables_tx(
-        &mut tx,
+        db,
         upsert_order,
         delete_order,
         &tables,
@@ -158,14 +160,10 @@ pub async fn pull(
     .await?;
 
     if matches!(start_cursor, PullStartCursor::Stored) && !new_cursor.is_empty() {
-        cursor::set_last_cursor_tx(&mut tx, &config.scope_id, &new_cursor)
+        cursor::set_last_cursor_tx(db, &config.scope_id, &new_cursor)
             .await
-            .map_err(|e| SyncError::Database(e))?;
+            .map_err(SyncError::Database)?;
     }
-
-    tx.commit()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to commit pull: {}", e)))?;
 
     Ok(PullResult {
         rows_received: applied,

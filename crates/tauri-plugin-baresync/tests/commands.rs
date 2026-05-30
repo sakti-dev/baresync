@@ -1,13 +1,12 @@
 use baresync_core::config::SyncEngineConfig;
+use baresync_core::db::DbClient;
 use baresync_core::drizzle_proxy::{SqlQuery, SqlStatement};
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::{SyncHttpTransport, SyncTransportFuture};
 use baresync_core::migrations::EmbeddedMigration;
 use serde_json::Value;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::fs;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -129,6 +128,15 @@ fn status_response(has_changes: bool) -> Value {
     }
 }
 
+async fn exec_sql(db: &DbClient, sql: &str) {
+    db.execute(sql, vec![]).await.unwrap();
+}
+
+async fn query_scalar_i64(db: &DbClient, sql: &str) -> i64 {
+    let rows = db.query(sql, vec![]).await.unwrap();
+    rows[0].values[0].as_i64().unwrap()
+}
+
 struct TestCommandState {
     state: PluginState,
     event_sink: RecordingEventSink,
@@ -141,19 +149,11 @@ impl TestCommandState {
 
     async fn new_with_transport(transport: Arc<dyn SyncHttpTransport>) -> Self {
         let db_path = temp_db_path();
-        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
-            .unwrap()
-            .create_if_missing(true)
-            .pragma("foreign_keys", "ON");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await
-            .unwrap();
         let event_sink = RecordingEventSink::default();
+        let db = DbClient::connect(&db_path).await.unwrap();
 
         let state = PluginState {
-            pool: Arc::new(pool),
+            db: Arc::new(db.clone()),
             sync_config: SyncEngineConfig {
                 api_url: "http://127.0.0.1:9/sync".to_string(),
                 scope_id: "scope-1".to_string(),
@@ -310,10 +310,11 @@ async fn db_proxy_commands_use_shared_test_state() {
 async fn db_proxy_commands_emit_data_changed_for_writes_only() {
     let harness = TestCommandState::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
-    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
-        .execute(&*harness.state.pool)
-        .await
-        .unwrap();
+    exec_sql(
+        &harness.state.db,
+        "CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+    )
+    .await;
 
     run_sql_with_state(
         &harness.state,
@@ -334,10 +335,11 @@ async fn db_proxy_commands_emit_data_changed_for_writes_only() {
 async fn db_proxy_commands_do_not_emit_data_changed_for_reads_or_zero_row_writes() {
     let harness = TestCommandState::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
-    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
-        .execute(&*harness.state.pool)
-        .await
-        .unwrap();
+    exec_sql(
+        &harness.state.db,
+        "CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+    )
+    .await;
 
     run_sql_with_state(
         &harness.state,
@@ -368,10 +370,11 @@ async fn db_proxy_commands_do_not_emit_data_changed_for_reads_or_zero_row_writes
 async fn db_proxy_batch_commands_emit_data_changed_for_nonzero_rows_only() {
     let harness = TestCommandState::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
-    sqlx::query("CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
-        .execute(&*harness.state.pool)
-        .await
-        .unwrap();
+    exec_sql(
+        &harness.state.db,
+        "CREATE TABLE db_proxy_items (id TEXT PRIMARY KEY, name TEXT NOT NULL)",
+    )
+    .await;
 
     run_sql_batch_with_state(
         &harness.state,
@@ -437,19 +440,12 @@ async fn sync_push_emits_data_changed_when_rows_are_accepted() {
     let harness = TestCommandState::new_with_transport(transport).await;
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    sqlx::query(
+    exec_sql(
+        &harness.state.db,
         "INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('item-1', 'Coffee', NULL, 0)",
     )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    .await;
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)").await;
 
     sync_push_with_state(&harness.state, "scope-1".to_string())
         .await
@@ -475,17 +471,8 @@ async fn sync_now_emits_data_changed_when_push_changes_local_rows() {
     let harness = TestCommandState::new_with_transport(transport).await;
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    sqlx::query("INSERT INTO items (id, name, deleted_at, is_synced, created_at, updated_at) VALUES ('item-1', 'Coffee', NULL, 0, '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:00.000Z')")
-        .execute(&*harness.state.pool)
-        .await
-        .unwrap();
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO items (id, name, deleted_at, is_synced, created_at, updated_at) VALUES ('item-1', 'Coffee', NULL, 0, '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:00.000Z')").await;
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)").await;
 
     sync_now_with_state(&harness.state, "scope-1".to_string())
         .await
@@ -514,13 +501,7 @@ async fn sync_full_resync_emits_data_changed_when_pull_and_push_change_rows() {
     ));
     let harness = TestCommandState::new_with_transport(transport).await;
     run_migrations_with_state(&harness.state).await.unwrap();
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)").await;
 
     sync_full_resync_with_state(&harness.state, "scope-1".to_string())
         .await
@@ -590,12 +571,11 @@ async fn migration_commands_apply_embedded_migrations_and_report_status() {
     assert_eq!(status.len(), 1);
     assert_eq!(status[0].hash, "0001_test_items");
 
-    let item_table_count: i64 = sqlx::query_scalar(
+    let item_table_count = query_scalar_i64(
+        &harness.state.db,
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'items'",
     )
-    .fetch_one(&*harness.state.pool)
-    .await
-    .unwrap();
+    .await;
     assert_eq!(item_table_count, 1);
 }
 
@@ -616,18 +596,9 @@ async fn migration_commands_apply_filesystem_migrations_from_path() {
     .unwrap();
 
     let db_path = temp_db_path();
-    let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
-        .unwrap()
-        .create_if_missing(true)
-        .pragma("foreign_keys", "ON");
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(options)
-        .await
-        .unwrap();
     let harness = TestCommandState {
         state: PluginState {
-            pool: Arc::new(pool),
+            db: Arc::new(DbClient::connect(&db_path).await.unwrap()),
             sync_config: SyncEngineConfig {
                 api_url: "http://127.0.0.1:9/sync".to_string(),
                 scope_id: "scope-1".to_string(),
@@ -659,12 +630,11 @@ async fn migration_commands_apply_filesystem_migrations_from_path() {
 
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    let table_count: i64 = sqlx::query_scalar(
+    let table_count = query_scalar_i64(
+        &harness.state.db,
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'path_items'",
     )
-    .fetch_one(&*harness.state.pool)
-    .await
-    .unwrap();
+    .await;
     assert_eq!(table_count, 1);
 
     let _ = fs::remove_dir_all(&migration_dir);
@@ -675,21 +645,9 @@ async fn local_state_command_reports_seeded_outbox_and_cursor() {
     let harness = TestCommandState::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('outbox-1', 'items', 'item-1', 'insert', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)").await;
 
-    sqlx::query(
-        "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at)
-         VALUES ('scope-1', 'sync:phase14', '2026-05-20T00:00:01.000Z')",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES ('scope-1', 'sync:phase14', '2026-05-20T00:00:01.000Z')").await;
 
     let state = get_sync_local_state_with_state(&harness.state, "scope-1".to_string())
         .await
@@ -705,27 +663,9 @@ async fn maintenance_commands_purge_synced_outbox_and_collect_deleted_rows() {
     let harness = TestCommandState::new().await;
     run_migrations_with_state(&harness.state).await.unwrap();
 
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('old-synced', 'items', 'item-1', 'update', '{}', 'scope-1', '2026-05-18T00:00:00.000Z', '2026-05-18T00:00:01.000Z')",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('new-synced', 'items', 'item-2', 'update', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:01.000Z')",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at)
-         VALUES ('pending', 'items', 'item-3', 'update', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('old-synced', 'items', 'item-1', 'update', '{}', 'scope-1', '2026-05-18T00:00:00.000Z', '2026-05-18T00:00:01.000Z')").await;
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('new-synced', 'items', 'item-2', 'update', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', '2026-05-20T00:00:01.000Z')").await;
+    exec_sql(&harness.state.db, "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES ('pending', 'items', 'item-3', 'update', '{}', 'scope-1', '2026-05-20T00:00:00.000Z', NULL)").await;
 
     let purged =
         purge_synced_outbox_with_state(&harness.state, "2026-05-19T00:00:00.000Z".to_string())
@@ -733,30 +673,15 @@ async fn maintenance_commands_purge_synced_outbox_and_collect_deleted_rows() {
             .unwrap();
     assert_eq!(purged, 1);
 
-    sqlx::query(
-        "INSERT INTO items (id, name, deleted_at, is_synced)
-         VALUES ('item-1', 'Deleted', '2026-05-19T00:00:00.000Z', 1)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
-    sqlx::query(
-        "INSERT INTO items (id, name, deleted_at, is_synced)
-         VALUES ('item-2', 'Pending delete', '2026-05-19T00:00:00.000Z', 0)",
-    )
-    .execute(&*harness.state.pool)
-    .await
-    .unwrap();
+    exec_sql(&harness.state.db, "INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('item-1', 'Deleted', '2026-05-19T00:00:00.000Z', 1)").await;
+    exec_sql(&harness.state.db, "INSERT INTO items (id, name, deleted_at, is_synced) VALUES ('item-2', 'Pending delete', '2026-05-19T00:00:00.000Z', 0)").await;
 
     let collected = run_garbage_collection_with_state(&harness.state, "scope-1".to_string())
         .await
         .unwrap();
     assert_eq!(collected, 1);
 
-    let remaining_items: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM items")
-        .fetch_one(&*harness.state.pool)
-        .await
-        .unwrap();
+    let remaining_items = query_scalar_i64(&harness.state.db, "SELECT COUNT(*) FROM items").await;
     assert_eq!(remaining_items, 1);
 }
 

@@ -16,15 +16,16 @@ A root `Cargo.toml` SHALL define a `[workspace]` with `members` including
 The `crates/baresync-core` crate SHALL:
 
 - Use edition 2021
-- Depend on `sqlx` (SQLite + tokio runtime), `reqwest` (rustls-tls + json),
-  `serde` (derive), `serde_json`, `prost`, `log`, and `tokio` (fs feature)
+- Depend on `rusqlite` for local SQLite access, `reqwest` (rustls-tls + json),
+  `serde` (derive), `serde_json`, `log`, and `tokio` for async facade/runtime support
+- Not depend on SQLx for local SQLite access
 - Declare public modules `db`, `drizzle_proxy`, and `migrations`
 - Each module file SHALL exist and compile (empty or with placeholder items)
 
 #### Scenario: Core crate compiles independently
 
 - **WHEN** `cargo test -p baresync-core` is run
-- **THEN** the crate compiles without errors and zero tests pass
+- **THEN** the crate compiles without errors and tests pass
 
 ### Requirement: tauri-plugin-baresync crate compiles with tauri dependency
 
@@ -41,18 +42,17 @@ The `crates/tauri-plugin-baresync` crate SHALL:
 
 ### Requirement: Dependency versions match Sakti source
 
-Rust dependency versions in both crates SHALL match the versions used in the
-Sakti POS app's `Cargo.toml`:
+Rust dependency versions in both crates SHALL be maintained intentionally for Baresync's current standalone architecture:
 
-- `sqlx` 0.8.6 (features: sqlite, runtime-tokio)
+- `rusqlite` version SHALL be pinned consistently wherever it is used for local SQLite
 - `reqwest` 0.12 (features: rustls-tls, json)
-- `prost` 0.13
 - `serde` 1 (features: derive)
 - `serde_json` 1
 - `tauri` 2
 
-#### Scenario: No version mismatch with source
+SQLx SHALL NOT be required by Baresync local database crates after the `rusqlite` backend replacement.
 
-- **WHEN** comparing `crates/baresync-core/Cargo.toml` dependency versions
-  against `openspec/external/sakti-pos/apps/pos-app/src-tauri/Cargo.toml`
-- **THEN** the shared dependency versions are identical
+#### Scenario: No SQLx local database dependency remains
+
+- **WHEN** inspecting `crates/baresync-core/Cargo.toml` and `crates/tauri-plugin-baresync/Cargo.toml`
+- **THEN** SQLx SHALL NOT be present as a dependency for local SQLite database access

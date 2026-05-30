@@ -1,10 +1,10 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use sqlx::{SqliteConnection, SqlitePool};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 
 use super::config::SyncEngineConfig;
+use super::db::DbClient;
 use super::error::SyncError;
 use super::outbox;
 use super::schema::{self, TableOutboxChanges};
@@ -53,11 +53,10 @@ pub fn build_upsert_query(table: &str, columns: &[String]) -> String {
     )
 }
 
-pub async fn upsert_row(
-    conn: &mut SqliteConnection,
+pub(crate) fn build_upsert_statement(
     table: &str,
     row: &Value,
-) -> Result<(), SyncError> {
+) -> Result<(String, Vec<Value>), SyncError> {
     let obj = row
         .as_object()
         .ok_or_else(|| SyncError::Encoding(format!("Row for {} is not a JSON object", table)))?;
@@ -70,57 +69,59 @@ pub async fn upsert_row(
 
     let columns: Vec<String> = local_obj.keys().cloned().collect();
     if columns.is_empty() {
-        return Ok(());
+        return Ok((String::new(), Vec::new()));
     }
 
     let query = build_upsert_query(table, &columns);
-    let mut q = sqlx::query(&query);
-    for col in &columns {
-        let val = &local_obj[col];
-        match val {
-            Value::Null => q = q.bind(None::<String>),
-            Value::Bool(b) => q = q.bind(*b),
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    q = q.bind(i);
-                } else if let Some(f) = n.as_f64() {
-                    q = q.bind(f);
-                } else {
-                    q = q.bind::<Option<i64>>(None);
-                }
-            }
-            Value::String(s) => q = q.bind(s.clone()),
-            Value::Array(_) | Value::Object(_) => {
-                q = q.bind(serde_json::to_string(val).unwrap_or_default())
-            }
-        }
+    let params = columns
+        .iter()
+        .map(|col| local_obj[col].clone())
+        .collect::<Vec<_>>();
+    Ok((query, params))
+}
+
+#[allow(dead_code)]
+pub async fn upsert_row(db: &DbClient, table: &str, row: &Value) -> Result<(), SyncError> {
+    let (query, params) = build_upsert_statement(table, row)?;
+    if query.is_empty() {
+        return Ok(());
     }
 
-    q.execute(conn)
+    db.execute(&query, params)
         .await
         .map_err(|e| SyncError::Database(format!("Failed to upsert into {}: {}", table, e)))?;
     Ok(())
 }
 
+pub(crate) fn build_soft_delete_statement(
+    table: &str,
+    id: &str,
+    deleted_at: &str,
+) -> (String, Vec<Value>) {
+    (
+        format!(
+            "UPDATE {} SET deleted_at = ?1, updated_at = ?1, is_synced = 1 WHERE id = ?2",
+            table
+        ),
+        vec![
+            Value::String(deleted_at.to_string()),
+            Value::String(id.to_string()),
+        ],
+    )
+}
+
+#[allow(dead_code)]
 pub async fn soft_delete_row(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     table: &str,
     id: &str,
     deleted_at: &str,
 ) -> Result<u64, SyncError> {
-    let query = format!(
-        "UPDATE {} SET deleted_at = ?1, updated_at = ?1, is_synced = 1 WHERE id = ?2",
-        table
-    );
-    let result = sqlx::query(&query)
-        .bind(deleted_at)
-        .bind(id)
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| {
-            SyncError::Database(format!("Failed to soft delete {} row {}: {}", table, id, e))
-        })?;
-    Ok(result.rows_affected())
+    let (query, params) = build_soft_delete_statement(table, id, deleted_at);
+    let result = db.execute(&query, params).await.map_err(|e| {
+        SyncError::Database(format!("Failed to soft delete {} row {}: {}", table, id, e))
+    })?;
+    Ok(result.rows_affected)
 }
 
 pub fn generate_idempotency_key_from_outbox_ids(outbox_ids: &[String]) -> String {
@@ -350,7 +351,7 @@ pub fn split_push_chunk_for_retry(
 }
 
 pub async fn push(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &SyncEngineConfig,
     upsert_order: &[String],
     local_only_columns: &[&str],
@@ -358,20 +359,14 @@ pub async fn push(
     let mut all_units: Vec<PendingTablePush> = Vec::new();
 
     for table in upsert_order {
-        let mut tx = pool
-            .begin()
-            .await
-            .map_err(|e| SyncError::Database(format!("Failed to begin tx: {}", e)))?;
         let changes: TableOutboxChanges = schema::read_unsynced_table_changes_from_outbox_tx(
-            &mut tx,
+            db,
             table,
             &config.scope_id,
             local_only_columns,
         )
         .await
-        .map_err(|e| SyncError::Database(e))?;
-
-        drop(tx);
+        .map_err(SyncError::Database)?;
 
         if changes.changes.changed_rows.is_empty() && changes.changes.deleted_ids.is_empty() {
             continue;
@@ -507,10 +502,6 @@ pub async fn push(
     let rejected_tables: Vec<String> = all_rejected.keys().cloned().collect();
 
     let mut tables_synced = Vec::new();
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to begin result tx: {}", e)))?;
 
     for table in upsert_order {
         let Some(accepted_ids) = all_accepted.get(table) else {
@@ -523,24 +514,20 @@ pub async fn push(
                 .unwrap_or_default();
 
             outbox::mark_outbox_synced_by_outbox_ids_tx(
-                &mut tx,
+                db,
                 &final_server_time,
                 &accepted_outbox_ids,
             )
             .await
-            .map_err(|e| SyncError::Database(e))?;
+            .map_err(SyncError::Database)?;
 
-            schema::mark_rows_synced_by_id_tx(&mut tx, table, accepted_ids)
+            schema::mark_rows_synced_by_id_tx(db, table, accepted_ids)
                 .await
-                .map_err(|e| SyncError::Database(e))?;
+                .map_err(SyncError::Database)?;
 
             tables_synced.push(table.clone());
         }
     }
-
-    tx.commit()
-        .await
-        .map_err(|e| SyncError::Database(format!("Failed to commit push result: {}", e)))?;
 
     Ok(PushResult {
         tables_synced,

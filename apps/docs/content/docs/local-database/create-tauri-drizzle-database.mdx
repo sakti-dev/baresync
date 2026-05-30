@@ -59,7 +59,7 @@ db.select().from(TABLE.items)
   │
   ▼ invoke("run_sql", { query: { sql, params: [], method: "all" } })
   │
-  ▼ Rust: sqlx::query(sql).bind(params).fetch_all()
+  ▼ Rust: DbClient.query(sql, params)
   │
   ▼ Returns: [{ columns: ["id", "name", ...], values: ["item-1", "Widget", ...] }]
   │

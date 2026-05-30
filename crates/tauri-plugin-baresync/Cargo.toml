@@ -12,7 +12,6 @@ categories = ["api-bindings", "database"]
 [dependencies]
 tauri = { version = "2", features = [] }
 baresync-core = { version = "0.1.0", path = "../baresync-core" }
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 chrono = { version = "0.4", features = ["serde"] }

@@ -1,9 +1,9 @@
 use serde_json::json;
 use serde_json::Value;
-use sqlx::SqlitePool;
 
 use crate::config::SyncEngineConfig;
 use crate::cursor;
+use crate::db::DbClient;
 use crate::error::SyncError;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -15,12 +15,12 @@ pub struct SyncStatusResult {
 }
 
 pub async fn status(
-    pool: &SqlitePool,
+    db: &DbClient,
     config: &SyncEngineConfig,
 ) -> Result<SyncStatusResult, SyncError> {
-    let cursor_value = cursor::get_last_cursor(pool, &config.scope_id)
+    let cursor_value = cursor::get_last_cursor(db, &config.scope_id)
         .await
-        .map_err(|e| SyncError::Database(e))?;
+        .map_err(SyncError::Database)?;
 
     let response = config
         .transport

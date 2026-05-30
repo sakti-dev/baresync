@@ -1,6 +1,5 @@
-use crate::db::sqlx_value_to_json as db_sqlx_value_to_json;
+use crate::db::{DbClient, DbRow};
 use serde_json::Value;
-use sqlx::{Column, Row, SqliteConnection};
 use std::collections::HashMap;
 
 pub fn camel_to_snake(s: &str) -> String {
@@ -62,19 +61,10 @@ pub struct OutboxRowForSync {
     pub row: Option<Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TablePushChanges {
     pub changed_rows: Vec<Value>,
     pub deleted_ids: Vec<String>,
-}
-
-impl Default for TablePushChanges {
-    fn default() -> Self {
-        Self {
-            changed_rows: Vec::new(),
-            deleted_ids: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -167,7 +157,7 @@ fn filter_local_columns(row: &Value, local_only_columns: &[&str]) -> Value {
 }
 
 pub async fn read_unsynced_table_changes_from_outbox_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     table: &str,
     scope_id: &str,
     local_only_columns: &[&str],
@@ -179,10 +169,14 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
          WHERE o.table_name = ?1 AND o.scope_id = ?2 AND o.synced_at IS NULL
          ORDER BY o.changed_at ASC, o.id ASC"
     );
-    let rows = sqlx::query(&query)
-        .bind(table)
-        .bind(scope_id)
-        .fetch_all(&mut *conn)
+    let rows = db
+        .query(
+            &query,
+            vec![
+                Value::String(table.to_string()),
+                Value::String(scope_id.to_string()),
+            ],
+        )
         .await
         .map_err(|e| {
             format!(
@@ -198,30 +192,23 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
     let mut result = Vec::new();
     let mut outbox_ids_by_row_id: HashMap<String, Vec<String>> = HashMap::new();
     for row in &rows {
-        let outbox_id = row
-            .try_get::<String, _>("__sync_outbox_id")
-            .map_err(|e| format!("Failed to read sync outbox id for {}: {}", table, e))?;
-        let operation = row
-            .try_get::<String, _>("__sync_operation")
-            .map_err(|e| format!("Failed to read sync operation for {}: {}", table, e))?;
-        let row_id = row
-            .try_get::<String, _>("__sync_row_id")
-            .map_err(|e| format!("Failed to read sync row id for {}: {}", table, e))?;
+        let outbox_id = row_value_as_string(row, "__sync_outbox_id")
+            .ok_or_else(|| format!("Failed to read sync outbox id for {}", table))?;
+        let operation = row_value_as_string(row, "__sync_operation")
+            .ok_or_else(|| format!("Failed to read sync operation for {}", table))?;
+        let row_id = row_value_as_string(row, "__sync_row_id")
+            .ok_or_else(|| format!("Failed to read sync row id for {}", table))?;
         let mut obj = serde_json::Map::new();
         let mut has_source_row = false;
-        for (idx, col) in row.columns().iter().enumerate() {
-            let name = col.name().to_string();
-            if name.starts_with("__sync_") || local_only_snake.iter().any(|l| l == &name) {
+        for (idx, name) in row.columns.iter().enumerate() {
+            if name.starts_with("__sync_") || local_only_snake.iter().any(|l| l == name) {
                 continue;
             }
-            let val = match row.try_get_raw(idx) {
-                Ok(_) => db_sqlx_value_to_json(row, idx),
-                Err(_) => Value::Null,
-            };
+            let val = row.values.get(idx).cloned().unwrap_or(Value::Null);
             if name == "id" && !val.is_null() {
                 has_source_row = true;
             }
-            obj.insert(snake_to_camel(&name), val);
+            obj.insert(snake_to_camel(name), val);
         }
         outbox_ids_by_row_id
             .entry(row_id.clone())
@@ -241,7 +228,7 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
 }
 
 pub async fn mark_rows_synced_by_id_tx(
-    conn: &mut SqliteConnection,
+    db: &DbClient,
     table: &str,
     accepted_ids: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
@@ -266,12 +253,9 @@ pub async fn mark_rows_synced_by_id_tx(
             .collect::<Vec<_>>()
             .join(",")
     );
-    let mut q = sqlx::query(&query);
-    q = q.bind(table);
-    for id in accepted_ids {
-        q = q.bind(id);
-    }
-    q.execute(&mut *conn).await.map_err(|e| {
+    let mut params = vec![Value::String(table.to_string())];
+    params.extend(accepted_ids.iter().cloned().map(Value::String));
+    db.execute(&query, params).await.map_err(|e| {
         format!(
             "Failed to mark accepted rows for {} as synced: {}",
             table, e
@@ -279,6 +263,15 @@ pub async fn mark_rows_synced_by_id_tx(
     })?;
 
     Ok(())
+}
+
+fn row_value_as_string(row: &DbRow, column: &str) -> Option<String> {
+    row.columns
+        .iter()
+        .position(|name| name == column)
+        .and_then(|idx| row.values.get(idx))
+        .and_then(|value| value.as_str())
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]
