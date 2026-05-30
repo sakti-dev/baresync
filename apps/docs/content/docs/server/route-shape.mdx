@@ -5,7 +5,7 @@ description: Request and response envelopes for the three sync endpoints.
 
 # Route Shape
 
-All three sync routes share the same envelope structure. Requests are `POST` with a JSON body (or protobuf binary). Responses are JSON objects.
+All three sync routes share the same envelope structure. Requests are `POST` with a JSON body. Responses are JSON objects.
 
 ## Request envelope
 
@@ -115,7 +115,6 @@ See [Errors](/docs/server/errors) for all error codes.
 ## Content type
 
 - JSON: `Content-Type: application/json`
-- Protobuf: `Content-Type: application/x-protobuf`
 
 The encoding is configured per handler, not negotiated per request.
 

@@ -1,7 +1,7 @@
 import { getTableConfig, type SQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { SyncedTableDefinition } from "./synced-table";
 
-export type SyncEncoding = "json" | "protobuf";
+export type SyncEncoding = "json";
 
 export const DEFAULT_SYNC_ENCODING: SyncEncoding = "json";
 

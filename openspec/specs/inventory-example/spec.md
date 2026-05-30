@@ -65,7 +65,7 @@ The example documentation MUST present JSON sync encoding as the primary walkthr
 #### Scenario: First-time user path is simple
 
 - **WHEN** a new user reads the quick start
-- **THEN** they can follow the example without needing protobuf knowledge first
+- **THEN** they can follow the example without needing transport implementation details first
 
 ### Requirement: Example documentation entry point
 

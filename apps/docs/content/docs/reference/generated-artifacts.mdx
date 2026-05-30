@@ -5,7 +5,7 @@ description: What baresync generate produces — file names, shapes, and how to 
 
 # Generated Artifacts
 
-Running `baresync generate` (or `generateSyncArtifacts()`) writes files to your output directory. The exact set depends on whether you use JSON or protobuf encoding.
+Running `baresync generate` (or `generateSyncArtifacts()`) writes files to your output directory.
 
 ## JSON artifacts
 
@@ -59,82 +59,6 @@ Manifest for detecting contract changes between generator runs. Contains field n
   "tableOrder": { "delete": [...], "upsert": [...] }
 }
 ```
-
-## Protobuf artifacts
-
-In addition to the JSON artifacts above, protobuf mode generates:
-
-### `.proto` file
-
-Protobuf3 schema with row messages, changes messages, and envelope messages per table.
-
-```protobuf
-message ItemsRow {
-  string id = 1;
-  string name = 2;
-  ...
-}
-
-message ItemsChanges {
-  repeated ItemsRow changed_rows = 1;
-  repeated string deleted_ids = 2;
-}
-
-message SyncPushBatchRequest {
-  string scope_id = 1;
-  string client_id = 2;
-  string idempotency_key = 3;
-  ItemsChanges items = 4;
-  ...
-}
-```
-
-Path is user-specified via `outputs.proto`.
-
-### `sync.generated.ts`
-
-TypeScript runtime schema with field mappings for protobuf encode/decode.
-
-```ts
-export const SYNC_PROTOBUF_SCHEMA = {
-  packageName: "@repo/sync-contract",
-  tableOrder: { delete: [...], upsert: [...] },
-  tables: {
-    items: {
-      fields: [...],
-      rowMessageName: "ItemsRow",
-      changesMessageName: "ItemsChanges",
-      requestFieldNumber: 4,
-      wrapperFieldNumbers: { changedRows: 1, deletedIds: 2 },
-    },
-  },
-} as const;
-```
-
-### `runtime.ts`
-
-Protobuf encode/decode runtime — re-exported functions for serialization.
-
-```ts
-export { decodeProtobufBody, encodeProtobufBody } from "...";
-export type { SyncProtobufSchema } from "...";
-```
-
-### Rust sync mappers and transport
-
-Prost-compatible Rust structs with `#[derive(Clone, PartialEq, ::prost::Message)]`, plus generated value mappers and a transport factory for the Tauri plugin.
-
-```rust
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ItemsRow {
-    #[prost(string, tag = "1")]
-    pub id: String,
-    #[prost(string, tag = "2")]
-    pub name: String,
-}
-```
-
-The generated Rust file also includes `generated_protobuf_transport()`, which the plugin uses when you wire `.encoding("protobuf")` with `.transport(...)`.
 
 ## How to regenerate
 

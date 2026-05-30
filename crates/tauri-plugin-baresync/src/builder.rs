@@ -251,14 +251,6 @@ fn resolve_migrations_path(
 }
 
 fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
-    if config.encoding == "protobuf" {
-        return config.transport.clone().ok_or_else(|| {
-            let message = "Protobuf encoding requires a generated protobuf transport. \
-                 Call .transport(...) with the generated transport before building the plugin.";
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, message)
-        });
-    }
-
     Ok(config
         .transport
         .clone()
@@ -324,29 +316,17 @@ mod tests {
     }
 
     #[test]
-    fn protobuf_requires_explicit_transport() {
-        let error = match resolve_transport(&test_config("protobuf", None)) {
-            Ok(_) => panic!("protobuf should require an explicit transport"),
-            Err(error) => error,
-        };
-        assert!(
-            error.to_string().contains("generated protobuf transport"),
-            "unexpected error message: {}",
-            error
-        );
-    }
-
-    #[test]
-    fn protobuf_uses_explicit_transport() {
-        let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
-        let resolved = resolve_transport(&test_config("protobuf", Some(transport.clone())))
-            .expect("explicit protobuf transport should resolve");
-        assert!(Arc::ptr_eq(&transport, &resolved));
-    }
-
     #[test]
     fn json_uses_default_transport_when_missing() {
         assert!(resolve_transport(&test_config("json", None)).is_ok());
+    }
+
+    #[test]
+    fn explicit_transport_is_used_when_present() {
+        let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
+        let resolved = resolve_transport(&test_config("json", Some(transport.clone())))
+            .expect("explicit transport should resolve");
+        assert!(Arc::ptr_eq(&transport, &resolved));
     }
 
     #[test]

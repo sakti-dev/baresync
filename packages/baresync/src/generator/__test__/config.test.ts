@@ -4,15 +4,8 @@ import path from "node:path";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { apiSyncColumns, localSyncColumns } from "../../schema/row-state";
-import {
-  defineProtobufSyncConfig,
-  defineSyncConfig,
-  type SyncConfigTables,
-} from "../config";
-import {
-  generateProtobufWorkspaceArtifacts,
-  generateSyncArtifacts,
-} from "../index";
+import { defineSyncConfig, type SyncConfigTables } from "../config";
+import { generateSyncArtifacts } from "../index";
 
 const localCategories = sqliteTable("categories", {
   id: text("id").primaryKey(),
@@ -256,60 +249,5 @@ describe("defineSyncConfig", () => {
         },
       })
     ).toThrow('unexpected server-only column "audit_version"');
-  });
-});
-
-describe("defineProtobufSyncConfig", () => {
-  it("builds a protobuf workspace config from paired local/API schemas", () => {
-    const config = defineProtobufSyncConfig({
-      apiSyncedSchema,
-      localSyncedSchema,
-      outputDir: "./generated",
-      outputs: {
-        proto: "./generated/sync.proto",
-        runtimeSourceTs: "./generated/runtime-source.ts",
-        runtimeTs: "./generated/runtime.ts",
-        rustSyncMappers: "./generated/sync-mappers.rs",
-        syncTs: "./generated/sync.generated.ts",
-      },
-      packageName: "test.sync.v1",
-      tables: {
-        categories: { scope: "scope_id" },
-        products: { scope: "scope_id" },
-      },
-    });
-
-    expect(config.outputDir).toBe("./generated");
-    expect(config.contract.packageName).toBe("test.sync.v1");
-    expect(config.contract.encoding).toBe("protobuf");
-    expect(config.outputs.proto).toBe("./generated/sync.proto");
-    expect(config.outputs.rustSyncMappers).toBe("./generated/sync-mappers.rs");
-  });
-
-  it("can be passed directly to generateProtobufWorkspaceArtifacts", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-proto-"));
-    const config = defineProtobufSyncConfig({
-      apiSyncedSchema,
-      localSyncedSchema,
-      outputDir: tmpDir,
-      outputs: {
-        proto: path.join(tmpDir, "sync.proto"),
-        runtimeSourceTs: path.join(tmpDir, "runtime-source.ts"),
-        runtimeTs: path.join(tmpDir, "runtime.ts"),
-        rustSyncMappers: path.join(tmpDir, "sync-mappers.rs"),
-        syncTs: path.join(tmpDir, "sync.generated.ts"),
-      },
-      packageName: "test.sync.v1",
-      tables: {
-        categories: { scope: "scope_id" },
-      },
-    });
-
-    generateProtobufWorkspaceArtifacts(config);
-
-    expect(fs.existsSync(path.join(tmpDir, "sync.proto"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "sync.generated.ts"))).toBe(true);
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });

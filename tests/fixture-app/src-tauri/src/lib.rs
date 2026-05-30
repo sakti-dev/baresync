@@ -6,10 +6,6 @@ use std::sync::Arc;
 use baresync_core::http::SyncHttpTransport;
 use serde::Serialize;
 use tauri::{command, generate_context, generate_handler, State};
-
-pub mod protobuf_generated;
-
-use protobuf_generated::generated_protobuf_transport;
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
 
@@ -59,19 +55,9 @@ fn fixture_api_url() -> String {
 }
 
 fn fixture_encoding() -> String {
-    if let Ok(value) = env::var("BARESYNC_FIXTURE_ENCODING") {
-        return match value.as_str() {
-            "protobuf" => "protobuf".to_string(),
-            _ => "json".to_string(),
-        };
-    }
-
-    option_env!("BARESYNC_FIXTURE_ENCODING")
-        .map(|value| match value {
-            "protobuf" => "protobuf".to_string(),
-            _ => "json".to_string(),
-        })
-        .unwrap_or_else(|| "json".to_string())
+    let _ = env::var("BARESYNC_FIXTURE_ENCODING");
+    let _ = option_env!("BARESYNC_FIXTURE_ENCODING");
+    "json".to_string()
 }
 
 fn fixture_contract_tables() -> baresync_core::engine::SyncContractTables {
@@ -90,11 +76,8 @@ fn fixture_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {
 }
 
 fn fixture_transport() -> Option<Arc<dyn SyncHttpTransport>> {
-    if fixture_encoding() == "protobuf" {
-        Some(generated_protobuf_transport())
-    } else {
-        None
-    }
+    let _ = fixture_encoding();
+    None
 }
 
 #[command]
@@ -259,64 +242,4 @@ pub fn run() {
         ])
         .run(generate_context!())
         .expect("failed to run fixture app");
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::protobuf_generated::{SyncPullBatchRequest, SyncStatusRequest};
-    use prost::Message;
-
-    #[test]
-    fn protobuf_status_helper_builds_post_request_and_round_trips() {
-        let request = SyncStatusRequest {
-            scope_id: "merchant-1".to_string(),
-            cursor: "sync:123:categories:row-1".to_string(),
-        };
-        assert_eq!(request.scope_id, "merchant-1");
-        assert_eq!(request.cursor, "sync:123:categories:row-1");
-
-        let encoded = request.encode_to_vec();
-        let decoded = SyncStatusRequest::decode(encoded.as_ref()).unwrap();
-        assert_eq!(decoded.scope_id, "merchant-1");
-        assert_eq!(decoded.cursor, "sync:123:categories:row-1");
-
-        let built = reqwest::Client::new()
-            .post("http://localhost/sync/status")
-            .body(encoded)
-            .build()
-            .unwrap();
-
-        assert_eq!(built.method(), reqwest::Method::POST);
-        assert_eq!(built.url().path(), "/sync/status");
-    }
-
-    #[test]
-    fn protobuf_pull_helper_builds_post_request_and_round_trips() {
-        let request = SyncPullBatchRequest {
-            scope_id: "merchant-1".to_string(),
-            tables: vec!["categories".to_string(), "products".to_string()],
-            cursor: "sync:123:categories:row-1".to_string(),
-            limit: 1000,
-        };
-        assert_eq!(request.scope_id, "merchant-1");
-        assert_eq!(request.tables, vec!["categories", "products"]);
-        assert_eq!(request.limit, 1000);
-        assert_eq!(request.cursor, "sync:123:categories:row-1");
-
-        let encoded = request.encode_to_vec();
-        let decoded = SyncPullBatchRequest::decode(encoded.as_ref()).unwrap();
-        assert_eq!(decoded.scope_id, "merchant-1");
-        assert_eq!(decoded.tables, vec!["categories", "products"]);
-        assert_eq!(decoded.limit, 1000);
-        assert_eq!(decoded.cursor, "sync:123:categories:row-1");
-
-        let built = reqwest::Client::new()
-            .post("http://localhost/sync/pull")
-            .body(encoded)
-            .build()
-            .unwrap();
-
-        assert_eq!(built.method(), reqwest::Method::POST);
-        assert_eq!(built.url().path(), "/sync/pull");
-    }
 }

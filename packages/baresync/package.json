@@ -23,7 +23,6 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "src/generator/protobuf-runtime.ts",
     "README.md",
     "LICENSE"
   ],

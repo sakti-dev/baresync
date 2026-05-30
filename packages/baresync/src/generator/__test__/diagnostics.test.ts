@@ -645,35 +645,17 @@ describe("runDiagnostics", () => {
     ).toBe(true);
   });
 
-  it("reports SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED for duplicate field numbers", () => {
-    const table = makeValidTable("proto_dup");
+  it("rejects unsupported encoding", () => {
+    const table = makeValidTable("json_only");
     const def = makeSyncedDef(table);
     const contract = makeValidContract([def]);
-    (contract as { encoding: string }).encoding = "protobuf";
-    contract.tablesMeta[0].columns.push("field_a", "field_b");
-    const diagnostics = runDiagnostics(contract, {
-      previousFieldNumbers: { proto_dup: { field_a: 1, field_b: 1 } },
-    });
-    expect(
-      diagnostics.some(
-        (d) => d.code === "SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED"
-      )
-    ).toBe(true);
-  });
+    (contract as { encoding: string }).encoding = "binary";
 
-  it("does not report SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED when field numbers are unique", () => {
-    const table = makeValidTable("proto_ok");
-    const def = makeSyncedDef(table);
-    const contract = makeValidContract([def]);
-    (contract as { encoding: string }).encoding = "protobuf";
-    const diagnostics = runDiagnostics(contract, {
-      previousFieldNumbers: { proto_ok: { id: 1, scope: 2 } },
-    });
+    const diagnostics = runDiagnostics(contract);
+
     expect(
-      diagnostics.some(
-        (d) => d.code === "SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED"
-      )
-    ).toBe(false);
+      diagnostics.some((d) => d.code === "SYNC_SCHEMA_ENCODING_UNSUPPORTED")
+    ).toBe(true);
   });
 
   it("reports SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1 when table has both localOnly and serverOnly columns", () => {

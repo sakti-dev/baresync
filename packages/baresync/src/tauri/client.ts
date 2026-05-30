@@ -3,7 +3,7 @@ import { syncOutbox } from "../schema/local-schema.js";
 
 export interface SyncClientConfig {
   apiUrl: string;
-  encoding: "json" | "protobuf";
+  encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   scopeId: string;
 }

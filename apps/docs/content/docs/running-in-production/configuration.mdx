@@ -32,7 +32,7 @@ BaresyncBuilder::new()
 |---|---|---|---|
 | `.api_base_url(url)` | `String` | `""` (required) | Your sync server's base URL. All sync endpoints are relative to this. |
 | `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative paths use the process working directory; absolute app-owned paths are safer in production. |
-| `.encoding(enc)` | `String` | `"json"` | Sync encoding: `"json"` or `"protobuf"`. Must match the server. |
+| `.encoding(enc)` | `String` | `"json"` | Sync encoding: `"json"`. Must match the server. |
 | `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes after your app calls `startPolling()`. Do not call `startPolling()` if your app is manual-sync only. |
 | `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
 | `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
@@ -40,7 +40,7 @@ BaresyncBuilder::new()
 | `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_path()`, not both. |
 | `.migrations_path(path)` | `String` | `""` | Path to `.sql` migration files. Relative paths resolve from Tauri resources. |
 | `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
-| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Required for protobuf apps; optional for JSON apps and tests. |
+| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Optional for JSON apps and tests. |
 
 ## Server configuration
 
@@ -120,7 +120,7 @@ BaresyncBuilder::new()
     .transport(mock_transport)  // record calls for assertions
 ```
 
-For protobuf apps, use the generated transport here instead of a mock if you want to exercise the real wire format.
+Use a real transport here instead of a mock if you want to exercise the live sync path.
 
 ## JS client configuration
 
@@ -141,13 +141,13 @@ const client = createSyncClient({
 | Field | Required | Purpose |
 |---|---|---|
 | `apiUrl` | Yes | Server base URL. Must match the plugin's `api_base_url`. |
-| `encoding` | Yes | `"json"` or `"protobuf"`. Must match the plugin and server. |
+| `encoding` | Yes | `"json"`. Must match the plugin and server. |
 | `scopeId` | Yes | The sync scope for this client. Determines which data is synced. |
 | `invoke` | No | Custom invoke function. Only useful for testing. |
 
 ## Common mistakes
 
-**Mismatched encoding** — plugin says `"json"`, server says `"protobuf"`. Sync fails with encoding errors. Ensure all three layers (plugin, client, server) use the same encoding and, for protobuf, that the generated transport is wired into the plugin.
+**Mismatched encoding** — the client, plugin, and server disagree about the sync format. Sync fails with encoding errors. Ensure all three layers use `"json"`.
 
 **DB path without a predictable app directory** — `db_path("baresync.db")` is relative to the process working directory. For production, resolve an app-owned data path explicitly, especially on mobile.
 

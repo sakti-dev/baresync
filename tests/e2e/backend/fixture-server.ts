@@ -6,10 +6,6 @@ import {
   encodeSyncResponse,
 } from "../../../packages/baresync/src/server/index";
 import { resolveFixtureTransportMode } from "../fixture-transport";
-import {
-  SYNC_PROTOBUF_SCHEMA,
-  type SyncProtobufSchema,
-} from "../generated/protobuf/runtime.generated";
 
 interface Row extends Record<string, unknown> {
   deletedAt: string | null;
@@ -47,10 +43,6 @@ const port = Number(process.env.BARESYNC_FIXTURE_BACKEND_PORT ?? "18080");
 const scopeId = process.env.BARESYNC_FIXTURE_SCOPE_ID ?? "merchant-1";
 const serverTime = "2026-05-20T00:00:00.000Z";
 const transportMode = resolveFixtureTransportMode();
-const protobufSchema: SyncProtobufSchema | undefined =
-  transportMode === "protobuf"
-    ? (SYNC_PROTOBUF_SCHEMA as unknown as SyncProtobufSchema)
-    : undefined;
 const dbPath = resolveFixtureDbPath();
 const sqlite = createFixtureDatabase(dbPath);
 const runtime = globalThis as typeof globalThis & {
@@ -536,7 +528,6 @@ async function handleStatusRequest(request: Request): Promise<Response> {
     body: responseStatus(String(body.cursor ?? "")),
     encoding: transportMode,
     kind: "status",
-    protobufSchema,
   });
 }
 
@@ -558,7 +549,6 @@ async function handlePullRequest(request: Request): Promise<Response> {
       },
       encoding: transportMode,
       kind: "pull",
-      protobufSchema,
     });
   }
 
@@ -583,7 +573,6 @@ async function handlePullRequest(request: Request): Promise<Response> {
     },
     encoding: transportMode,
     kind: "pull",
-    protobufSchema,
   });
 }
 
@@ -617,7 +606,6 @@ async function handlePushRequest(request: Request): Promise<Response> {
     },
     encoding: transportMode,
     kind: "push",
-    protobufSchema,
   });
 }
 
@@ -629,7 +617,6 @@ async function decodeFixtureRequest(input: {
     const decoded = await decodeSyncRequest({
       encoding: transportMode,
       kind: input.kind,
-      protobufSchema,
       request: input.request,
     });
     return { body: decoded.body };

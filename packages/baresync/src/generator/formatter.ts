@@ -71,7 +71,7 @@ function formatGeneratedRust(filePath: string): void {
   }
 
   if (result.status !== 0) {
-    throw new Error("Failed to format generated Rust protobuf output");
+    throw new Error("Failed to format generated Rust output");
   }
 }
 

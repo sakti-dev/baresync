@@ -87,7 +87,6 @@ When auto-discovering config, the command SHALL search the current working direc
 The command SHALL recognize and generate every supported config export in the loaded module:
 
 - `syncGeneratorConfig`
-- `protobufSyncGeneratorConfig`
 - recognized default export
 - legacy `contract` export
 
@@ -113,41 +112,10 @@ The command SHALL recognize and generate every supported config export in the lo
 - **THEN** the CLI loads `./custom-sync.config.ts`
 - **AND** it does not attempt auto-discovery
 
-#### Scenario: CLI generate runs JSON and protobuf configs
-
-- **WHEN** a config module exports both `syncGeneratorConfig` and `protobufSyncGeneratorConfig`
-- **THEN** `baresync generate` runs JSON artifact generation for `syncGeneratorConfig`
-- **AND** it runs protobuf workspace generation for `protobufSyncGeneratorConfig`
-
 #### Scenario: Missing config shows searched paths
 
 - **WHEN** `baresync generate` is run without a config path from a directory with no supported config file
 - **THEN** the CLI fails with an error that names the current working directory and the config filenames it searched
-
-### Requirement: Protobuf-aware contract generation
-
-The `packages/baresync/src/generator/index.ts` module SHALL preserve protobuf encoding metadata when a `SyncContract` uses `encoding: "protobuf"`.
-The generator SHALL emit protobuf-aware metadata needed to preserve field-number stability across regenerations, including row field numbers, table wrapper field numbers, and protobuf scalar types derived from the reflected Drizzle schema.
-The protobuf generator workspace SHALL be config-driven so generated TypeScript and Rust runtime artifacts can target explicit output directories.
-
-#### Scenario: Protobuf contract preserves encoding metadata
-
-- **WHEN** `generateSyncArtifacts` is called with a contract whose encoding is `protobuf`
-- **THEN** the generated metadata SHALL preserve `encoding: "protobuf"`
-- **AND** protobuf field-number assignments SHALL remain stable across regenerations unless the schema intentionally changes
-- **AND** the emitted metadata SHALL be sufficient to encode and decode typed protobuf row messages without serializing row data as JSON text
-- **AND** the generator workspace SHALL have explicit output paths for generated protobuf runtime files
-
-### Requirement: JSON and protobuf share one reflected contract
-
-The generator SHALL derive JSON and protobuf outputs from the same reflected schema and the same table-order computation.
-It SHALL not require consumers to maintain separate contract definitions for the two encodings.
-
-#### Scenario: Same reflected schema drives both encodings
-
-- **WHEN** the same Drizzle schema is generated for JSON and protobuf contracts
-- **THEN** both outputs SHALL reflect the same tables, scope metadata, and table order
-- **AND** any protobuf-specific metadata SHALL be derived from that same source
 
 ### Requirement: Paired local and API sync config
 
@@ -160,7 +128,6 @@ The input SHALL include:
 - `localSyncedSchema`: object containing local-side replicated Drizzle tables
 - `apiSyncedSchema`: object containing API-side replicated Drizzle tables
 - `tables`: object keyed by table export name, with per-table sync settings
-- Optional `encoding`, defaulting to `"json"`
 - Optional `limits`
 
 Each `tables` key SHALL refer to a table present in both `localSyncedSchema` and `apiSyncedSchema`.
@@ -237,4 +204,4 @@ The inventory example SHALL use `defineSyncConfig` with `localSyncedSchema` and 
 - **WHEN** the inventory sync contract package runs its generator
 - **THEN** it imports both local and API synced schema modules
 - **AND** it generates JSON artifacts through `defineSyncConfig`
-- **AND** it does not require protobuf-specific config naming
+- **AND** it does not require encoding-specific config naming

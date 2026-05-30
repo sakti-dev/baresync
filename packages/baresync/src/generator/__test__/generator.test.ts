@@ -167,43 +167,4 @@ describe("generateSyncArtifacts", () => {
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  it("writes protobuf metadata for protobuf contracts", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
-    const contract = defineSyncContract({
-      encoding: "protobuf",
-      packageName: "test.sync.v1",
-      tables: [categoriesSynced, productsSynced],
-    });
-
-    generateSyncArtifacts(contract, tmpDir);
-
-    const jsonPath = path.join(tmpDir, "sync-contract.json");
-    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
-    expect(parsed.encoding).toBe("protobuf");
-    expect(parsed.protobuf).toBeDefined();
-    expect(parsed.protobuf.tables.categories.requestFieldNumber).toBe(4);
-    expect(parsed.protobuf.tables.categories.rowMessageName).toBe(
-      "CategoriesRow"
-    );
-    expect(parsed.protobuf.tables.categories.changesMessageName).toBe(
-      "CategoriesChanges"
-    );
-    expect(parsed.protobuf.tables.categories.fields[0]).toEqual({
-      fieldNumber: 1,
-      name: "id",
-      protobufType: "string",
-    });
-    expect(parsed.protobuf.tables.categories.fields[6]).toEqual({
-      fieldNumber: 7,
-      name: "sync_updated_at",
-      protobufType: "int64",
-    });
-    expect(parsed.protobuf.tables.categories.wrapperFieldNumbers).toEqual({
-      changedRows: 1,
-      deletedIds: 2,
-    });
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
 });

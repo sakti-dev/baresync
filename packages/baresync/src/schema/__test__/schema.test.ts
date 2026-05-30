@@ -170,15 +170,6 @@ describe("defineSyncContract validation", () => {
     expect(contract.limits.maxPushRows).toBe(2000);
   });
 
-  it("accepts protobuf encoding", () => {
-    const contract = defineSyncContract({
-      encoding: "protobuf",
-      packageName: "test.sync.v1",
-      tables: [categoriesSynced],
-    });
-    expect(contract.encoding).toBe("protobuf");
-  });
-
   it("uses custom limits", () => {
     const contract = defineSyncContract({
       encoding: "json",
@@ -199,15 +190,6 @@ describe("syncSchema", () => {
     });
     expect(contract.encoding).toBe("json");
     expect(contract.limits.maxPushBytes).toBe(2 * 1024 * 1024);
-  });
-
-  it("accepts protobuf encoding", () => {
-    const contract = syncSchema({
-      encoding: "protobuf",
-      packageName: "test.sync.v1",
-      tables: [categoriesSynced],
-    });
-    expect(contract.encoding).toBe("protobuf");
   });
 });
 

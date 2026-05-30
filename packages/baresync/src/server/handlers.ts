@@ -1,7 +1,6 @@
 import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { DEFAULT_API_MAX_PUSH_BYTES, DEFAULT_MAX_PUSH_ROWS } from "../limits";
 import { createIdempotencyGuard } from "./idempotency";
-import type { SyncProtobufSchema } from "./protobuf";
 import {
   decodeSyncRequest,
   encodeSyncResponse,
@@ -19,11 +18,6 @@ export type SyncHandler<TContext> = (
 
 export interface SyncJsonEncodingConfig {
   encoding: "json";
-}
-
-export interface SyncProtobufEncodingConfig {
-  encoding: "protobuf";
-  protobufSchema: SyncProtobufSchema;
 }
 
 export interface SyncAuthorizedScope<TScope> {
@@ -124,36 +118,21 @@ export type JsonSyncPushHandlerOptions<TContext, TScope> = SyncPushHandlerBase<
   TScope
 > &
   SyncJsonEncodingConfig;
-
-export type ProtobufSyncPushHandlerOptions<TContext, TScope> =
-  SyncPushHandlerBase<TContext, TScope> & SyncProtobufEncodingConfig;
-
 export type SyncPushHandlerOptions<TContext, TScope> =
-  | JsonSyncPushHandlerOptions<TContext, TScope>
-  | ProtobufSyncPushHandlerOptions<TContext, TScope>;
+  JsonSyncPushHandlerOptions<TContext, TScope>;
 
 export type JsonSyncStatusHandlerOptions<TContext, TScope> =
   SyncStatusHandlerBase<TContext, TScope> & SyncJsonEncodingConfig;
-
-export type ProtobufSyncStatusHandlerOptions<TContext, TScope> =
-  SyncStatusHandlerBase<TContext, TScope> & SyncProtobufEncodingConfig;
-
 export type SyncStatusHandlerOptions<TContext, TScope> =
-  | JsonSyncStatusHandlerOptions<TContext, TScope>
-  | ProtobufSyncStatusHandlerOptions<TContext, TScope>;
+  JsonSyncStatusHandlerOptions<TContext, TScope>;
 
 export type JsonSyncPullHandlerOptions<TContext, TScope> = SyncPullHandlerBase<
   TContext,
   TScope
 > &
   SyncJsonEncodingConfig;
-
-export type ProtobufSyncPullHandlerOptions<TContext, TScope> =
-  SyncPullHandlerBase<TContext, TScope> & SyncProtobufEncodingConfig;
-
 export type SyncPullHandlerOptions<TContext, TScope> =
-  | JsonSyncPullHandlerOptions<TContext, TScope>
-  | ProtobufSyncPullHandlerOptions<TContext, TScope>;
+  JsonSyncPullHandlerOptions<TContext, TScope>;
 
 function toSyncErrorResponse(error: unknown): Response {
   const mapped = mapSyncError(error);
@@ -218,8 +197,6 @@ export function createSyncPushHandler<TContext, TScope>(
       const decoded = await decodeSyncRequest({
         encoding: options.encoding,
         kind: "push",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
         request,
       });
 
@@ -269,8 +246,6 @@ export function createSyncPushHandler<TContext, TScope>(
         body: result.result,
         encoding: options.encoding,
         kind: "push",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
       });
     } catch (error) {
       return toSyncErrorResponse(error);
@@ -286,8 +261,6 @@ export function createSyncStatusHandler<TContext, TScope>(
       const decoded = await decodeSyncRequest({
         encoding: options.encoding,
         kind: "status",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
         request,
       });
 
@@ -314,8 +287,6 @@ export function createSyncStatusHandler<TContext, TScope>(
         body: result,
         encoding: options.encoding,
         kind: "status",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
       });
     } catch (error) {
       return toSyncErrorResponse(error);
@@ -331,8 +302,6 @@ export function createSyncPullHandler<TContext, TScope>(
       const decoded = await decodeSyncRequest({
         encoding: options.encoding,
         kind: "pull",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
         request,
       });
 
@@ -361,8 +330,6 @@ export function createSyncPullHandler<TContext, TScope>(
         body: result,
         encoding: options.encoding,
         kind: "pull",
-        protobufSchema:
-          options.encoding === "protobuf" ? options.protobufSchema : undefined,
       });
     } catch (error) {
       return toSyncErrorResponse(error);

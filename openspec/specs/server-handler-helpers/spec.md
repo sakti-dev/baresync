@@ -16,7 +16,7 @@ The `packages/baresync/src/server` export path SHALL provide framework-neutral h
 
 ### Requirement: Push handler composes server primitives
 
-`createSyncPushHandler` SHALL decode a push request, validate push limits, resolve the requested scope, order push changes by contract upsert order, run app push work inside the configured idempotency guard, and encode the returned push body with the configured encoding.
+`createSyncPushHandler` SHALL decode a JSON push request, validate push limits, resolve the requested scope, order push changes by contract upsert order, run app push work inside the configured idempotency guard, and encode the returned push body as JSON.
 
 The app SHALL provide `resolveScope` and `applyPushChanges` callbacks. The handler SHALL pass `scope`, `scopeId`, `clientId`, `idempotencyKey`, `requestHash`, ordered `changes`, and `syncUpdatedAt` to `applyPushChanges`.
 
@@ -40,7 +40,7 @@ The app SHALL provide `resolveScope` and `applyPushChanges` callbacks. The handl
 
 ### Requirement: Status handler composes server primitives
 
-`createSyncStatusHandler` SHALL decode a status request, resolve the requested scope, call app-provided `loadSyncStatus`, and encode the returned status body with the configured encoding.
+`createSyncStatusHandler` SHALL decode a JSON status request, resolve the requested scope, call app-provided `loadSyncStatus`, and encode the returned status body as JSON.
 
 The app SHALL provide `resolveScope` and `loadSyncStatus` callbacks. The handler SHALL pass `scope`, `scopeId`, and `cursor` to `loadSyncStatus`.
 
@@ -58,7 +58,7 @@ The app SHALL provide `resolveScope` and `loadSyncStatus` callbacks. The handler
 
 ### Requirement: Pull handler composes server primitives
 
-`createSyncPullHandler` SHALL decode a pull request, resolve the requested scope, call app-provided `loadPullChanges`, and encode the returned pull body with the configured encoding.
+`createSyncPullHandler` SHALL decode a JSON pull request, resolve the requested scope, call app-provided `loadPullChanges`, and encode the returned pull body as JSON.
 
 The app SHALL provide `resolveScope` and `loadPullChanges` callbacks. The handler SHALL pass `scope`, `scopeId`, `tables`, `cursor`, and `limit` to `loadPullChanges`.
 
@@ -73,20 +73,6 @@ The app SHALL provide `resolveScope` and `loadPullChanges` callbacks. The handle
 - **WHEN** a pull request is received and `resolveScope` returns an unauthorized result
 - **THEN** `loadPullChanges` SHALL NOT be called
 - **AND** the handler SHALL return a `Response` with the status and body supplied by `resolveScope`
-
-### Requirement: Encoding configuration is typed
-
-Server handler factories SHALL accept a typed encoding configuration. For JSON handlers, no protobuf schema SHALL be required. For protobuf handlers, a protobuf schema descriptor SHALL be required and passed through to low-level encode/decode helpers.
-
-#### Scenario: JSON handler config omits protobuf schema
-
-- **WHEN** a handler is created with `encoding: "json"`
-- **THEN** the handler SHALL decode and encode JSON requests without a protobuf schema
-
-#### Scenario: Protobuf handler config requires schema
-
-- **WHEN** a handler is created with `encoding: "protobuf"`
-- **THEN** the handler SHALL require a protobuf schema descriptor before protobuf requests can be decoded or responses encoded
 
 ### Requirement: Framework examples use small adapters
 

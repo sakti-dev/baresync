@@ -16,8 +16,8 @@ Start it in a separate terminal:
 bun --cwd tests/e2e run fixture:backend
 ```
 
-Use `fixture:backend:json` or `fixture:backend:protobuf` when you want to pin the backend transport mode explicitly.
-Use `fixture:backend:contract`, `fixture:backend:contract:json`, or `fixture:backend:contract:protobuf` to run the HTTP contract checks against the real backend and its SQLite state.
+Use `fixture:backend:json` when you want to pin the backend transport mode explicitly.
+Use `fixture:backend:contract` or `fixture:backend:contract:json` to run the HTTP contract checks against the real backend and its SQLite state.
 
 Useful env vars:
 
@@ -39,13 +39,12 @@ Prerequisites:
 Example command:
 
 ```sh
-BARESYNC_FIXTURE_ENCODING=protobuf \
 BARESYNC_DESKTOP_APP_PATH=/path/to/fixture-app \
 BARESYNC_FIXTURE_API_URL=http://127.0.0.1:18080 \
 bun --cwd tests/e2e run desktop:sync
 ```
 
-The smoke harness also exposes `desktop:sync:json` and `desktop:sync:protobuf` for explicit transport runs.
+The smoke harness also exposes `desktop:sync:json` for explicit transport runs.
 
 The desktop smoke should validate plugin registration, command names, WebView-to-Rust IPC, local SQLite file behavior, baseline pull, local create, manual sync, and restart persistence.
 When a desktop smoke fails, collect:
@@ -69,13 +68,12 @@ Prerequisites:
 Example command:
 
 ```sh
-BARESYNC_FIXTURE_ENCODING=protobuf \
 BARESYNC_ANDROID_APP_ID=com.example.app \
 BARESYNC_ANDROID_READY_TEXT=Baresync \
 bun --cwd tests/e2e run android:sync
 ```
 
-The Android smoke harness also exposes `android:sync:json` and `android:sync:protobuf` for explicit transport runs.
+The Android smoke harness also exposes `android:sync:json` for explicit transport runs.
 
 `android:sync` now performs an adb preflight and refuses to run if no usable device is attached or if the fixture package is not installed on the selected target.
 

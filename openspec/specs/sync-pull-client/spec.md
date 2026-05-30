@@ -55,12 +55,6 @@ The pull engine SHALL:
 - **THEN** the runtime SHALL send a POST request body containing `scopeId`, `tables`, `limit`, and `cursor`
 - **AND** the response SHALL be decoded as JSON
 
-#### Scenario: Protobuf pull uses POST body
-
-- **WHEN** the engine is configured with `encoding: "protobuf"` and pull is called
-- **THEN** the runtime SHALL send a POST request body encoded as protobuf
-- **AND** the response SHALL be decoded from protobuf bytes
-
 ### Requirement: Soft delete application
 
 The pull engine SHALL apply soft deletes by setting `deleted_at`, `updated_at`, and `is_synced = 1` on the local row.
@@ -93,12 +87,6 @@ The runtime transport SHALL support a status request that sends `scopeId` and `c
 - **WHEN** the engine is configured with `encoding: "json"` and status is requested
 - **THEN** the runtime SHALL send a POST JSON body containing `scopeId` and `cursor`
 - **AND** the response SHALL be decoded from JSON
-
-#### Scenario: Protobuf status request
-
-- **WHEN** the engine is configured with `encoding: "protobuf"` and status is requested
-- **THEN** the runtime SHALL send a POST protobuf body containing `scopeId` and `cursor`
-- **AND** the response SHALL be decoded from protobuf bytes
 
 ### Requirement: Pull response JSON shape
 

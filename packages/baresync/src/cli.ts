@@ -5,10 +5,6 @@ import { fileURLToPath } from "node:url";
 import type { GeneratorConfig } from "./generator/config";
 import { runDiagnostics, type SyncDiagnostic } from "./generator/diagnostics";
 import { generateSyncArtifacts, SyncDiagnosticError } from "./generator/index";
-import {
-  generateProtobufWorkspaceArtifacts,
-  type ProtobufWorkspaceConfig,
-} from "./generator/protobuf-workspace";
 import type { SyncContract } from "./schema/contract";
 
 type GenerateSource = GeneratorConfig | string | SyncContract;
@@ -31,10 +27,8 @@ interface GenerateCliOptions {
 interface LoadedConfigEntry {
   contract: SyncContract;
   key: string;
-  kind: "json" | "protobuf";
   label: string;
   outputDir?: string;
-  protobufConfig?: ProtobufWorkspaceConfig;
   syncConfig?: GeneratorConfig;
 }
 
@@ -134,16 +128,6 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
 
   for (const entry of entries) {
     process.stdout.write(`Running ${entry.label}\n`);
-    if (entry.kind === "protobuf") {
-      if (!entry.protobufConfig) {
-        throw new Error(
-          `Missing protobuf workspace config for ${entry.label} in ${resolved.path}`
-        );
-      }
-      generateProtobufWorkspaceArtifacts(entry.protobufConfig);
-      continue;
-    }
-
     if (entry.syncConfig) {
       generateSyncArtifacts(
         entry.syncConfig.contract,
@@ -363,10 +347,6 @@ function resolveLoadedConfigEntries(
   );
   addLoadedConfigEntry(
     entries,
-    buildNamedProtobufEntry(configModule.protobufSyncGeneratorConfig)
-  );
-  addLoadedConfigEntry(
-    entries,
     buildDefaultExportEntry(configModule.default, options?.outputDir)
   );
   addLoadedConfigEntry(
@@ -376,7 +356,7 @@ function resolveLoadedConfigEntries(
 
   if (entries.size === 0) {
     throw new Error(
-      `No default export, "syncGeneratorConfig" export, "protobufSyncGeneratorConfig" export, or "contract" export found in ${absPath}`
+      `No default export, "syncGeneratorConfig" export, or "contract" export found in ${absPath}`
     );
   }
 
@@ -405,7 +385,6 @@ function buildNamedJsonEntry(
   return {
     contract: config.contract,
     key,
-    kind: "json",
     label: "syncGeneratorConfig",
     outputDir,
     syncConfig: {
@@ -415,43 +394,16 @@ function buildNamedJsonEntry(
   };
 }
 
-function buildNamedProtobufEntry(config: unknown): LoadedConfigEntry | null {
-  if (!isProtobufWorkspaceConfig(config)) {
-    return null;
-  }
-
-  const key = `protobuf:${config.outputDir}:${config.contract.packageName}`;
-  return {
-    contract: config.contract,
-    key,
-    kind: "protobuf",
-    label: "protobufSyncGeneratorConfig",
-    protobufConfig: config,
-  };
-}
-
 function buildDefaultExportEntry(
   config: unknown,
   outputDirOverride?: string
 ): LoadedConfigEntry | null {
-  if (isProtobufWorkspaceConfig(config)) {
-    const key = `protobuf:${config.outputDir}:${config.contract.packageName}`;
-    return {
-      contract: config.contract,
-      key,
-      kind: "protobuf",
-      label: "default export",
-      protobufConfig: config,
-    };
-  }
-
   if (isGeneratorConfig(config)) {
     const outputDir = outputDirOverride ?? config.outputDir;
     const key = `json:${outputDir}:${config.contract.packageName}:${config.contract.encoding}`;
     return {
       contract: config.contract,
       key,
-      kind: "json",
       label: "default export",
       outputDir,
       syncConfig: {
@@ -467,7 +419,6 @@ function buildDefaultExportEntry(
     return {
       contract: config,
       key,
-      kind: "json",
       label: "default export contract",
       outputDir,
     };
@@ -489,7 +440,6 @@ function buildRawContractEntry(
   return {
     contract: config,
     key,
-    kind: "json",
     label: "contract",
     outputDir,
   };
@@ -515,17 +465,6 @@ function isGeneratorConfig(value: unknown): value is GeneratorConfig {
     isRecord(value) &&
     typeof value.outputDir === "string" &&
     isSyncContract(value.contract)
-  );
-}
-
-function isProtobufWorkspaceConfig(
-  value: unknown
-): value is ProtobufWorkspaceConfig {
-  return (
-    isRecord(value) &&
-    typeof value.outputDir === "string" &&
-    isSyncContract(value.contract) &&
-    isRecord(value.outputs)
   );
 }
 

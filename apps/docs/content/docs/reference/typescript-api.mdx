@@ -39,7 +39,7 @@ const client = createSyncClient({
 ```ts
 interface SyncClientConfig {
   apiUrl: string;
-  encoding: "json" | "protobuf";
+  encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   scopeId: string;
 }
@@ -48,7 +48,7 @@ interface SyncClientConfig {
 | Field | Description |
 |---|---|
 | `apiUrl` | Server base URL (e.g. `"https://api.example.com"`) |
-| `encoding` | Sync wire format — `"json"` (default) or `"protobuf"` |
+| `encoding` | Sync wire format — `"json"` (default) |
 | `invoke` | Tauri IPC invoke function. Defaults to `@tauri-apps/api/core::invoke`. Pass a mock for testing. |
 | `scopeId` | The sync scope — partitions data (e.g. merchant ID, tenant ID) |
 
@@ -379,7 +379,7 @@ const contract = defineSyncContract({
 
 ```ts
 function defineSyncContract(input: {
-  encoding: "json" | "protobuf";
+  encoding: "json";
   packageName: string;
   tables: SyncedTableDefinition[];
   limits?: Partial<SyncContractLimits>;
@@ -453,42 +453,13 @@ function defineSyncConfig<
   ApiSchema extends Record<string, AnySQLiteTable>,
 >(input: {
   apiSyncedSchema: ApiSchema;
-  encoding?: "json" | "protobuf";
+  encoding?: "json";
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;
   packageName: string;
   tables: SyncConfigTables<LocalSchema, ApiSchema>;
 }): PairedSyncGeneratorConfig
-```
-
-### `defineProtobufSyncConfig`
-
-Creates a generator config for protobuf sync.
-
-```ts
-function defineProtobufSyncConfig<
-  LocalSchema extends Record<string, AnySQLiteTable>,
-  ApiSchema extends Record<string, AnySQLiteTable>,
->(input: {
-  apiSyncedSchema: ApiSchema;
-  localSyncedSchema: LocalSchema;
-  outputDir: string;
-  outputs: ProtobufWorkspaceOutputs;
-  packageName: string;
-  tables: SyncConfigTables<LocalSchema, ApiSchema>;
-  limits?: Partial<SyncContractLimits>;
-}): ProtobufWorkspaceConfig
-```
-
-```ts
-interface ProtobufWorkspaceOutputs {
-  proto: string;
-  runtimeSourceTs: string;
-  runtimeTs: string;
-  rustSyncMappers: string;
-  syncTs: string;
-}
 ```
 
 ### `generateSyncArtifacts`

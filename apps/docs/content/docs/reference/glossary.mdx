@@ -15,7 +15,7 @@ description: Terms used throughout Baresync documentation.
 | **Delete order** | The order tables are processed during deletions, respecting foreign key constraints. Reverse of upsert order. |
 | **Drizzle proxy** | A Drizzle ORM driver that serializes SQL to JSON, sends it via Tauri IPC to Rust, and returns typed results. Created by `createTauriDrizzleDatabase`. |
 | **Embedded migration** | A SQL migration compiled into the Rust binary as a static string. Runs at app startup. |
-| **Encoding** | The wire format for sync data — `"json"` (default) or `"protobuf"`. |
+| **Encoding** | The wire format for sync data — `"json"` (default). |
 | **Full resync** | Dropping the stored cursor and re-pulling all server data. Used for recovery after data corruption. |
 | **Garbage collection** | Removing soft-deleted rows where `is_synced = true` and `deleted_at` is set. Runs via `runGarbageCollection`. |
 | **Idempotency key** | A unique key per push batch derived from outbox entry IDs. Prevents duplicate processing on network retries. |

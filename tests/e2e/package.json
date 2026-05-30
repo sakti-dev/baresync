@@ -6,19 +6,13 @@
   "scripts": {
     "fixture:backend": "bun run backend/fixture-server.ts",
     "fixture:backend:json": "BARESYNC_FIXTURE_ENCODING=json bun run backend/fixture-server.ts",
-    "fixture:backend:protobuf": "BARESYNC_FIXTURE_ENCODING=protobuf bun run backend/fixture-server.ts",
     "fixture:backend:contract": "bunx vitest run backend/__test__/fixture-server.contract.test.ts",
     "fixture:backend:contract:json": "BARESYNC_FIXTURE_ENCODING=json bunx vitest run backend/__test__/fixture-server.contract.test.ts",
-    "fixture:backend:contract:protobuf": "BARESYNC_FIXTURE_ENCODING=protobuf bunx vitest run backend/__test__/fixture-server.contract.test.ts",
-    "check:protobuf": "bun ./generate-protobuf.ts --check",
     "desktop:sync": "bun x wdio run desktop/webdriverio.conf.ts",
     "desktop:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun x wdio run desktop/webdriverio.conf.ts",
-    "desktop:sync:protobuf": "BARESYNC_FIXTURE_ENCODING=protobuf bun x wdio run desktop/webdriverio.conf.ts",
     "android:install-fixture": "bun run android/install-fixture.ts",
     "android:sync": "bun run android/run-smoke.ts",
     "android:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun run android/run-smoke.ts",
-    "android:sync:protobuf": "BARESYNC_FIXTURE_ENCODING=protobuf bun run android/run-smoke.ts",
-    "generate:protobuf": "bun ./generate-protobuf.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

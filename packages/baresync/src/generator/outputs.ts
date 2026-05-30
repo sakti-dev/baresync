@@ -1,94 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getTableConfig, type SQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { SyncContract } from "../schema/contract";
 import type { SyncTableOrder } from "./fk-order";
 
 export interface GeneratorOutputConfig {
   contractName?: string;
   outputDir: string;
-}
-
-const NON_ALPHANUMERIC_RE = /[^a-zA-Z0-9]/;
-
-export type ProtobufScalarType =
-  | "bool"
-  | "bytes"
-  | "double"
-  | "int64"
-  | "string";
-
-export interface ProtobufFieldDescriptor {
-  fieldNumber: number;
-  name: string;
-  protobufType: ProtobufScalarType;
-}
-
-export interface ProtobufTableDescriptor {
-  changesMessageName: string;
-  fields: ProtobufFieldDescriptor[];
-  localOnlyColumns: string[];
-  requestFieldNumber: number;
-  rowMessageName: string;
-  wrapperFieldNumbers: {
-    changedRows: number;
-    deletedIds: number;
-  };
-}
-
-function toPascalCase(input: string): string {
-  return input
-    .split(NON_ALPHANUMERIC_RE)
-    .filter(Boolean)
-    .map((part) => part[0]!.toUpperCase() + part.slice(1))
-    .join("");
-}
-
-function buildProtobufFieldNumbers(columns: string[]): Record<string, number> {
-  return Object.fromEntries(
-    columns.map((column, index) => [column, index + 1])
-  );
-}
-
-function buildProtobufScalarType(column: SQLiteColumn): ProtobufScalarType {
-  if (column.columnType === "SQLiteBoolean") {
-    return "bool";
-  }
-  if (column.columnType === "SQLiteBlobBuffer") {
-    return "bytes";
-  }
-  if (column.columnType === "SQLiteReal") {
-    return "double";
-  }
-  if (column.columnType === "SQLiteInteger") {
-    return "int64";
-  }
-  return "string";
-}
-
-function buildProtobufTableDescriptor(input: {
-  tableName: string;
-  tableIndex: number;
-  table: SyncContract["tables"][number];
-}): ProtobufTableDescriptor {
-  const config = getTableConfig(input.table.table);
-  const columns = config.columns as SQLiteColumn[];
-
-  return {
-    changesMessageName: `${toPascalCase(input.tableName)}Changes`,
-    fields: columns.map((column, index) => ({
-      fieldNumber: index + 1,
-      name: column.name,
-      protobufType: buildProtobufScalarType(column),
-    })),
-    localOnlyColumns: input.table.localOnlyColumns ?? [],
-    requestFieldNumber: input.tableIndex + 4,
-    rowMessageName: `${toPascalCase(input.tableName)}Row`,
-    wrapperFieldNumbers: {
-      changedRows: 1,
-      deletedIds: 2,
-    },
-  };
 }
 
 export function writeSyncContractJson(
@@ -98,35 +15,11 @@ export function writeSyncContractJson(
 ): void {
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const protobufTables = Object.fromEntries(
-    contract.tablesMeta.map((t, index) => {
-      const protobufTable = buildProtobufTableDescriptor({
-        table: contract.tables[index]!,
-        tableIndex: index,
-        tableName: t.tableName,
-      });
-
-      return [t.tableName, protobufTable];
-    })
-  );
-
   const contractJson = {
     version: 1,
     generatorVersion: "0.1.0",
     encoding: contract.encoding,
     packageName: contract.packageName,
-    ...(contract.encoding === "protobuf"
-      ? {
-          protobuf: {
-            packageName: contract.packageName,
-            tableOrder: {
-              delete: tableOrder.deleteOrder,
-              upsert: tableOrder.upsertOrder,
-            },
-            tables: protobufTables,
-          },
-        }
-      : {}),
     upsertOrder: tableOrder.upsertOrder,
     deleteOrder: tableOrder.deleteOrder,
     tables: Object.fromEntries(
@@ -135,7 +28,6 @@ export function writeSyncContractJson(
         {
           columns: t.columns,
           scope: t.scope,
-          protobufFieldNumbers: buildProtobufFieldNumbers(t.columns),
           localOnlyColumns: t.localOnlyColumns,
           serverOnlyColumns: t.serverOnlyColumns,
         },

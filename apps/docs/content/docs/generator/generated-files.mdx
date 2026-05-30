@@ -5,13 +5,13 @@ description: What the generator outputs and how to use them.
 
 # Generated Files
 
-The generator writes three files for JSON configs, and additional protobuf outputs when you use `defineProtobufSyncConfig()`.
+The generator writes three files for JSON configs.
 
 ## sync-contract.json
 
 The full sync contract. Contains:
 
-- Table names, column names, and protobuf field numbers
+- Table names and column names
 - Scope mappings (which column partitions data)
 - Local-only and server-only column lists
 - Upsert and delete order

@@ -1,16 +1,3 @@
-import {
-  decodeProtobufBody,
-  encodeProtobufBody,
-  type SyncProtobufSchema,
-} from "../generator/protobuf-runtime.js";
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength
-  ) as ArrayBuffer;
-}
-
 export class SyncPayloadTooLargeError extends Error {
   constructor(
     readonly kind: "payload_too_large",
@@ -22,7 +9,7 @@ export class SyncPayloadTooLargeError extends Error {
 }
 
 export interface SyncRequestKind {
-  encoding: "json" | "protobuf";
+  encoding: "json";
   kind: "push" | "pull" | "status";
 }
 
@@ -93,21 +80,12 @@ export async function computeSyncRequestHash(body: unknown): Promise<string> {
 }
 
 export async function decodeSyncRequest(input: {
-  encoding: "json" | "protobuf";
+  encoding: "json";
   kind: "push" | "pull" | "status";
   request: Request;
-  protobufSchema?: SyncProtobufSchema;
 }) {
   const rawBody = new Uint8Array(await input.request.arrayBuffer());
-  const body =
-    input.encoding === "json"
-      ? parseJsonRequestBody(rawBody)
-      : decodeProtobufBody({
-          bytes: rawBody,
-          kind: input.kind,
-          message: "request",
-          schema: input.protobufSchema,
-        });
+  const body = parseJsonRequestBody(rawBody);
 
   validateSyncRequestBody(input.kind, body);
 
@@ -117,24 +95,9 @@ export async function decodeSyncRequest(input: {
 
 export function encodeSyncResponse(input: {
   body: unknown;
-  encoding: "json" | "protobuf";
+  encoding: "json";
   kind: "push" | "pull" | "status";
-  protobufSchema?: SyncProtobufSchema;
 }): Response {
-  if (input.encoding === "protobuf") {
-    const bytes = encodeProtobufBody({
-      body: input.body as Record<string, unknown>,
-      kind: input.kind,
-      message: "response",
-      schema: input.protobufSchema,
-    });
-    return new Response(toArrayBuffer(bytes), {
-      headers: {
-        "Content-Type": "application/x-protobuf",
-      },
-    });
-  }
-
   return Response.json(input.body);
 }
 

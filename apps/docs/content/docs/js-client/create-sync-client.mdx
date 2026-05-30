@@ -27,7 +27,7 @@ const client = createSyncClient({
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `apiUrl` | `string` | Yes | Your server's base URL (used by the Tauri plugin for HTTP requests) |
-| `encoding` | `"json" \| "protobuf"` | Yes | Wire encoding for sync payloads |
+| `encoding` | `"json"` | Yes | Wire encoding for sync payloads |
 | `scopeId` | `string` | Yes | The scope this client syncs under (must match a scope in your sync contract) |
 | `invoke` | `(cmd, args?) => Promise<unknown>` | No | Tauri IPC function. Defaults to a stub that throws outside Tauri runtime |
 
@@ -37,7 +37,7 @@ The plugin uses this URL when making HTTP requests to your server. It is not use
 
 ### encoding
 
-Set to `"json"` unless you have configured protobuf encoding in your sync contract. See [Define Protobuf Sync Config](/docs/generator/define-protobuf-sync-config) for protobuf setup.
+Set to `"json"`. Baresync currently uses JSON-only sync payloads.
 
 ### scopeId
 

@@ -39,7 +39,7 @@ const RESERVED_FIELDS = new Set([
   "sync_updated_at",
 ]);
 
-const SUPPORTED_ENCODINGS = new Set(["json", "protobuf"]);
+const SUPPORTED_ENCODINGS = new Set(["json"]);
 
 function camelToSnake(s: string): string {
   const result = s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
@@ -381,8 +381,8 @@ function checkEncoding(contract: SyncContract): SyncDiagnostic[] {
         code: "SYNC_SCHEMA_ENCODING_UNSUPPORTED",
         severity: "error",
         message: `Encoding "${contract.encoding}" is not supported`,
-        why: 'Baresync only supports "json" and "protobuf" encodings',
-        fix: 'Change the encoding to "json" or "protobuf"',
+        why: 'Baresync only supports "json" encoding',
+        fix: 'Change the encoding to "json"',
       },
     ];
   }
@@ -429,43 +429,7 @@ function checkFkCycleAndExternalFk(contract: SyncContract): SyncDiagnostic[] {
 }
 
 export interface DiagnosticOptions {
-  previousFieldNumbers?: Record<string, Record<string, number>>;
   previousTables?: string[];
-}
-
-function checkProtobufFieldNumbers(
-  _contract: SyncContract,
-  previousFieldNumbers?: Record<string, Record<string, number>>
-): SyncDiagnostic[] {
-  if (!previousFieldNumbers) {
-    return [];
-  }
-
-  const diagnostics: SyncDiagnostic[] = [];
-
-  for (const [tableName, fieldMap] of Object.entries(previousFieldNumbers)) {
-    const numberToFields = new Map<number, string[]>();
-    for (const [field, num] of Object.entries(fieldMap)) {
-      const existing = numberToFields.get(num) ?? [];
-      existing.push(field);
-      numberToFields.set(num, existing);
-    }
-
-    for (const [num, fields] of numberToFields) {
-      if (fields.length > 1) {
-        diagnostics.push({
-          code: "SYNC_SCHEMA_PROTOBUF_FIELD_NUMBER_REUSED",
-          severity: "error",
-          message: `Protobuf field number ${num} is reused by fields ${fields.join(", ")} in table "${tableName}"`,
-          table: tableName,
-          why: "Reusing protobuf field numbers breaks wire compatibility with existing clients",
-          fix: `Assign unique field numbers to ${fields.join(", ")} and reserve the old numbers`,
-        });
-      }
-    }
-  }
-
-  return diagnostics;
 }
 
 function checkNullableScopeColumn(
@@ -706,9 +670,6 @@ export function runDiagnostics(
   diagnostics.push(...checkEncoding(contract));
   diagnostics.push(...checkDuplicateTableName(contract.tablesMeta));
   diagnostics.push(...checkFkCycleAndExternalFk(contract));
-  diagnostics.push(
-    ...checkProtobufFieldNumbers(contract, options?.previousFieldNumbers)
-  );
   diagnostics.push(...checkAdditiveChange(contract, options?.previousTables));
 
   for (let i = 0; i < contract.tables.length; i++) {

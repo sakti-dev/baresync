@@ -33,7 +33,7 @@ Builder::new()
 |---|---|---|---|
 | `new()` | - | - | Create a new builder |
 | `api_base_url(url)` | `impl Into<String>` | `""` | Server base URL |
-| `encoding(enc)` | `impl Into<String>` | `"json"` | Wire format: `"json"` or `"protobuf"` |
+| `encoding(enc)` | `impl Into<String>` | `"json"` | Wire format: `"json"` |
 | `db_path(path)` | `impl Into<String>` | `"baresync.db"` | SQLite database file path |
 | `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
 | `max_push_rows(n)` | `usize` | `2000` | Maximum rows per push batch |

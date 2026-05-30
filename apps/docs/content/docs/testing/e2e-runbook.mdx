@@ -64,13 +64,9 @@ Your test backend should provide:
 | State inspection endpoint | Lets the test assert what the backend received |
 | Fixed baseline data | Lets the test prove pull applies server rows |
 | Push recording | Lets the test prove local changes reached the backend |
-| Same encoding as production | Exercises JSON or protobuf exactly as your app uses it |
+| Same encoding as production | Exercises JSON exactly as your app uses it |
 
-If your app uses protobuf, the backend contract test should also confirm that the generated transport is actually in use. That means:
-
-- the Tauri plugin is configured with `.encoding("protobuf")` and the generated Rust transport
-- the server receives `Content-Type: application/x-protobuf`
-- the backend returns protobuf responses for the same routes
+The backend contract test should also confirm that the JSON transport is actually in use.
 - the generated artifacts are checked in and regenerated when the schema changes
 
 Example shape:
@@ -196,7 +192,7 @@ Your desktop smoke should be one short scenario:
 
 If your app does not expose internal sync state in the UI, add test-only diagnostics behind a non-production flag, or inspect the isolated SQLite file from the test process.
 
-For protobuf apps, prefer wire evidence over helper assertions. The useful proof is that the backend recorded `application/x-protobuf` requests and the app still passes the same visible sync checks as JSON mode.
+Prefer wire evidence over helper assertions. The useful proof is that the backend recorded the expected JSON requests and the app still passes the same visible sync checks as any other run.
 
 ## Mobile Smoke Test
 
@@ -424,7 +420,7 @@ Baresync's repository includes a public fixture app that applies this pattern to
 The fixture demonstrates:
 
 - a deterministic test backend
-- JSON and protobuf transport modes
+- JSON transport mode
 - a Tauri fixture app using real plugin registration
 - embedded migrations
 - frontend `invoke` calls

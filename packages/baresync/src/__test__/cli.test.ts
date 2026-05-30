@@ -49,19 +49,15 @@ function createRepoTempDir(prefix: string): string {
 
 function writeSyncConfigModule(
   dir: string,
-  options: { includeProtobuf?: boolean; outputSuffix?: string } = {}
+  options: { outputSuffix?: string } = {}
 ): string {
   const outputSuffix = options.outputSuffix ?? "generated";
   const outputDir = path.join(dir, outputSuffix).replaceAll(path.sep, "/");
-  const protoDir = path
-    .join(dir, `${outputSuffix}-proto`)
-    .replaceAll(path.sep, "/");
   const configPath = path.join(dir, "sync.config.ts");
   const source = `
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
   apiSyncColumns,
-  defineProtobufSyncConfig,
   defineSyncConfig,
   localSyncColumns,
 } from ${JSON.stringify(baresyncSourceUrl)};
@@ -89,28 +85,6 @@ export const syncGeneratorConfig = defineSyncConfig({
     categories: { scope: "scope_id" },
   },
 });
-${
-  options.includeProtobuf
-    ? `
-export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
-  apiSyncedSchema: { categories: apiCategories },
-  localSyncedSchema: { categories: localCategories },
-  outputDir: ${JSON.stringify(protoDir)},
-  outputs: {
-    proto: ${JSON.stringify(path.join(protoDir, "sync.proto").replaceAll(path.sep, "/"))},
-    runtimeSourceTs: ${JSON.stringify(path.join(protoDir, "runtime-source.ts").replaceAll(path.sep, "/"))},
-    runtimeTs: ${JSON.stringify(path.join(protoDir, "runtime.ts").replaceAll(path.sep, "/"))},
-    rustSyncMappers: ${JSON.stringify(path.join(protoDir, "sync-mappers.rs").replaceAll(path.sep, "/"))},
-    syncTs: ${JSON.stringify(path.join(protoDir, "sync.generated.ts").replaceAll(path.sep, "/"))},
-  },
-  packageName: "inventory.sync.v1",
-  tables: {
-    categories: { scope: "scope_id" },
-  },
-});
-`
-    : ""
-}
 `;
   fs.writeFileSync(configPath, source);
   return configPath;
@@ -142,32 +116,6 @@ describe("CLI runGenerate", () => {
       fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
     );
     expect(parsed.packageName).toBe("cli.test.sync.v1");
-
-    fs.rmSync(outputDir, { recursive: true, force: true });
-  });
-
-  it("includes protobuf metadata for protobuf contracts", async () => {
-    const outputDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "baresync-cli-test-")
-    );
-
-    const contract = defineSyncContract({
-      encoding: "protobuf",
-      packageName: "cli.test.sync.v1",
-      tables: [categoriesSynced],
-    });
-
-    const { runGenerate } = await import("../cli");
-    await runGenerate(contract, outputDir);
-
-    const parsed = JSON.parse(
-      fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
-    );
-    expect(parsed.encoding).toBe("protobuf");
-    expect(parsed.protobuf.tables.categories.rowMessageName).toBe(
-      "CategoriesRow"
-    );
-    expect(parsed.protobuf.tables.categories.requestFieldNumber).toBe(4);
 
     fs.rmSync(outputDir, { recursive: true, force: true });
   });
@@ -249,49 +197,9 @@ describe("CLI config discovery", () => {
     }
   });
 
-  it("runs JSON and protobuf configs from one module", async () => {
-    const cwd = createRepoTempDir("baresync-both-");
-    writeSyncConfigModule(cwd, { includeProtobuf: true });
-
-    const previousCwd = process.cwd();
-    process.chdir(cwd);
-    try {
-      const { runGenerateCommand } = await import("../cli");
-      const stdoutSpy = vi
-        .spyOn(process.stdout, "write")
-        .mockImplementation(() => true);
-
-      try {
-        await runGenerateCommand([]);
-
-        expect(
-          fs.existsSync(path.join(cwd, "generated", "sync-contract.json"))
-        ).toBe(true);
-        expect(
-          fs.existsSync(path.join(cwd, "generated-proto", "sync.proto"))
-        ).toBe(true);
-        expect(
-          stdoutSpy.mock.calls.some((call) =>
-            String(call[0]).includes("Running syncGeneratorConfig")
-          )
-        ).toBe(true);
-        expect(
-          stdoutSpy.mock.calls.some((call) =>
-            String(call[0]).includes("Running protobufSyncGeneratorConfig")
-          )
-        ).toBe(true);
-      } finally {
-        stdoutSpy.mockRestore();
-      }
-    } finally {
-      process.chdir(previousCwd);
-      fs.rmSync(cwd, { recursive: true, force: true });
-    }
-  });
-
   it("runs doctor against discovered config exports", async () => {
     const cwd = createRepoTempDir("baresync-doctor-");
-    writeSyncConfigModule(cwd, { includeProtobuf: true });
+    writeSyncConfigModule(cwd);
 
     const previousCwd = process.cwd();
     process.chdir(cwd);
@@ -308,13 +216,6 @@ describe("CLI config discovery", () => {
           stdoutSpy.mock.calls.some((call) =>
             String(call[0]).includes(
               "Running diagnostics for syncGeneratorConfig"
-            )
-          )
-        ).toBe(true);
-        expect(
-          stdoutSpy.mock.calls.some((call) =>
-            String(call[0]).includes(
-              "Running diagnostics for protobufSyncGeneratorConfig"
             )
           )
         ).toBe(true);
