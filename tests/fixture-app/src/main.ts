@@ -32,6 +32,7 @@ const dirtyCount = el<HTMLElement>("#dirty-count");
 const watermark = el<HTMLElement>("#watermark");
 const needsBaseline = el<HTMLElement>("#needs-baseline");
 const syncResult = el<HTMLElement>("#sync-result");
+const smokeState = el<HTMLElement>("#smoke-state");
 const categoriesList = el<HTMLUListElement>("#categories-list");
 const productsList = el<HTMLUListElement>("#products-list");
 const buttons = {
@@ -124,6 +125,31 @@ async function refreshStatus() {
   dirtyCount.textContent = String(localState.local_dirty_count);
   watermark.textContent = localState.last_server_watermark || "-";
   needsBaseline.textContent = localState.needs_baseline_sync ? "yes" : "no";
+  smokeState.textContent = [
+    `dirty:${localState.local_dirty_count}`,
+    categoryRows.some((row) => row.name === "Drinks") ? "cat:Drinks" : null,
+    productRows.some((row) => row.name === "Kopi Susu")
+      ? "prod:Kopi Susu"
+      : null,
+    categoryRows.some((row) => row.name === "Fixture Category 001")
+      ? "cat:Fixture Category 001"
+      : null,
+    productRows.some((row) => row.name === "Fixture Product 001")
+      ? "prod:Fixture Product 001"
+      : null,
+    categoryRows.some(
+      (row) => row.id === "local-cat-001" && row.is_synced === 1
+    )
+      ? "cat:local-cat-001:synced"
+      : null,
+    productRows.some(
+      (row) => row.id === "local-prod-001" && row.is_synced === 1
+    )
+      ? "prod:local-prod-001:synced"
+      : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" ");
   renderList(categoriesList, categoryRows, "No categories yet.");
   renderList(productsList, productRows, "No products yet.");
   appStatus.textContent = "ready";

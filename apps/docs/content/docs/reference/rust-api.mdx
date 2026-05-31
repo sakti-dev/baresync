@@ -20,6 +20,7 @@ Builder::new()
     .api_base_url("https://api.example.com")
     .encoding("json")
     .db_path("baresync.db")
+    .encryption_key_provider(MyKeyProvider)
     .poll_interval_secs(30)
     .poll_on_background(false)
     .migrations_path("migrations")
@@ -35,6 +36,7 @@ Builder::new()
 | `api_base_url(url)` | `impl Into<String>` | `""` | Server base URL |
 | `encoding(enc)` | `impl Into<String>` | `"json"` | Wire format: `"json"` |
 | `db_path(path)` | `impl Into<String>` | `"baresync.db"` | SQLite database file path |
+| `encryption_key_provider(provider)` | `impl EncryptionKeyProvider` | - | App-owned raw 32-byte key provider used during setup |
 | `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
 | `max_push_rows(n)` | `usize` | `2000` | Maximum rows per push batch |
 | `migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations |
@@ -44,6 +46,30 @@ Builder::new()
 | `poll_interval_secs(n)` | `u64` | `30` | Seconds between automatic syncs |
 | `poll_on_background(b)` | `bool` | `false` | Continue polling when app is backgrounded |
 | `build()` | `TauriPlugin<R>` | - | Build the plugin |
+
+If you configure `encryption_key_provider`, Baresync asks your app for a key during Rust setup before migrations run. The builder method is available in plaintext builds, but encrypted startup requires the `sqlcipher` Cargo feature. See [Database Encryption](/docs/local-database/encryption) for the full setup flow and failure cases.
+
+### Encryption types
+
+`DatabaseKey`, `EncryptionKeyContext`, and `EncryptionKeyProvider` are re-exported from `tauri_plugin_baresync` for convenience.
+
+```rust
+use std::error::Error;
+use tauri_plugin_baresync::{DatabaseKey, EncryptionKeyContext, EncryptionKeyProvider};
+
+struct MyKeyProvider;
+
+impl EncryptionKeyProvider for MyKeyProvider {
+    fn encryption_key(
+        &self,
+        context: EncryptionKeyContext,
+    ) -> Result<DatabaseKey, Box<dyn Error + Send + Sync>> {
+        let _db_path = context.db_path;
+        let _database_exists = context.database_exists;
+        Ok(DatabaseKey::from([0u8; 32]))
+    }
+}
+```
 
 ### `SyncContractTables`
 
@@ -129,7 +155,7 @@ pub struct SyncNowResult {
 
 ## LocalDatabase
 
-Wraps a SQLite connection pool with Baresync's settings (WAL mode, foreign keys, busy timeout).
+Wraps a worker-backed SQLite database client with Baresync's settings (WAL mode, foreign keys, busy timeout).
 
 ```rust
 pub struct LocalDatabase { /* private */ }
@@ -137,13 +163,21 @@ pub struct LocalDatabase { /* private */ }
 impl LocalDatabase {
     pub fn db(&self) -> &DbClient;
     pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError>;
+    pub async fn connect_with_encryption(
+        path: impl AsRef<Path>,
+        provider: Arc<dyn EncryptionKeyProvider>,
+    ) -> Result<Self, SyncError>;
 }
 ```
 
 ### Database functions
 
 ```rust
-pub async fn connect_db(path: &str) -> Result<DbClient, SyncError>;
+pub async fn connect_db(path: impl AsRef<Path>) -> Result<DbClient, SyncError>;
+pub async fn connect_db_with_encryption(
+    path: impl AsRef<Path>,
+    provider: Arc<dyn EncryptionKeyProvider>,
+) -> Result<DbClient, SyncError>;
 pub async fn get_db_info(path: impl AsRef<Path>) -> Result<DbInfo, SyncError>;
 pub async fn get_or_create_client_id(db: &DbClient) -> Result<String, SyncError>;
 ```

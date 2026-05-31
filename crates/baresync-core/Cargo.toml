@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["sqlite", "sync", "tauri", "offline-first"]
 categories = ["database", "asynchronous"]
 
+[features]
+default = []
+sqlcipher = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
+
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
 reqwest = { version = "0.12", features = ["rustls-tls", "json"], default-features = false }

@@ -1,0 +1,86 @@
+---
+title: Database Encryption
+description: Configure SQLCipher for the local Baresync database and provide a device-local key.
+---
+
+# Database Encryption
+
+Baresync supports optional encryption at rest for the local SQLite database.
+
+If you do not configure a key provider, Baresync opens a normal plaintext database. If you do configure a provider, the Rust plugin asks your app for a raw 32-byte key during setup before migrations run or JS code starts.
+
+## Startup order
+
+Encryption setup happens before the webview starts using Drizzle:
+
+```txt
+Rust plugin setup
+  ├─ ask app for device-local key
+  ├─ open SQLite with SQLCipher
+  ├─ validate the database
+  ├─ run migrations
+  └─ expose plugin state to JS
+
+JS app startup
+  └─ createTauriDrizzleDatabase()
+```
+
+That order matters. The local DB must already exist and be ready before any frontend code tries to use it.
+
+## Builder setup
+
+```rust
+use tauri_plugin_baresync::Builder;
+
+Builder::new()
+    .api_base_url("https://api.example.com")
+    .db_path("baresync.db")
+    .encryption_key_provider(MyKeyProvider)
+    .build();
+```
+
+The builder method is available in plaintext builds, but encrypted startup requires the `sqlcipher` Cargo feature.
+
+## Key provider
+
+The app owns key creation and secure storage. Baresync never sends the local DB key to the sync server.
+
+```rust
+use std::error::Error;
+use tauri_plugin_baresync::{DatabaseKey, EncryptionKeyContext, EncryptionKeyProvider};
+
+struct MyKeyProvider;
+
+impl EncryptionKeyProvider for MyKeyProvider {
+    fn encryption_key(
+        &self,
+        context: EncryptionKeyContext,
+    ) -> Result<DatabaseKey, Box<dyn Error + Send + Sync>> {
+        let _db_path = context.db_path;
+        let _database_exists = context.database_exists;
+        // Load or create a device-local key using app-owned secure storage.
+        Ok(DatabaseKey::from([0u8; 32]))
+    }
+}
+```
+
+`DatabaseKey`, `EncryptionKeyContext`, and `EncryptionKeyProvider` are re-exported from `tauri_plugin_baresync`.
+
+## Failure cases
+
+- No provider configured means plaintext SQLite.
+- Wrong key means setup fails before plugin state is exposed.
+- Existing encrypted database with the same key opens normally.
+- Existing plaintext database with encryption enabled fails instead of being converted automatically.
+
+If you already have a plaintext database file and want to start using encryption, move it, delete it, or migrate it separately first.
+
+## Platform notes
+
+The SQLCipher feature is backed by the `sqlcipher` Cargo feature on the Rust crates. Baresync encryption feature is verified on Linux, Windows, and Android ARM64.
+
+## Related docs
+
+- [Local Database Overview](/docs/local-database/overview)
+- [Create Tauri Drizzle Database](/docs/local-database/create-tauri-drizzle-database)
+- [Rust API](/docs/reference/rust-api)

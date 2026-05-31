@@ -9,6 +9,7 @@ import {
 } from "../fixture-transport";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const cargoFeaturesEnv = "BARESYNC_FIXTURE_CARGO_FEATURES";
 const runtime = globalThis as typeof globalThis & {
   process: {
     env: Record<string, string | undefined>;
@@ -117,6 +118,7 @@ export const config = {
     const fixtureEncoding =
       runtime.process.env[FIXTURE_TRANSPORT_ENV] ??
       DEFAULT_FIXTURE_TRANSPORT_MODE;
+    const cargoFeatures = runtime.process.env[cargoFeaturesEnv];
     const fixtureApiUrl =
       runtime.process.env.BARESYNC_FIXTURE_API_URL ??
       `http://127.0.0.1:${backendPort}`;
@@ -137,7 +139,6 @@ export const config = {
         BARESYNC_FIXTURE_DB_PATH: runtime.process.env.BARESYNC_FIXTURE_DB_PATH,
         [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
       },
-      shell: true,
       stdio: ["ignore", runtime.process.stdout, runtime.process.stderr],
     });
     fixtureBackend.on("error", (error) => {
@@ -148,10 +149,9 @@ export const config = {
 
     fixtureDevServer = spawn(
       "bun",
-      ["run", "dev", "--host", "127.0.0.1", "--port", "5173"],
+      ["x", "vite", "--host", "127.0.0.1", "--port", "5173"],
       {
         cwd: path.resolve(__dirname, "../../../tests/fixture-app"),
-        shell: true,
         stdio: ["ignore", runtime.process.stdout, runtime.process.stderr],
       }
     );
@@ -177,6 +177,7 @@ export const config = {
         env: {
           ...runtime.process.env,
           [FIXTURE_TRANSPORT_ENV]: fixtureEncoding,
+          ...(cargoFeatures ? { [cargoFeaturesEnv]: cargoFeatures } : {}),
         },
         shell: true,
         stdio: "inherit",

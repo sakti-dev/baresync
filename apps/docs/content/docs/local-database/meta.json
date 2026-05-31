@@ -2,6 +2,7 @@
   "title": "Local Database",
   "pages": [
     "overview",
+    "encryption",
     "create-tauri-drizzle-database",
     "table-registry-pattern",
     "transactions",

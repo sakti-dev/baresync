@@ -1,4 +1,5 @@
 use baresync_core::config::SyncEngineConfig;
+use baresync_core::db::{self, EncryptionKeyProvider};
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
@@ -37,6 +38,7 @@ pub struct Builder {
     max_push_bytes: Option<usize>,
     max_push_rows: Option<usize>,
     db_path: Option<String>,
+    encryption_key_provider: Option<Arc<dyn EncryptionKeyProvider>>,
     contract_tables: Option<SyncContractTables>,
     embedded_migrations: Vec<EmbeddedMigration>,
     migrations_path: Option<PathBuf>,
@@ -53,6 +55,7 @@ impl Builder {
             max_push_bytes: None,
             max_push_rows: None,
             db_path: None,
+            encryption_key_provider: None,
             contract_tables: None,
             embedded_migrations: Vec::new(),
             migrations_path: None,
@@ -84,6 +87,14 @@ impl Builder {
 
     pub fn db_path(mut self, path: impl Into<String>) -> Self {
         self.db_path = Some(path.into());
+        self
+    }
+
+    pub fn encryption_key_provider<P>(mut self, provider: P) -> Self
+    where
+        P: EncryptionKeyProvider + 'static,
+    {
+        self.encryption_key_provider = Some(Arc::new(provider));
         self
     }
 
@@ -136,6 +147,7 @@ impl Builder {
 
         let embedded_migrations = self.embedded_migrations;
         let migrations_path = self.migrations_path;
+        let encryption_key_provider = self.encryption_key_provider;
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
             .setup(move |app, _api| {
@@ -157,15 +169,23 @@ impl Builder {
                                     .into()
                                 })
                         })
-                        .map(Some)
-                    })?;
+                    .map(Some)
+                })?;
 
                 let db = tauri::async_runtime::block_on(async {
-                    baresync_core::db::connect_db(&config.db_path)
-                        .await
-                        .map_err(|e| -> Box<dyn std::error::Error> {
-                            format!("Failed to connect to database: {}", e).into()
-                        })
+                    if let Some(provider) = encryption_key_provider.clone() {
+                        db::connect_db_with_encryption(&config.db_path, provider)
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error> {
+                                format!("Failed to connect to encrypted database: {}", e).into()
+                            })
+                    } else {
+                        db::connect_db(&config.db_path)
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error> {
+                                format!("Failed to connect to database: {}", e).into()
+                            })
+                    }
                 })?;
 
                 let transport = resolve_transport(&config)?;

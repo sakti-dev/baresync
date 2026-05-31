@@ -1,4 +1,4 @@
-use crate::db::{DbExecutionResult, DbRow};
+use crate::db::{DatabaseKey, DbExecutionResult, DbRow};
 use crate::error::SyncError;
 use rusqlite::types::{Value as SqlValue, ValueRef};
 use rusqlite::{params_from_iter, Connection};
@@ -47,11 +47,18 @@ struct DbCommand {
 
 impl DbWorker {
     pub(crate) async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError> {
+        Self::connect_with_encryption(path, None).await
+    }
+
+    pub(crate) async fn connect_with_encryption(
+        path: impl AsRef<Path>,
+        encryption_key: Option<DatabaseKey>,
+    ) -> Result<Self, SyncError> {
         let path = path.as_ref().to_path_buf();
         let (sender, receiver) = mpsc::channel(WORKER_QUEUE_CAPACITY);
         let (ready_tx, ready_rx) = oneshot::channel();
 
-        thread::spawn(move || match open_connection(&path) {
+        thread::spawn(move || match open_connection(&path, encryption_key) {
             Ok(conn) => {
                 let _ = ready_tx.send(Ok(()));
                 run_worker(conn, receiver);
@@ -197,9 +204,17 @@ fn run_worker(mut conn: Connection, mut receiver: mpsc::Receiver<DbCommand>) {
     }
 }
 
-fn open_connection(path: &Path) -> Result<Connection, SyncError> {
+fn open_connection(
+    path: &Path,
+    encryption_key: Option<DatabaseKey>,
+) -> Result<Connection, SyncError> {
+    let database_existed = path.exists();
     let conn = Connection::open(path)
         .map_err(|e| SyncError::Database(format!("Failed to connect to DB: {}", e)))?;
+
+    if let Some(key) = encryption_key {
+        open_encrypted_connection(&conn, path, database_existed, &key)?;
+    }
 
     conn.busy_timeout(Duration::from_secs(5))
         .map_err(|e| SyncError::Database(format!("Failed to set busy timeout: {}", e)))?;
@@ -215,6 +230,53 @@ fn open_connection(path: &Path) -> Result<Connection, SyncError> {
         .map_err(|e| SyncError::Database(format!("Failed to set synchronous mode: {}", e)))?;
 
     Ok(conn)
+}
+
+#[cfg(feature = "sqlcipher")]
+fn open_encrypted_connection(
+    conn: &Connection,
+    path: &Path,
+    database_existed: bool,
+    key: &DatabaseKey,
+) -> Result<(), SyncError> {
+    conn.pragma_update(None, "hexkey", key.as_hex_key())
+        .map_err(|e| {
+            SyncError::Database(format!(
+                "Failed to apply SQLCipher key to {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+    conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .map_err(|e| {
+            let hint = if database_existed {
+                "If this path previously contained a plaintext SQLite database, move, delete, or migrate it separately before enabling encryption."
+            } else {
+                "The database could not be validated after applying the SQLCipher key."
+            };
+            SyncError::Database(format!(
+                "Failed to open encrypted database at {}: {} {}",
+                path.display(),
+                hint,
+                e
+            ))
+        })?;
+
+    Ok(())
+}
+
+#[cfg(not(feature = "sqlcipher"))]
+fn open_encrypted_connection(
+    _conn: &Connection,
+    path: &Path,
+    _database_existed: bool,
+    _key: &DatabaseKey,
+) -> Result<(), SyncError> {
+    Err(SyncError::Database(format!(
+        "SQLCipher support is disabled. Rebuild Baresync with the `sqlcipher` feature to open encrypted database {}.",
+        path.display()
+    )))
 }
 
 fn execute_sql(

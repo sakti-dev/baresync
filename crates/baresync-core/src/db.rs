@@ -1,8 +1,12 @@
 use crate::db_worker::DbWorker;
 use crate::error::SyncError;
+use std::convert::TryFrom;
+use std::error::Error;
+use std::fmt;
 use serde::Serialize;
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::fs;
 
 #[derive(Clone)]
@@ -16,7 +20,51 @@ impl DbClient {
     }
 
     pub async fn connect(path: impl AsRef<Path>) -> Result<Self, SyncError> {
-        let worker = DbWorker::connect(path).await?;
+        Self::connect_with_provider(path, None).await
+    }
+
+    pub async fn connect_with_encryption(
+        path: impl AsRef<Path>,
+        provider: Arc<dyn EncryptionKeyProvider>,
+    ) -> Result<Self, SyncError> {
+        Self::connect_with_provider(path, Some(provider)).await
+    }
+
+    async fn connect_with_provider(
+        path: impl AsRef<Path>,
+        provider: Option<Arc<dyn EncryptionKeyProvider>>,
+    ) -> Result<Self, SyncError> {
+        let path = path.as_ref().to_path_buf();
+        let encryption_key = if let Some(provider) = provider {
+            if !cfg!(feature = "sqlcipher") {
+                return Err(SyncError::Database(
+                    "SQLCipher support is disabled. Rebuild Baresync with the `sqlcipher` feature to use an encryption key provider."
+                        .to_string(),
+                ));
+            }
+
+            Some(
+                provider
+                    .encryption_key(EncryptionKeyContext {
+                        db_path: path.clone(),
+                        database_exists: path.exists(),
+                    })
+                    .map_err(|e| {
+                        SyncError::Database(format!(
+                            "Failed to obtain database encryption key: {}",
+                            e
+                        ))
+                    })?,
+            )
+        } else {
+            None
+        };
+
+        let worker = if let Some(encryption_key) = encryption_key {
+            DbWorker::connect_with_encryption(path, Some(encryption_key)).await?
+        } else {
+            DbWorker::connect(path).await?
+        };
         let db = Self::from_worker(worker);
         ensure_sync_client_identity_table(&db).await?;
         Ok(db)
@@ -73,6 +121,91 @@ pub struct DbExecutionResult {
     pub rows_affected: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct EncryptionKeyContext {
+    pub db_path: PathBuf,
+    pub database_exists: bool,
+}
+
+pub trait EncryptionKeyProvider: Send + Sync {
+    fn encryption_key(
+        &self,
+        context: EncryptionKeyContext,
+    ) -> Result<DatabaseKey, Box<dyn Error + Send + Sync>>;
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct DatabaseKey([u8; 32]);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DatabaseKeyError {
+    len: usize,
+}
+
+impl DatabaseKeyError {
+    fn new(len: usize) -> Self {
+        Self { len }
+    }
+}
+
+impl fmt::Display for DatabaseKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "database key must contain exactly 32 bytes, got {}",
+            self.len
+        )
+    }
+}
+
+impl Error for DatabaseKeyError {}
+
+impl fmt::Debug for DatabaseKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DatabaseKey([REDACTED])")
+    }
+}
+
+impl From<[u8; 32]> for DatabaseKey {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+}
+
+impl TryFrom<Vec<u8>> for DatabaseKey {
+    type Error = DatabaseKeyError;
+
+    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+        Self::try_from(bytes.as_slice())
+    }
+}
+
+impl TryFrom<&[u8]> for DatabaseKey {
+    type Error = DatabaseKeyError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() != 32 {
+            return Err(DatabaseKeyError::new(bytes.len()));
+        }
+
+        let mut key = [0u8; 32];
+        key.copy_from_slice(bytes);
+        Ok(Self(key))
+    }
+}
+
+impl DatabaseKey {
+    #[cfg(feature = "sqlcipher")]
+    pub(crate) fn as_hex_key(&self) -> String {
+        let mut hex = String::with_capacity(64);
+        for byte in &self.0 {
+            use std::fmt::Write as _;
+            let _ = write!(&mut hex, "{:02x}", byte);
+        }
+        hex
+    }
+}
+
 pub struct LocalDatabase {
     db: DbClient,
 }
@@ -87,10 +220,26 @@ impl LocalDatabase {
 
         Ok(Self { db })
     }
+
+    pub async fn connect_with_encryption(
+        path: impl AsRef<Path>,
+        provider: Arc<dyn EncryptionKeyProvider>,
+    ) -> Result<Self, SyncError> {
+        let db = connect_db_with_encryption(path, provider).await?;
+
+        Ok(Self { db })
+    }
 }
 
 pub async fn connect_db(path: impl AsRef<Path>) -> Result<DbClient, SyncError> {
     DbClient::connect(path).await
+}
+
+pub async fn connect_db_with_encryption(
+    path: impl AsRef<Path>,
+    provider: Arc<dyn EncryptionKeyProvider>,
+) -> Result<DbClient, SyncError> {
+    DbClient::connect_with_encryption(path, provider).await
 }
 
 async fn ensure_sync_client_identity_table(db: &DbClient) -> Result<(), SyncError> {

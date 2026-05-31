@@ -1,4 +1,6 @@
 use std::env;
+#[cfg(feature = "sqlcipher")]
+use std::error::Error;
 #[cfg(target_os = "android")]
 use std::fs;
 use std::sync::Arc;
@@ -7,6 +9,8 @@ use baresync_core::http::SyncHttpTransport;
 use serde::Serialize;
 use tauri::{command, generate_context, generate_handler, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+#[cfg(feature = "sqlcipher")]
+use tauri_plugin_baresync::{DatabaseKey, EncryptionKeyContext, EncryptionKeyProvider};
 use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
 
 #[derive(Serialize)]
@@ -78,6 +82,20 @@ fn fixture_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {
 fn fixture_transport() -> Option<Arc<dyn SyncHttpTransport>> {
     let _ = fixture_encoding();
     None
+}
+
+#[cfg(feature = "sqlcipher")]
+#[derive(Clone, Default)]
+struct FixtureEncryptionKeyProvider;
+
+#[cfg(feature = "sqlcipher")]
+impl EncryptionKeyProvider for FixtureEncryptionKeyProvider {
+    fn encryption_key(
+        &self,
+        _context: EncryptionKeyContext,
+    ) -> Result<DatabaseKey, Box<dyn Error + Send + Sync>> {
+        Ok(DatabaseKey::from([0x42; 32]))
+    }
 }
 
 #[command]
@@ -211,19 +229,19 @@ async fn run_garbage_collection(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let plugin_builder = BaresyncBuilder::new()
+        .api_base_url(fixture_api_url())
+        .encoding(fixture_encoding())
+        .db_path(fixture_db_path())
+        .contract_tables(fixture_contract_tables())
+        .migrations(fixture_migrations())
+        .transport(fixture_transport().unwrap_or_else(baresync_core::http::default_transport));
+
+    #[cfg(feature = "sqlcipher")]
+    let plugin_builder = plugin_builder.encryption_key_provider(FixtureEncryptionKeyProvider);
+
     tauri::Builder::default()
-        .plugin(
-            BaresyncBuilder::new()
-                .api_base_url(fixture_api_url())
-                .encoding(fixture_encoding())
-                .db_path(fixture_db_path())
-                .contract_tables(fixture_contract_tables())
-                .migrations(fixture_migrations())
-                .transport(
-                    fixture_transport().unwrap_or_else(baresync_core::http::default_transport),
-                )
-                .build(),
-        )
+        .plugin(plugin_builder.build())
         .invoke_handler(generate_handler![
             reset_fixture_state,
             run_sql,

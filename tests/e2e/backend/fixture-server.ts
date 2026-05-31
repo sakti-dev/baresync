@@ -6,6 +6,7 @@ import {
   encodeSyncResponse,
 } from "../../../packages/baresync/src/server/index";
 import { resolveFixtureTransportMode } from "../fixture-transport";
+import { resolveFixtureBackendHost } from "./fixture-server-config";
 
 interface Row extends Record<string, unknown> {
   deletedAt: string | null;
@@ -40,6 +41,7 @@ interface SqliteDatabase {
 }
 
 const port = Number(process.env.BARESYNC_FIXTURE_BACKEND_PORT ?? "18080");
+const host = resolveFixtureBackendHost();
 const scopeId = process.env.BARESYNC_FIXTURE_SCOPE_ID ?? "merchant-1";
 const serverTime = "2026-05-20T00:00:00.000Z";
 const transportMode = resolveFixtureTransportMode();
@@ -637,9 +639,11 @@ async function decodeFixtureRequest(input: {
 }
 
 runtime.Bun.serve({
+  host,
   port,
   fetch: (request: Request) => {
     const routeKey = `${request.method} ${new URL(request.url).pathname}`;
+    console.log(`[fixture-backend] request=${routeKey}`);
     const handler = routeHandlers[routeKey];
     if (handler) {
       return handler(request);
@@ -661,6 +665,6 @@ const routeHandlers: Record<
   "POST /sync/push": handlePushRequest,
 };
 
-console.log(`[fixture-backend] listening on http://127.0.0.1:${port}`);
+console.log(`[fixture-backend] listening on http://${host}:${port}`);
 console.log(`[fixture-backend] dbPath=${dbPath}`);
 console.log(`[fixture-backend] encoding=${transportMode}`);

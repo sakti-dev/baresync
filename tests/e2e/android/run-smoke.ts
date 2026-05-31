@@ -5,6 +5,12 @@ import {
   DEFAULT_FIXTURE_TRANSPORT_MODE,
   FIXTURE_TRANSPORT_ENV,
 } from "../fixture-transport";
+import {
+  buildAnimationScaleCommand,
+  buildScreenTimeoutCommand,
+  buildStayAwakeCommand,
+} from "./device-power";
+import { inferLanHostAddressFromIpAddr } from "./host-address";
 
 const DEVICE_STATE_SPLIT_RE = /\s+/;
 const APP_ID_PLACEHOLDER = ["$", "{BARESYNC_ANDROID_APP_ID}"].join("");
@@ -47,10 +53,10 @@ const bunRuntime = globalThis as typeof globalThis & {
   };
 };
 
-function runSync(args: string[]) {
+function runSync(args: string[], options: { inherit?: boolean } = {}) {
   const result = bunRuntime.Bun.spawnSync(args, {
-    stderr: "pipe",
-    stdout: "pipe",
+    stderr: options.inherit ? "inherit" : "pipe",
+    stdout: options.inherit ? "inherit" : "pipe",
     stdin: "ignore",
   });
 
@@ -91,13 +97,20 @@ function fail(message: string): never {
   throw new Error(message);
 }
 
+function inferHostAddress() {
+  const addresses = runSync(["ip", "-4", "addr", "show", "scope", "global"]);
+  if (addresses.code !== 0) {
+    return null;
+  }
+
+  return inferLanHostAddressFromIpAddr(addresses.stdout);
+}
+
 const fixtureAppId =
   runtime.process.env.BARESYNC_ANDROID_APP_ID ?? "com.baresync.fixture";
 
 const readyText =
   runtime.process.env.BARESYNC_ANDROID_READY_TEXT ?? "Baresync Fixture";
-const fixtureBackendUrl =
-  runtime.process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:18080";
 const fixtureEncoding =
   runtime.process.env[FIXTURE_TRANSPORT_ENV] ?? DEFAULT_FIXTURE_TRANSPORT_MODE;
 runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
@@ -122,6 +135,48 @@ if (!device) {
   );
 }
 
+const keepAwake = runSync(buildStayAwakeCommand(device.serial, true), {
+  inherit: true,
+});
+if (keepAwake.code !== 0) {
+  fail("Failed to keep Android device awake before smoke run.");
+}
+
+const extendScreenTimeout = runSync(
+  buildScreenTimeoutCommand(device.serial, 3_600_000),
+  {
+    inherit: true,
+  }
+);
+if (extendScreenTimeout.code !== 0) {
+  fail("Failed to extend Android screen timeout before smoke run.");
+}
+
+const disableAnimations = runSync(
+  buildAnimationScaleCommand(device.serial, 0),
+  {
+    inherit: true,
+  }
+);
+if (disableAnimations.code !== 0) {
+  fail("Failed to disable Android animations before smoke run.");
+}
+
+let fixtureBackendUrl = runtime.process.env.BARESYNC_FIXTURE_API_URL;
+if (!fixtureBackendUrl) {
+  if (device.isEmulator) {
+    fixtureBackendUrl = "http://10.0.2.2:18080";
+  } else {
+    const hostAddress = inferHostAddress();
+    if (!hostAddress) {
+      fail(
+        "BARESYNC_FIXTURE_API_URL is required for this device because the host address could not be inferred."
+      );
+    }
+    fixtureBackendUrl = `http://${hostAddress}:18080`;
+  }
+}
+
 async function waitForFixtureBackend(apiUrl: string) {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -137,6 +192,44 @@ async function waitForFixtureBackend(apiUrl: string) {
   }
 
   fail(`Fixture backend did not become ready at ${apiUrl}`);
+}
+
+async function waitForBackendPush(apiUrl: string, expectedIds: string[]) {
+  const deadline = Date.now() + 30_000;
+  let lastState: string | null = null;
+
+  while (Date.now() < deadline) {
+    const response = await fetch(`${apiUrl}/__state`);
+    if (!response.ok) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+      continue;
+    }
+
+    const backendState = (await response.json()) as {
+      pushed: {
+        categories: Array<{ id: string }>;
+        products: Array<{ id: string }>;
+      };
+    };
+
+    const pushedState = JSON.stringify(backendState.pushed);
+    lastState = pushedState;
+
+    if (expectedIds.every((id) => pushedState.includes(id))) {
+      return backendState;
+    }
+
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+  }
+
+  fail(
+    [
+      "Fixture backend did not record the expected pushed rows before timeout.",
+      lastState ? `Last pushed state: ${lastState}` : null,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(" ")
+  );
 }
 
 await waitForFixtureBackend(fixtureBackendUrl);
@@ -191,31 +284,32 @@ const maestro = bunRuntime.Bun.spawn(
 );
 
 const exitCode = await maestro.exited;
+const restoreAnimations = runSync(
+  buildAnimationScaleCommand(device.serial, 1),
+  {
+    inherit: true,
+  }
+);
+if (restoreAnimations.code !== 0) {
+  console.warn(
+    `[android:sync] failed to restore Android animation scale for ${device.serial}`
+  );
+}
+const restoreAwake = runSync(buildStayAwakeCommand(device.serial, false), {
+  inherit: true,
+});
+if (restoreAwake.code !== 0) {
+  console.warn(
+    `[android:sync] failed to restore Android sleep setting for ${device.serial}`
+  );
+}
 if (exitCode !== 0) {
   runtime.process.exit(exitCode);
 }
 
-const backendStateResponse = await fetch(`${fixtureBackendUrl}/__state`);
-if (!backendStateResponse.ok) {
-  fail(
-    `Failed to read fixture backend state from ${fixtureBackendUrl}/__state`
-  );
-}
-
-const backendState = (await backendStateResponse.json()) as {
-  pushed: {
-    categories: Array<{ id: string }>;
-    products: Array<{ id: string }>;
-  };
-};
-
-const pushedState = JSON.stringify(backendState.pushed);
-if (!pushedState.includes("local-cat-001")) {
-  fail("Fixture backend did not record the pushed category local-cat-001");
-}
-
-if (!pushedState.includes("local-prod-001")) {
-  fail("Fixture backend did not record the pushed product local-prod-001");
-}
+await waitForBackendPush(fixtureBackendUrl, [
+  "local-cat-001",
+  "local-prod-001",
+]);
 
 runtime.process.exit(exitCode);

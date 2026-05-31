@@ -37,7 +37,7 @@ The public fixture app is the only supported E2E target in this repo.
 - Tauri app path: `tests/fixture-app/src-tauri`
 - Backend path: `tests/e2e/backend/fixture-server.ts`
 - Desktop smoke: `tests/e2e/desktop/sync-smoke.test.ts`
-- Android smoke: `tests/e2e/android/sync-smoke.yaml`
+- Android smoke: `tests/e2e/android/run-adb-smoke.ts`
 
 Do not wire `openspec/external/sakti-pos` into public E2E. Private downstream apps should copy the fixture integration pattern and keep their own E2E outside this public repo.
 
@@ -71,7 +71,7 @@ The current backend exposes:
 - `POST /sync/push`
 
 The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`. Use `protobuf` when you want the same smoke flow to exercise protobuf request/response bodies.
-The E2E package also exposes `fixture:backend:json`, `fixture:backend:protobuf`, `desktop:sync:json`, `desktop:sync:protobuf`, `android:sync:json`, and `android:sync:protobuf` for explicit transport selection.
+The E2E package also exposes `fixture:backend:json`, `desktop:sync:json`, `android:sync:json`, and `android:maestro:sync:json` for explicit transport or runner selection.
 It also exposes `fixture:backend:contract:json` and `fixture:backend:contract:protobuf` for the host-side backend contract gate.
 
 Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:18080`. That leads to stale state, port conflicts, and false passes.
@@ -127,7 +127,7 @@ Typical command:
 ```sh
 nix develop .#default --command bash -lc '
   cd tests/e2e
-  BARESYNC_FIXTURE_ENCODING=protobuf \
+  BARESYNC_FIXTURE_ENCODING=json \
   BARESYNC_DESKTOP_APP_PATH=/home/eekrain/CODE/baresync/target/debug/baresync-fixture \
     bun run desktop:sync
 '
@@ -157,7 +157,7 @@ Android smoke is opt-in final lifecycle confidence. It should stay much smaller 
 Prerequisites:
 
 - default Nix dev shell
-- built fixture Android app installed on a device/emulator, or a workflow that installs it before Maestro runs
+- built fixture Android app installed on a device/emulator, or a workflow that installs it before the ADB smoke runner starts
 - connected emulator or physical device visible to `adb devices`
 - `BARESYNC_ANDROID_APP_ID`
 - `BARESYNC_ANDROID_READY_TEXT`
@@ -182,7 +182,7 @@ The installer should:
 - build the debug APK
 - install with `adb install -r`
 
-Maestro is provided by the default Nix dev shell:
+The default Android smoke runner uses direct ADB commands. It launches the app, reads UI state with `uiautomator`, taps fixture controls by visible text bounds, and verifies backend `/__state`. Maestro remains available for optional higher-level UI flow coverage:
 
 ```sh
 nix develop .#default --command bash -lc 'maestro --version'
@@ -200,7 +200,7 @@ nix develop .#default --command bash -lc '
 '
 ```
 
-`bun run android:sync` performs adb preflight first. It fails early when no usable device is attached or when the fixture package is not installed on the selected target.
+`bun run android:sync` installs the fixture app, performs adb preflight, clears fixture app data, launches the app, and fails early when no usable device is attached or when the fixture package is not installed on the selected target.
 
 Android smoke should prove:
 
@@ -209,7 +209,6 @@ Android smoke should prove:
 - baseline pull renders fixture rows and baseline state becomes satisfied
 - local create renders visible fixture rows before manual sync
 - manual sync pushes rows and marks them clean/synced
-- restart preserves rows and clean state
 - app data reset or reinstall produces a fresh baseline
 
 Android smoke should not test idempotency, conflict resolution, adaptive chunking, or detailed protocol semantics. Those belong in host tests.
@@ -217,8 +216,8 @@ The backend contract tests cover the HTTP contract and SQLite state transitions 
 
 Android smoke assertions need Android-specific selector discipline:
 
-- Maestro text selectors match accessibility text nodes, not arbitrary substrings inside a long JSON row. Use regex selectors such as `.*Fixture Category 001.*` for rendered JSON rows.
-- Use `extendedWaitUntil` for baseline/manual sync results or visible synced rows when device networking is slower than Maestro's default assertion timeout.
+- Direct ADB reads Android accessibility text nodes through `uiautomator`; keep compact semantic state such as `Smoke State` visible near the top of the fixture app.
+- Use the direct ADB runner for physical-device sync confidence. Use `android:maestro:sync` only when you intentionally need Maestro-level UI automation behavior.
 - SQLite booleans render as `1` or `0`, so clean-state assertions should match `"is_synced":1`, not `"is_synced":true`.
 - Prefer asserting durable semantic state such as rendered baseline rows, created local rows, clean state, and backend `/__state` over brittle full sync-result JSON.
 

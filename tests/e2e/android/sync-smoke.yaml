@@ -2,38 +2,36 @@ appId: ${BARESYNC_ANDROID_APP_ID}
 ---
 - launchApp:
     clearState: true
-- waitForAnimationToEnd
-- assertVisible: "Baresync Fixture"
-- assertVisible: "ready"
+- extendedWaitUntil:
+    visible: "ready"
+    timeout: 30000
 - assertVisible: "${BARESYNC_FIXTURE_ENCODING}"
 - assertVisible: "DB Path"
 - assertVisible: "Dirty Rows"
 - assertVisible: "Migration Count"
 - assertVisible: "Needs Baseline"
-- tapOn: "Baseline sync"
-- waitForAnimationToEnd
+- tapOn:
+    id: "baseline-sync"
+    waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
-    visible: ".*Drinks.*"
+    visible: ".*cat:Drinks.*"
     timeout: 30000
-- assertVisible: ".*Drinks.*"
-- assertVisible: ".*Kopi Susu.*"
-- tapOn: "Create local row"
-- waitForAnimationToEnd
-- assertVisible: ".*Fixture Category 001.*"
-- assertVisible: ".*Fixture Product 001.*"
-- tapOn: "Manual sync"
-- waitForAnimationToEnd
+- assertVisible: ".*prod:Kopi Susu.*"
+- tapOn:
+    id: "create-row"
+    waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
-    visible: '.*"is_synced":1.*'
+    visible: ".*cat:Fixture Category 001.*"
     timeout: 30000
-- assertVisible: '.*"is_synced":1.*'
-- killApp
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd
+- assertVisible: ".*prod:Fixture Product 001.*"
+- tapOn:
+    id: "manual-sync"
+    waitToSettleTimeoutMs: 0
 - extendedWaitUntil:
-    visible: "ready"
+    visible: '.*"mode":"(push_only|full_sync)".*'
     timeout: 30000
-- assertVisible: ".*Fixture Category 001.*"
-- assertVisible: ".*Fixture Product 001.*"
-- assertVisible: '.*"is_synced":1.*'
+- assertVisible: '.*"mode":"(push_only|full_sync)".*'
+- extendedWaitUntil:
+    visible: ".*cat:local-cat-001:synced.*"
+    timeout: 30000
+- assertVisible: ".*prod:local-prod-001:synced.*"

@@ -37,6 +37,10 @@ Database encryption SHALL be opt-in. If no encryption key provider is configured
 - **WHEN** an app does not enable encryption
 - **THEN** the app SHALL NOT need to provide keys, key providers, provisioning state, or server-side encryption configuration
 
+#### Scenario: Provider configured without SQLCipher feature
+- **WHEN** an app configures an encryption key provider but builds without the SQLCipher feature
+- **THEN** Baresync SHALL fail setup with a clear error that encryption requires the SQLCipher feature and SHALL NOT expose managed plugin state
+
 ### Requirement: Encrypted database lifecycle
 When encryption is enabled, Baresync SHALL configure SQLCipher before migrations, client identity setup, schema inspection, or command state exposure.
 

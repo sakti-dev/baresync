@@ -39,9 +39,13 @@ The Rust layer configures SQLite with:
 - **Normal synchronous mode** — balances safety and performance
 - **Foreign keys ON** — enforces referential integrity
 - **5-second busy timeout** — retries on lock contention
-- **Single connection pool** — prevents concurrent write conflicts
+- **Single worker-owned connection** — prevents concurrent write conflicts
 
-You don't configure these yourself — they're set by `baresync-core` when the plugin connects.
+## Optional encryption at rest
+
+Encryption is opt-in. If you do not configure an encryption key provider, Baresync opens a normal plaintext SQLite database.
+
+For the full setup flow, failure cases, and Rust API shape, see [Database Encryption](/docs/local-database/encryption).
 
 ## Database path
 
@@ -66,6 +70,7 @@ builder.db_path(app.path().app_data_dir().unwrap().join("sync.db").to_str().unwr
 | [Create Tauri Drizzle Database](/docs/local-database/create-tauri-drizzle-database) | Setting up the JS Drizzle proxy |
 | [Table Registry Pattern](/docs/local-database/table-registry-pattern) | Organizing your Drizzle schema |
 | [Transactions](/docs/local-database/transactions) | Batching writes via `writeTransaction` and `db.batch` |
+| [Database Encryption](/docs/local-database/encryption) | SQLCipher setup, key providers, and startup ordering |
 | [Migrations](/docs/local-database/migrations) | How Baresync runs SQL migrations at startup |
 | [DB Info](/docs/local-database/db-info) | Checking database size and path |
 | [Debugging](/docs/local-database/debugging) | Inspecting the local database |

@@ -27,11 +27,15 @@ The plugin SHALL run configured migrations during plugin setup before exposing m
 ## ADDED Requirements
 
 ### Requirement: Builder accepts encryption key provider
-The Tauri plugin builder SHALL accept an encryption key provider configuration for apps that opt into encrypted local database storage.
+The Tauri plugin builder SHALL accept an encryption key provider configuration for apps that opt into encrypted local database storage. The builder API MAY be available in plaintext builds, but encrypted setup SHALL only be functional when the SQLCipher Cargo feature is enabled.
 
 #### Scenario: Builder with encryption provider
 - **WHEN** `Builder::new().encryption_key_provider(provider).build()` is registered in a Tauri app
 - **THEN** the plugin SHALL use the provider during setup to open or create the encrypted local database
+
+#### Scenario: Builder provider without SQLCipher feature
+- **WHEN** `encryption_key_provider` is configured but the SQLCipher Cargo feature is not enabled
+- **THEN** plugin setup SHALL fail clearly before exposing managed command state, explaining that encrypted database setup requires the SQLCipher feature
 
 #### Scenario: Builder without encryption provider
 - **WHEN** the builder is used without `encryption_key_provider`

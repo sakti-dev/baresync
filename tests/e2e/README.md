@@ -62,7 +62,7 @@ The backend contract checks should be used first when validating backend request
 Prerequisites:
 
 - The public fixture Android app build
-- Maestro
+- `adb`
 - A connected emulator or device
 
 Example command:
@@ -73,9 +73,9 @@ BARESYNC_ANDROID_READY_TEXT=Baresync \
 bun --cwd tests/e2e run android:sync
 ```
 
-The Android smoke harness also exposes `android:sync:json` for explicit transport runs.
+The Android smoke harness also exposes `android:sync:json` for explicit transport runs. The default Android smoke path uses direct ADB automation; Maestro remains available through `android:maestro:sync` for optional higher-level UI flow checks.
 
-`android:sync` now performs an adb preflight and refuses to run if no usable device is attached or if the fixture package is not installed on the selected target.
+`android:sync` installs the fixture app, performs an adb preflight, clears fixture app data, launches with `adb shell am start`, taps fixture controls through `uiautomator` bounds, and verifies the fixture backend received pushed local rows.
 
 Android backend rules:
 
@@ -83,7 +83,7 @@ Android backend rules:
 - Physical-device builds must use a LAN-reachable backend URL and should be built with `BARESYNC_FIXTURE_API_URL` set before packaging the app.
 - The public fixture app resolves the backend URL from Rust at startup, so the installed Android build must match the target it was built for.
 
-The Android smoke is final lifecycle and filesystem confidence only. Sync correctness belongs in the host command, JS invoke, and host-only simulation suites.
+The Android smoke installs a fresh fixture build before it runs so the APK and backend URL stay in sync with the current host. It is still final lifecycle and filesystem confidence only; sync correctness belongs in the host command, JS invoke, and host-only simulation suites.
 When Android smoke fails, collect:
 
 - the selected transport mode from the runner environment

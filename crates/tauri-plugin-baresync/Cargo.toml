@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["tauri", "sqlite", "sync"]
 categories = ["api-bindings", "database"]
 
+[features]
+default = []
+sqlcipher = ["baresync-core/sqlcipher"]
+
 [dependencies]
 tauri = { version = "2", features = [] }
 baresync-core = { version = "0.1.0", path = "../baresync-core" }

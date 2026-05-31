@@ -11,8 +11,12 @@
     "desktop:sync": "bun x wdio run desktop/webdriverio.conf.ts",
     "desktop:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun x wdio run desktop/webdriverio.conf.ts",
     "android:install-fixture": "bun run android/install-fixture.ts",
-    "android:sync": "bun run android/run-smoke.ts",
-    "android:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun run android/run-smoke.ts",
+    "android:sync": "bun run android/install-fixture.ts && bun run android/run-adb-smoke.ts",
+    "android:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun run android/install-fixture.ts && BARESYNC_FIXTURE_ENCODING=json bun run android/run-adb-smoke.ts",
+    "android:adb-sync": "bun run android/install-fixture.ts && bun run android/run-adb-smoke.ts",
+    "android:adb-sync:json": "BARESYNC_FIXTURE_ENCODING=json bun run android/install-fixture.ts && BARESYNC_FIXTURE_ENCODING=json bun run android/run-adb-smoke.ts",
+    "android:maestro:sync": "bun run android/install-fixture.ts && bun run android/run-smoke.ts",
+    "android:maestro:sync:json": "BARESYNC_FIXTURE_ENCODING=json bun run android/install-fixture.ts && BARESYNC_FIXTURE_ENCODING=json bun run android/run-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

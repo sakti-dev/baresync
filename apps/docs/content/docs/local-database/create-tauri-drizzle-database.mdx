@@ -20,6 +20,8 @@ const TABLE = { items, locations, syncOutbox, syncCursors };
 const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
 ```
 
+This JS setup never creates or stores the local database key. If your app enables SQLCipher, configure the Rust plugin with an encryption key provider before this code runs. See [Database Encryption](/docs/local-database/encryption) for the full startup order and key-provider setup. By the time the webview starts using Drizzle, the Rust side has already opened the database and run migrations.
+
 ## Config options
 
 ```ts

@@ -1,21 +1,54 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_FIXTURE_TRANSPORT_MODE,
   FIXTURE_TRANSPORT_ENV,
 } from "../fixture-transport";
+import { buildAndroidBuildArgs } from "./build-fixture";
+import {
+  buildScreenTimeoutCommand,
+  buildStayAwakeCommand,
+} from "./device-power";
+import { inferLanHostAddressFromIpAddr } from "./host-address";
+import {
+  buildInstallApkCommand,
+  buildUninstallAppCommand,
+} from "./package-install";
+import {
+  buildAndroidKeystoreProperties,
+  buildReleaseKeystoreCommand,
+  ensureAndroidReleaseSigning,
+} from "./release-signing";
 
 const DEVICE_STATE_SPLIT_RE = /\s+/;
-const IPV4_HOST_RE = /^(\d{1,3}(?:\.\d{1,3}){3})/;
-const ROUTE_SRC_RE = /\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})\b/;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, "..");
 const repoRoot = resolve(packageDir, "..", "..");
 const fixtureDir = resolve(repoRoot, "tests/fixture-app");
 const androidProjectDir = resolve(fixtureDir, "src-tauri/gen/android");
+const androidBuildGradlePath = resolve(
+  androidProjectDir,
+  "app/build.gradle.kts"
+);
+const androidKeystorePath = resolve(
+  androidProjectDir,
+  "fixture-release.keystore"
+);
+const androidKeystorePropertiesPath = resolve(
+  androidProjectDir,
+  "keystore.properties"
+);
 const apkOutputDir = resolve(androidProjectDir, "app/build/outputs/apk");
+const fixtureKeystoreAlias = "baresync-fixture";
+const fixtureKeystorePassword = "baresync-fixture";
 
 const runtime = globalThis as typeof globalThis & {
   process: {
@@ -23,6 +56,11 @@ const runtime = globalThis as typeof globalThis & {
     exit(code?: number): void;
   };
 };
+
+const fixtureAppId =
+  runtime.process.env.BARESYNC_ANDROID_APP_ID ?? "com.baresync.fixture";
+
+const cargoFeatures = runtime.process.env.BARESYNC_FIXTURE_CARGO_FEATURES;
 
 const bunRuntime = globalThis as typeof globalThis & {
   Bun: {
@@ -123,18 +161,13 @@ function mapAbiToTauriTarget(abi: string) {
   fail(`Unsupported Android ABI: ${abi}`);
 }
 
-function inferHostAddress(serial: string) {
-  const match = IPV4_HOST_RE.exec(serial);
-  if (!match) {
+function inferHostAddress() {
+  const addresses = runSync(["ip", "-4", "addr", "show", "scope", "global"]);
+  if (addresses.code !== 0) {
     return null;
   }
 
-  const route = runSync(["ip", "route", "get", match[1]]);
-  if (route.code !== 0) {
-    return null;
-  }
-
-  return ROUTE_SRC_RE.exec(route.stdout)?.[1] ?? null;
+  return inferLanHostAddressFromIpAddr(addresses.stdout);
 }
 
 function resolveFixtureApiUrl(device: DeviceTarget): string {
@@ -142,11 +175,7 @@ function resolveFixtureApiUrl(device: DeviceTarget): string {
     return runtime.process.env.BARESYNC_FIXTURE_API_URL;
   }
 
-  if (device.isEmulator) {
-    return "http://10.0.2.2:18080";
-  }
-
-  const hostAddress = inferHostAddress(device.serial);
+  const hostAddress = device.isEmulator ? "10.0.2.2" : inferHostAddress();
   if (hostAddress) {
     return `http://${hostAddress}:18080`;
   }
@@ -181,6 +210,45 @@ function findLatestApk() {
   )[0];
 }
 
+function ensureReleaseSigning() {
+  if (!existsSync(androidBuildGradlePath)) {
+    fail(`Android Gradle file was not generated at ${androidBuildGradlePath}`);
+  }
+
+  const buildGradle = readFileSync(androidBuildGradlePath, "utf8");
+  const signedBuildGradle = ensureAndroidReleaseSigning(buildGradle);
+  if (signedBuildGradle !== buildGradle) {
+    writeFileSync(androidBuildGradlePath, signedBuildGradle);
+  }
+
+  writeFileSync(
+    androidKeystorePropertiesPath,
+    buildAndroidKeystoreProperties(
+      "../fixture-release.keystore",
+      fixtureKeystoreAlias,
+      fixtureKeystorePassword
+    )
+  );
+
+  if (existsSync(androidKeystorePath)) {
+    return;
+  }
+
+  const keytool = runSync(
+    buildReleaseKeystoreCommand(
+      androidKeystorePath,
+      fixtureKeystoreAlias,
+      fixtureKeystorePassword
+    ),
+    {
+      inherit: true,
+    }
+  );
+  if (keytool.code !== 0) {
+    fail("Failed to generate Android fixture release keystore.");
+  }
+}
+
 const devices = runSync(["adb", "devices", "-l"]);
 if (devices.code !== 0) {
   fail(`adb devices failed:\n${devices.stderr || devices.stdout}`);
@@ -189,6 +257,23 @@ if (devices.code !== 0) {
 const device = pickUsableDevice(devices.stdout);
 if (!device) {
   fail("No usable adb target found.");
+}
+
+const keepAwake = runSync(buildStayAwakeCommand(device.serial, true), {
+  inherit: true,
+});
+if (keepAwake.code !== 0) {
+  fail("Failed to keep Android device awake before fixture install.");
+}
+
+const extendScreenTimeout = runSync(
+  buildScreenTimeoutCommand(device.serial, 3_600_000),
+  {
+    inherit: true,
+  }
+);
+if (extendScreenTimeout.code !== 0) {
+  fail("Failed to extend Android screen timeout before fixture install.");
 }
 
 const abi = runSync([
@@ -234,25 +319,13 @@ if (!existsSync(androidProjectDir)) {
   }
 }
 
-const build = runSync(
-  [
-    "bun",
-    "x",
-    "@tauri-apps/cli",
-    "android",
-    "build",
-    "--debug",
-    "--apk",
-    "--target",
-    tauriTarget,
-    "--ci",
-  ],
-  {
-    cwd: fixtureDir,
-    env: buildEnv,
-    inherit: true,
-  }
-);
+ensureReleaseSigning();
+
+const build = runSync(buildAndroidBuildArgs(tauriTarget, cargoFeatures), {
+  cwd: fixtureDir,
+  env: buildEnv,
+  inherit: true,
+});
 if (build.code !== 0) {
   fail("Tauri Android APK build failed.");
 }
@@ -260,7 +333,19 @@ if (build.code !== 0) {
 const apk = findLatestApk();
 console.log(`[android:install-fixture] apk=${apk}`);
 
-const install = runSync(["adb", "-s", device.serial, "install", "-r", apk], {
+const uninstall = runSync(
+  buildUninstallAppCommand(device.serial, fixtureAppId),
+  {
+    inherit: true,
+  }
+);
+if (uninstall.code !== 0) {
+  console.log(
+    `[android:install-fixture] ${fixtureAppId} was not installed before release install.`
+  );
+}
+
+const install = runSync(buildInstallApkCommand(device.serial, apk), {
   inherit: true,
 });
 if (install.code !== 0) {
