@@ -1,0 +1,17 @@
+{
+  "name": "__PROJECT_NAME__-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:generate:local": "drizzle-kit generate --config drizzle.local.config.ts",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev"
+  },
+  "dependencies": {
+    "baresync": "^0.1.1",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.4"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "__PROJECT_NAME__",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "node ./scripts/dev.mjs",
+    "generate:sync": "node ./scripts/run-workspace.mjs packages/sync-contract generate",
+    "migrate:local": "node ./scripts/run-workspace.mjs apps/app db:generate:local",
+    "migrate:server": "node ./scripts/run-workspace.mjs apps/server db:generate"
+  }
+}

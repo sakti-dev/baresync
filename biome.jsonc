@@ -12,7 +12,8 @@
       "!!**/node_modules",
       "!!**/dist",
       "!!docs/external",
-      "!!apps/docs/src/routeTree.gen.ts"
+      "!!apps/docs/src/routeTree.gen.ts",
+      "!!packages/create-baresync/src/templates"
     ],
     "maxSize": 2097152
   },
