@@ -66,9 +66,8 @@
     "baresync": "./dist/cli.js"
   },
   "scripts": {
-    "build:js": "bun x tsc -p tsconfig.build.json",
+    "build": "tsup",
     "build:types": "bun x tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "build": "bun run build:js",
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "clean": "rm -rf dist"
@@ -79,6 +78,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "tsup": "^8.5.1",
     "typescript": "5.9.2",
     "vitest": "^4.1.6"
   }
