@@ -3,9 +3,12 @@
   "private": true,
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "node ./scripts/dev.mjs",
-    "generate:sync": "node ./scripts/run-workspace.mjs packages/sync-contract generate",
-    "migrate:local": "node ./scripts/run-workspace.mjs apps/app db:generate:local",
-    "migrate:server": "node ./scripts/run-workspace.mjs apps/server db:generate"
+    "dev": "__DEV_SCRIPT__",
+    "generate:sync": "__RUN_IN_WORKSPACE__ packages/sync-contract generate",
+    "migrate:local": "__RUN_IN_WORKSPACE__ apps/app db:generate:local",
+    "migrate:server": "__RUN_IN_WORKSPACE__ apps/server db:generate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

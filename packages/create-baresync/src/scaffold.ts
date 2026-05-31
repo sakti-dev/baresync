@@ -280,10 +280,23 @@ export async function scaffoldProject(): Promise<void> {
   const detectedPackageManager = detectPackageManager();
   const packageManager =
     detectedPackageManager ?? (await promptPackageManager());
-  const serverFramework = await promptServerFramework();
 
   const projectDir = path.join(process.cwd(), projectName);
   await ensureEmptyTargetDir(projectDir);
+
+  await fs.mkdir(path.join(projectDir, "apps"), { recursive: true });
+  await fs.mkdir(path.join(projectDir, "packages"), { recursive: true });
+
+  log.info(`Detected package manager: ${packageManager}`);
+
+  const appTargetDir = path.join(projectDir, "apps");
+  await runInteractive(
+    packageManager,
+    createCommandArgs(packageManager, "tauri-app", "app"),
+    appTargetDir
+  );
+
+  const serverFramework = await promptServerFramework();
 
   const options: ScaffoldOptions = {
     packageManager,
@@ -294,22 +307,8 @@ export async function scaffoldProject(): Promise<void> {
   const allFiles = buildRootScaffoldFiles(options);
 
   await writeTemplateSubset(projectDir, options);
-  await fs.mkdir(path.join(projectDir, "apps"), { recursive: true });
-  await fs.mkdir(path.join(projectDir, "packages"), { recursive: true });
 
-  log.info(
-    `Detected package manager: ${packageManager}, server framework: ${serverFramework}`
-  );
-
-  const appTargetDir = path.join(projectDir, "apps");
   const serverTargetDir = path.join(projectDir, "apps");
-
-  await runInteractive(
-    packageManager,
-    createCommandArgs(packageManager, "tauri-app", "app"),
-    appTargetDir
-  );
-
   const serverInitializer = serverFramework === "hono" ? "hono" : "elysia";
   await runInteractive(
     packageManager,

@@ -38,6 +38,35 @@ function replacePackageManager(
   return content.replaceAll("__PACKAGE_MANAGER__", options.packageManager);
 }
 
+function runInWorkspaceCommand(pm: PackageManager): string {
+  switch (pm) {
+    case "bun":
+      return "bun run --cwd";
+    case "pnpm":
+      return "pnpm --filter";
+    case "npm":
+      return "npm run -w";
+    case "yarn":
+      return "yarn workspace";
+    default:
+      return "bun run --cwd";
+  }
+}
+
+function devScript(pm: PackageManager): string {
+  const run = runInWorkspaceCommand(pm);
+  return `concurrently "${run} apps/server dev" "${run} apps/app tauri:dev"`;
+}
+
+function replaceRootScripts(content: string, options: ScaffoldOptions): string {
+  return content
+    .replaceAll(
+      "__RUN_IN_WORKSPACE__",
+      runInWorkspaceCommand(options.packageManager)
+    )
+    .replaceAll("__DEV_SCRIPT__", devScript(options.packageManager));
+}
+
 function syncContractPackageJson() {
   return readTemplateAsset("sync-contract/package.json");
 }
@@ -74,7 +103,10 @@ function syncContractConfig() {
 }
 
 function projectRootPackageJson(options: ScaffoldOptions) {
-  return replaceProjectName(readTemplateAsset("root/package.json"), options);
+  return replaceRootScripts(
+    replaceProjectName(readTemplateAsset("root/package.json"), options),
+    options
+  );
 }
 
 function projectReadme(options: ScaffoldOptions) {
@@ -82,25 +114,6 @@ function projectReadme(options: ScaffoldOptions) {
     replaceProjectName(readTemplateAsset("root/README.md"), options),
     options
   );
-}
-
-function projectScripts(options: ScaffoldOptions) {
-  const runWorkspace = replacePackageManager(
-    readTemplateAsset("root/scripts/run-workspace.mjs"),
-    options
-  );
-  const dev = replacePackageManager(
-    readTemplateAsset("root/scripts/dev.mjs"),
-    options
-  );
-  return [
-    {
-      content: runWorkspace,
-      executable: true,
-      path: "scripts/run-workspace.mjs",
-    },
-    { content: dev, executable: true, path: "scripts/dev.mjs" },
-  ];
 }
 
 function appPackageJson(options: ScaffoldOptions) {
@@ -206,7 +219,6 @@ export function buildRootScaffoldFiles(
   return [
     file("package.json", projectRootPackageJson(options)),
     file("README.md", projectReadme(options)),
-    ...projectScripts(options),
     file("packages/sync-contract/package.json", syncContractPackageJson()),
     file("packages/sync-contract/tsconfig.json", syncContractTsconfig()),
     file(
