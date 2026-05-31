@@ -8,7 +8,13 @@ icon: Rocket
 
 Build a Tauri app that syncs local SQLite rows with your own backend.
 
-Follow these steps in order:
+Start with the `create-baresync` scaffolder for a new project. It creates the workspace shell, sync contract, server wiring, and Tauri setup.
+
+```bash
+bun create baresync
+```
+
+For manual setup or an existing app, follow these steps in order:
 
 1. [Set up the project](/docs/getting-started/project-setup) — monorepo, Tauri app, Hono server.
 2. [Create the sync contract](/docs/getting-started/create-sync-contract) — shared schemas and generated artifacts.

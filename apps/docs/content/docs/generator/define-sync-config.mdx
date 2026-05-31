@@ -63,27 +63,6 @@ tables: {
 
 The generator validates that local-only columns are not in the API schema and vice versa. If you add a column to one side and forget the other, you get a clear error.
 
-## The generate script
-
-Create `packages/sync-contract/generate.ts`:
-
-```ts
-import { generateSyncArtifacts } from "baresync/generator";
-import { syncGeneratorConfig } from "./sync.config";
-
-generateSyncArtifacts(syncGeneratorConfig);
-```
-
-Then in your `package.json`:
-
-```json
-{
-  "scripts": {
-    "generate": "bun generate.ts"
-  }
-}
-```
-
 ## Validation at config time
 
 `defineSyncConfig` validates that:

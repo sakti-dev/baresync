@@ -1,6 +1,8 @@
 # Inventory Example
 
-This is the canonical fullstack starter for Baresync.
+This is the canonical fullstack reference for Baresync.
+
+If you want the default new-project path, use `create-baresync`.
 
 It stays single-scope on purpose:
 

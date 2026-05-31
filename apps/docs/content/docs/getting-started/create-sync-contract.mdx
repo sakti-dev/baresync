@@ -201,17 +201,6 @@ export const syncGeneratorConfig = defineSyncConfig({
 
 Each entry in `tables` maps a table name to its scope column. The generator uses this to produce the upsert and delete ordering.
 
-## Write the generate script
-
-Create `packages/sync-contract/generate.ts`:
-
-```ts
-import { generateSyncArtifacts } from "baresync/generator";
-import { syncGeneratorConfig } from "./sync.config";
-
-generateSyncArtifacts(syncGeneratorConfig);
-```
-
 ## Configure package exports
 
 Edit `packages/sync-contract/package.json`:
@@ -233,7 +222,7 @@ Edit `packages/sync-contract/package.json`:
     "./generated/manifest": "./generated/sync-contract.manifest.json"
   },
   "scripts": {
-    "generate": "bun generate.ts",
+    "generate": "bunx baresync generate",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

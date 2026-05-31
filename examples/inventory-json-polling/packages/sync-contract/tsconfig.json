@@ -8,10 +8,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": [
-    "src/**/*.ts",
-    "sync.config.ts",
-    "generate.ts",
-    "generated/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "sync.config.ts", "generated/**/*.ts"]
 }
