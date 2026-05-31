@@ -2,6 +2,7 @@
 name = "tauri-plugin-baresync"
 version = "0.1.0"
 edition = "2021"
+links = "tauri-plugin-baresync"
 description = "Tauri plugin wrapper for Baresync"
 license = "MIT"
 repository = "https://github.com/sakti-dev/baresync.git"
@@ -20,6 +21,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 chrono = { version = "0.4", features = ["serde"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2.5", features = ["build"] }
 
 [dev-dependencies]
 serde_json = "1"

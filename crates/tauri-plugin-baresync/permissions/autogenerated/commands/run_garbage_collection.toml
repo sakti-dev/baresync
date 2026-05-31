@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-run-garbage-collection"
+description = "Enables the run_garbage_collection command without any pre-configured scope."
+commands.allow = ["run_garbage_collection"]
+
+[[permission]]
+identifier = "deny-run-garbage-collection"
+description = "Denies the run_garbage_collection command without any pre-configured scope."
+commands.deny = ["run_garbage_collection"]

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-run-sql"
+description = "Enables the run_sql command without any pre-configured scope."
+commands.allow = ["run_sql"]
+
+[[permission]]
+identifier = "deny-run-sql"
+description = "Denies the run_sql command without any pre-configured scope."
+commands.deny = ["run_sql"]

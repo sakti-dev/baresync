@@ -17,6 +17,7 @@ interface SyncStateResult {
   loading: boolean;
   localState: SyncLocalState | null;
   pollingStatus: PollingStatus | null;
+  refresh: () => Promise<void>;
 }
 
 export function useSyncState(): SyncStateResult {
@@ -36,5 +37,8 @@ export function useSyncState(): SyncStateResult {
     localState: query.data?.localState ?? null,
     pollingStatus: query.data?.pollingStatus ?? null,
     loading: query.isPending,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }

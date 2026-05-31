@@ -9,7 +9,7 @@ use baresync_core::push::PushResult;
 
 use baresync_core::db::DbClient;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tauri::{command, AppHandle, Manager, RunEvent, Runtime, State, WindowEvent};
 use tokio::sync::{mpsc, Notify};
@@ -42,6 +42,8 @@ pub struct PluginState {
     pub migrations_path: Option<PathBuf>,
     pub poll_notify: Arc<Notify>,
     pub sync_in_progress: Arc<AtomicBool>,
+    pub sql_transaction_depth: Arc<AtomicUsize>,
+    pub sql_transaction_has_writes: Arc<AtomicBool>,
     pub poll_control_tx: tokio::sync::Mutex<Option<mpsc::Sender<ControlMsg>>>,
     pub poll_task_handle: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub poll_state: Arc<tokio::sync::Mutex<PollingState>>,
@@ -66,6 +68,28 @@ fn make_engine(
     })
 }
 
+fn try_begin_sync(state: &PluginState) -> Result<SyncGuard<'_>, String> {
+    if state
+        .sync_in_progress
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err("Sync already in progress".to_string());
+    }
+
+    Ok(SyncGuard { state })
+}
+
+struct SyncGuard<'a> {
+    state: &'a PluginState,
+}
+
+impl Drop for SyncGuard<'_> {
+    fn drop(&mut self) {
+        self.state.sync_in_progress.store(false, Ordering::Release);
+    }
+}
+
 pub async fn run_sql_with_state(
     state: &PluginState,
     query: SqlQuery,
@@ -79,16 +103,108 @@ pub async fn run_sql_with_state(
     Ok(result.rows)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SqlTransactionAction {
+    Begin,
+    Commit,
+    Rollback,
+    Other,
+}
+
+fn classify_sql_transaction_action(sql: &str) -> SqlTransactionAction {
+    let first_word = sql
+        .trim_start()
+        .split(|ch: char| ch.is_whitespace() || ch == ';')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    match first_word.as_str() {
+        "begin" | "savepoint" => SqlTransactionAction::Begin,
+        "commit" | "release" => SqlTransactionAction::Commit,
+        "rollback" => SqlTransactionAction::Rollback,
+        _ => SqlTransactionAction::Other,
+    }
+}
+
+fn should_notify_after_sql(
+    state: &PluginState,
+    method: &str,
+    transaction_action: SqlTransactionAction,
+    rows_affected: u64,
+) -> bool {
+    if method != "run" {
+        return false;
+    }
+
+    match transaction_action {
+        SqlTransactionAction::Begin => {
+            state.sql_transaction_depth.fetch_add(1, Ordering::AcqRel);
+            false
+        }
+        SqlTransactionAction::Commit => {
+            let previous_depth = state.sql_transaction_depth.load(Ordering::Acquire);
+            if previous_depth > 0 {
+                state.sql_transaction_depth.fetch_sub(1, Ordering::AcqRel);
+            }
+            previous_depth <= 1
+                && state
+                    .sql_transaction_has_writes
+                    .swap(false, Ordering::AcqRel)
+        }
+        SqlTransactionAction::Rollback => {
+            state.sql_transaction_depth.store(0, Ordering::Release);
+            state
+                .sql_transaction_has_writes
+                .store(false, Ordering::Release);
+            false
+        }
+        SqlTransactionAction::Other => {
+            if rows_affected == 0 {
+                return false;
+            }
+
+            if state.sql_transaction_depth.load(Ordering::Acquire) > 0 {
+                state
+                    .sql_transaction_has_writes
+                    .store(true, Ordering::Release);
+                return false;
+            }
+
+            true
+        }
+    }
+}
+
 #[command]
 pub async fn run_sql(
     query: SqlQuery,
     state: State<'_, PluginState>,
 ) -> Result<Vec<drizzle_proxy::SqlRow>, String> {
-    let result = run_sql_with_state(&state, query).await;
-    if result.is_ok() {
+    let method = query.method.clone();
+    let transaction_action = classify_sql_transaction_action(&query.sql);
+    let result = drizzle_proxy::run_sql_with_metadata(&state.db, query)
+        .await
+        .map_err(|e| e.to_string());
+    if let Ok(execution) = &result {
+        if execution.rows_affected > 0 {
+            state.event_sink.emit(PluginEvent::DataChanged);
+        }
+    }
+    if result
+        .as_ref()
+        .is_ok_and(|execution| {
+            should_notify_after_sql(
+                &state,
+                &method,
+                transaction_action,
+                execution.rows_affected,
+            )
+        })
+    {
         state.poll_notify.notify_one();
     }
-    result
+    result.map(|execution| execution.rows)
 }
 
 pub async fn run_sql_batch_with_state(
@@ -176,6 +292,7 @@ pub async fn sync_now_with_state(
     state: &PluginState,
     scope_id: String,
 ) -> Result<SyncNowResult, String> {
+    let _guard = try_begin_sync(state)?;
     let engine = make_engine(state, scope_id).await;
     let result = engine.sync_now(1000).await.map_err(|e| e.to_string());
     if let Ok(sync_result) = &result {
@@ -200,6 +317,7 @@ pub async fn sync_push_with_state(
     state: &PluginState,
     scope_id: String,
 ) -> Result<PushResult, String> {
+    let _guard = try_begin_sync(state)?;
     let engine = make_engine(state, scope_id).await;
     let result = engine.push().await.map_err(|e| e.to_string());
     if let Ok(push_result) = &result {
@@ -224,6 +342,7 @@ pub async fn sync_pull_with_state(
     state: &PluginState,
     scope_id: String,
 ) -> Result<PullResult, String> {
+    let _guard = try_begin_sync(state)?;
     let engine = make_engine(state, scope_id).await;
     let result = engine.pull(1000).await.map_err(|e| e.to_string());
     if let Ok(pull_result) = &result {
@@ -248,6 +367,7 @@ pub async fn sync_full_resync_with_state(
     state: &PluginState,
     scope_id: String,
 ) -> Result<SyncNowResult, String> {
+    let _guard = try_begin_sync(state)?;
     let engine = make_engine(state, scope_id).await;
     let result = engine
         .sync_full_resync(1000)
@@ -517,6 +637,9 @@ pub fn handle_window_focus_for_state(state: &PluginState, focused: bool) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
     #[test]
     fn command_signatures_exist() {
         let _ = super::sync_now;
@@ -536,5 +659,107 @@ mod tests {
         let _ = super::pause_polling;
         let _ = super::resume_polling;
         let _ = super::get_polling_status;
+    }
+
+    async fn test_state() -> PluginState {
+        let db = DbClient::connect(":memory:").await.unwrap();
+
+        PluginState {
+            db: Arc::new(db),
+            sync_config: SyncEngineConfig::default(),
+            contract_tables: SyncContractTables {
+                upsert_order: Vec::new(),
+                delete_order: Vec::new(),
+                local_only_columns: Vec::new(),
+            },
+            db_path: PathBuf::from(":memory:"),
+            embedded_migrations: Arc::new(Vec::new()),
+            migrations_path: None,
+            poll_notify: Arc::new(Notify::new()),
+            sync_in_progress: Arc::new(AtomicBool::new(false)),
+            sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+            sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
+            poll_control_tx: tokio::sync::Mutex::new(None),
+            poll_task_handle: tokio::sync::Mutex::new(None),
+            poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
+                paused: false,
+                last_sync_at: None,
+            })),
+            poll_interval_secs: 30,
+            poll_on_background: false,
+            event_sink: Arc::new(NoopPluginEventSink),
+        }
+    }
+
+    #[tokio::test]
+    async fn transaction_writes_notify_only_after_commit() {
+        let state = test_state().await;
+
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("begin"),
+            0
+        ));
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("insert into items values ('1')"),
+            1
+        ));
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("insert into sync_outbox values ('1')"),
+            1
+        ));
+
+        assert!(should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("commit"),
+            0
+        ));
+        assert_eq!(state.sql_transaction_depth.load(Ordering::Acquire), 0);
+        assert!(!state.sql_transaction_has_writes.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn rollback_clears_pending_transaction_notification() {
+        let state = test_state().await;
+
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("begin"),
+            0
+        ));
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("update items set name = 'Coffee'"),
+            1
+        ));
+
+        assert!(!should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("rollback"),
+            0
+        ));
+        assert_eq!(state.sql_transaction_depth.load(Ordering::Acquire), 0);
+        assert!(!state.sql_transaction_has_writes.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn standalone_write_notifies_immediately() {
+        let state = test_state().await;
+
+        assert!(should_notify_after_sql(
+            &state,
+            "run",
+            classify_sql_transaction_action("insert into items values ('1')"),
+            1
+        ));
     }
 }

@@ -75,4 +75,7 @@ app.post("/sync/status", (c) => status(c.req.raw, {}));
 
 export default app;
 
-console.log(`inventory server listening on ${dbPath}`);
+console.log(
+  `inventory server listening on http://127.0.0.1:${process.env.PORT ?? "3001"}`
+);
+console.log(`inventory database seeded at ${dbPath}`);

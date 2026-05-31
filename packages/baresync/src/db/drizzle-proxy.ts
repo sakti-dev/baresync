@@ -18,11 +18,41 @@ export interface TauriDrizzleDatabaseConfig {
   schema: Record<string, unknown>;
 }
 
+interface PluginSqlRow {
+  columns: string[];
+  values: unknown[];
+}
+
 function resolveInvoke(custom?: InvokeFn): InvokeFn {
   if (custom) {
     return custom;
   }
   throw new Error("createTauriDrizzleDatabase requires an invoke function");
+}
+
+function isPluginSqlRow(value: unknown): value is PluginSqlRow {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "columns" in value &&
+    "values" in value &&
+    Array.isArray((value as PluginSqlRow).columns) &&
+    Array.isArray((value as PluginSqlRow).values)
+  );
+}
+
+function normalizeRows(result: unknown): unknown[][] {
+  if (!Array.isArray(result)) {
+    return [];
+  }
+
+  return result.map((row) => {
+    if (!isPluginSqlRow(row)) {
+      return Array.isArray(row) ? row : [row];
+    }
+
+    return row.values;
+  });
 }
 
 export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
@@ -37,7 +67,7 @@ export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
         const result = await invoke(runSqlCmd, {
           query: { sql, params, method },
         });
-        return { rows: result as Record<string, unknown>[] };
+        return { rows: normalizeRows(result) };
       } catch (error) {
         config.onQueryError?.(error, { sql, params, method });
         throw error;

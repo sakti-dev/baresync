@@ -1,0 +1,29 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+### Default Permissions
+
+This permission set enables the Baresync local database, migration, sync, and polling commands.
+
+These commands are intended for trusted Tauri app frontends that own the local sync database.
+"""
+permissions = [
+  "allow-run-sql",
+  "allow-run-sql-batch",
+  "allow-get-db-info",
+  "allow-run-migrations",
+  "allow-get-migration-status",
+  "allow-sync-now",
+  "allow-sync-push",
+  "allow-sync-pull",
+  "allow-sync-full-resync",
+  "allow-get-sync-local-state",
+  "allow-purge-synced-outbox",
+  "allow-run-garbage-collection",
+  "allow-start-polling",
+  "allow-stop-polling",
+  "allow-pause-polling",
+  "allow-resume-polling",
+  "allow-get-polling-status",
+]

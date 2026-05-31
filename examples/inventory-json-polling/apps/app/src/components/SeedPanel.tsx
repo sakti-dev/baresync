@@ -4,11 +4,38 @@ import { useState } from "react";
 import { useSyncClient } from "../hooks/useBaresyncQuery";
 import { db, TABLE } from "../lib/db";
 
+const LOCATION_SAMPLE_ID_PATTERN = /^loc-(\d+)$/;
+
+async function getNextSampleIndex() {
+  const rows = await db
+    .select({ id: TABLE.locations.id })
+    .from(TABLE.locations)
+    .orderBy(TABLE.locations.id);
+  const usedIndexes = new Set<number>();
+
+  for (const row of rows) {
+    const match = LOCATION_SAMPLE_ID_PATTERN.exec(row.id);
+    if (!match?.[1]) {
+      continue;
+    }
+
+    usedIndexes.add(Number(match[1]));
+  }
+
+  let index = 1;
+  while (usedIndexes.has(index)) {
+    index += 1;
+  }
+
+  return index;
+}
+
 export async function createSampleInventoryRows(
   client: SyncClient,
-  index: number
+  index?: number
 ) {
-  const suffix = String(index).padStart(3, "0");
+  const sampleIndex = index ?? (await getNextSampleIndex());
+  const suffix = String(sampleIndex).padStart(3, "0");
   const timestamp = new Date().toISOString();
   const locationId = `loc-${suffix}`;
   const itemId = `item-${suffix}`;
@@ -54,7 +81,7 @@ export async function createSampleInventoryRows(
           id: countId,
           scopeId: INVENTORY_SCOPE_ID,
           itemId,
-          countedQuantity: 8 + index,
+          countedQuantity: 8 + sampleIndex,
           recordedAt: timestamp,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -70,8 +97,6 @@ interface SeedPanelProps {
   onStatus: (msg: string) => void;
 }
 
-let nextIndex = 1;
-
 export function SeedPanel({ onSeeded, onStatus }: SeedPanelProps) {
   const [seeding, setSeeding] = useState(false);
   const client = useSyncClient();
@@ -79,11 +104,8 @@ export function SeedPanel({ onSeeded, onStatus }: SeedPanelProps) {
   async function handleSeed() {
     setSeeding(true);
     try {
-      const { countId, itemId, locationId } = await createSampleInventoryRows(
-        client,
-        nextIndex
-      );
-      nextIndex += 1;
+      const { countId, itemId, locationId } =
+        await createSampleInventoryRows(client);
 
       onStatus(`Created ${locationId}, ${itemId}, and ${countId}`);
       await onSeeded();

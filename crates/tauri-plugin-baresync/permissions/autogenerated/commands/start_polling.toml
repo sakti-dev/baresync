@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-start-polling"
+description = "Enables the start_polling command without any pre-configured scope."
+commands.allow = ["start_polling"]
+
+[[permission]]
+identifier = "deny-start-polling"
+description = "Denies the start_polling command without any pre-configured scope."
+commands.deny = ["start_polling"]

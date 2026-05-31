@@ -1,34 +1,111 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSyncClient } from "../hooks/useBaresyncQuery";
 import { useSyncState } from "../hooks/useSyncState";
+import { POLL_INTERVAL_SECONDS } from "../lib/polling.constant";
+
+const POLL_INTERVAL_MS = POLL_INTERVAL_SECONDS * 1000;
+
+function getSecondsUntilNextPoll(lastSyncMs: number, nowMs: number) {
+  const elapsedMs = Math.max(0, nowMs - lastSyncMs);
+  const remainingMs = Math.max(0, POLL_INTERVAL_MS - elapsedMs);
+  return Math.ceil(remainingMs / 1000);
+}
+
+function getPollingText(
+  pollingStatus: ReturnType<typeof useSyncState>["pollingStatus"]
+) {
+  if (!pollingStatus) {
+    return "—";
+  }
+
+  if (!pollingStatus.running) {
+    return "Stopped";
+  }
+
+  if (pollingStatus.paused) {
+    return "Paused";
+  }
+
+  return `Active, every ${POLL_INTERVAL_SECONDS}s`;
+}
+
+function getLastSyncText(input: {
+  manualSyncCompletedAt: number | null;
+  pluginLastSyncMs: number | null;
+}) {
+  if (input.pluginLastSyncMs) {
+    return new Date(input.pluginLastSyncMs).toLocaleTimeString();
+  }
+
+  if (input.manualSyncCompletedAt) {
+    return new Date(input.manualSyncCompletedAt).toLocaleTimeString();
+  }
+
+  return "Not yet";
+}
+
+function getLastSyncMs(input: {
+  manualSyncCompletedAt: number | null;
+  mountedAt: number;
+  pluginLastSyncMs: number | null;
+}) {
+  const validPluginLastSyncMs = Number.isFinite(input.pluginLastSyncMs)
+    ? (input.pluginLastSyncMs ?? 0)
+    : 0;
+
+  return Math.max(
+    input.mountedAt,
+    input.manualSyncCompletedAt ?? 0,
+    validPluginLastSyncMs
+  );
+}
 
 export function SyncPanel() {
   const client = useSyncClient();
-  const { localState, pollingStatus, loading } = useSyncState();
+  const { localState, pollingStatus, loading, refresh } = useSyncState();
+  const mountedAt = useRef(Date.now());
+  const [manualSyncCompletedAt, setManualSyncCompletedAt] = useState<
+    number | null
+  >(null);
+  const [now, setNow] = useState(() => Date.now());
   const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   async function handleSync() {
     setSyncing(true);
     try {
       await client.syncNow();
+      setManualSyncCompletedAt(Date.now());
+      await refresh();
     } finally {
       setSyncing(false);
     }
   }
 
-  let pollingText = "—";
-  if (pollingStatus) {
-    if (!pollingStatus.running) {
-      pollingText = "Stopped";
-    } else if (pollingStatus.paused) {
-      pollingText = "Paused";
-    } else {
-      const last = pollingStatus.last_sync_at
-        ? new Date(pollingStatus.last_sync_at).toLocaleTimeString()
-        : "never";
-      pollingText = `Active (last: ${last})`;
-    }
-  }
+  const pollingText = getPollingText(pollingStatus);
+  const pluginLastSyncMs = pollingStatus?.last_sync_at
+    ? Date.parse(pollingStatus.last_sync_at)
+    : null;
+  const lastSyncMs = getLastSyncMs({
+    manualSyncCompletedAt,
+    mountedAt: mountedAt.current,
+    pluginLastSyncMs,
+  });
+  const nextPollSeconds =
+    pollingStatus?.running && !pollingStatus.paused
+      ? getSecondsUntilNextPoll(lastSyncMs, now)
+      : null;
+  const lastSyncText = getLastSyncText({
+    manualSyncCompletedAt,
+    pluginLastSyncMs,
+  });
 
   return (
     <section className="rounded-3xl border border-cream-300 bg-cream-50 p-5 shadow-[0_24px_60px_rgba(49,33,17,0.08)]">
@@ -61,6 +138,11 @@ export function SyncPanel() {
             value={localState?.needs_baseline_sync ? "Yes" : "No"}
           />
           <Stat label="Polling" value={pollingText} />
+          <Stat label="Last sync" value={lastSyncText} />
+          <Stat
+            label="Next poll"
+            value={nextPollSeconds === null ? "—" : `${nextPollSeconds}s`}
+          />
         </div>
       )}
     </section>

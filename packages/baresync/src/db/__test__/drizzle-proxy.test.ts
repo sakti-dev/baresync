@@ -32,6 +32,23 @@ describe("createTauriDrizzleDatabase", () => {
     expect((calls[0].args.query as { sql: string }).sql).toContain("items");
   });
 
+  test("maps plugin column/value rows into Drizzle row objects", async () => {
+    const db = createTauriDrizzleDatabase({
+      invoke: () =>
+        Promise.resolve([
+          {
+            columns: ["id", "name", "count"],
+            values: ["item-1", "Widget", 4],
+          },
+        ]),
+      schema: { items },
+    });
+
+    await expect(db.select().from(items).execute()).resolves.toEqual([
+      { count: 4, id: "item-1", name: "Widget" },
+    ]);
+  });
+
   test("routes batch through custom invoke and command mapping", async () => {
     const calls: Array<{ args: Record<string, unknown>; cmd: string }> = [];
 

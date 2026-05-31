@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-purge-synced-outbox"
+description = "Enables the purge_synced_outbox command without any pre-configured scope."
+commands.allow = ["purge_synced_outbox"]
+
+[[permission]]
+identifier = "deny-purge-synced-outbox"
+description = "Denies the purge_synced_outbox command without any pre-configured scope."
+commands.deny = ["purge_synced_outbox"]

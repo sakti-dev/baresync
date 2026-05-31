@@ -5,7 +5,7 @@ use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 use tauri::{
     path::BaseDirectory,
@@ -143,7 +143,7 @@ impl Builder {
         self
     }
 
-    pub fn build<R: Runtime>(self) -> TauriPlugin<R, PluginConfig> {
+    pub fn build<R: Runtime>(self) -> TauriPlugin<R, Option<PluginConfig>> {
         let api_base_url = self.api_base_url.unwrap_or_default();
         let encoding = self.encoding.unwrap_or_else(|| "json".to_string());
         let max_push_bytes = self.max_push_bytes.unwrap_or(256 * 1024);
@@ -159,7 +159,7 @@ impl Builder {
         let poll_interval_secs = self.poll_interval_secs.unwrap_or(30);
         let poll_on_background = self.poll_on_background.unwrap_or(false);
 
-        TauriPluginBuilder::<R, PluginConfig>::new("baresync")
+        TauriPluginBuilder::<R, Option<PluginConfig>>::new("baresync")
             .invoke_handler(tauri::generate_handler![
                 #![plugin(baresync)]
                 commands::run_sql,
@@ -259,6 +259,8 @@ impl Builder {
                     migrations_path: resolved_migrations_path.clone(),
                     poll_notify: Arc::new(Notify::new()),
                     sync_in_progress: Arc::new(AtomicBool::new(false)),
+                    sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+                    sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
                     poll_control_tx: tokio::sync::Mutex::new(None),
                     poll_task_handle: tokio::sync::Mutex::new(None),
                     poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {

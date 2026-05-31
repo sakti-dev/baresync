@@ -2,6 +2,7 @@ use baresync_core::db::DbClient;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::EmbeddedMigration;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 use tauri_plugin_baresync::commands::{PluginEventSink, PluginState};
 
@@ -67,7 +68,9 @@ async fn plugin_state_uses_db_client_and_runs_migrations_before_commands() {
         }]),
         migrations_path: None,
         poll_notify: Arc::new(tokio::sync::Notify::new()),
-        sync_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        sync_in_progress: Arc::new(AtomicBool::new(false)),
+        sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+        sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
         poll_control_tx: tokio::sync::Mutex::new(None),
         poll_task_handle: tokio::sync::Mutex::new(None),
         poll_state: Arc::new(tokio::sync::Mutex::new(

@@ -81,6 +81,17 @@ export interface DrizzleSyncPullResponse<TTableName extends string> {
   }>;
 }
 
+export interface DrizzleSyncPushResponse<TTableName extends string> {
+  serverTime: string;
+  tables: Array<{
+    acceptedCreatedIds: string[];
+    acceptedDeletedIds: string[];
+    acceptedUpdatedIds: string[];
+    rejected: Array<{ id: string; reason: string }>;
+    table: TTableName;
+  }>;
+}
+
 export interface DrizzleSyncStatusResponse<TTableName extends string> {
   changedTables: TTableName[];
   cursor: string;
@@ -95,7 +106,7 @@ export interface DrizzleSyncRepository<
     changes: readonly SyncPushChange[];
     scopeId: string;
     syncUpdatedAt: number;
-  }): Promise<DrizzleSyncPullResponse<DrizzleSyncTableName<TTables>>>;
+  }): Promise<DrizzleSyncPushResponse<DrizzleSyncTableName<TTables>>>;
   loadPullChanges(input: {
     cursor: string;
     scopeId: string;
@@ -216,6 +227,28 @@ function latestCursorOrNull(input: {
   return pickLatestSyncCursorRow(input.latestCursorRows);
 }
 
+function buildPushAck<TTableName extends string>(
+  changes: readonly SyncPushChange[],
+  tableNames: readonly TTableName[]
+): DrizzleSyncPushResponse<TTableName> {
+  return {
+    serverTime: nowIso(),
+    tables: changes.map((change) => {
+      const table = validateSyncTable(change.table, tableNames);
+
+      return {
+        acceptedCreatedIds: [],
+        acceptedDeletedIds: change.deletedIds,
+        acceptedUpdatedIds: change.changedRows
+          .map((row) => asRecord(row).id)
+          .filter((id): id is string => typeof id === "string"),
+        rejected: [],
+        table,
+      };
+    }),
+  };
+}
+
 async function buildPullResponse<
   TTables extends Record<string, DrizzleSyncTableConfig>,
 >(input: {
@@ -282,12 +315,7 @@ export function createDrizzleSyncRepository<
         }
       }
 
-      return buildPullResponse({
-        cursorTimestamp: 0,
-        requestedTables: [],
-        scopeId: input.scopeId,
-        tables: options.tables,
-      });
+      return buildPushAck(input.changes, tableNames);
     },
 
     loadPullChanges(input) {

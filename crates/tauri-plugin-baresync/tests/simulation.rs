@@ -3,7 +3,7 @@ use baresync_core::db::DbClient;
 use baresync_core::engine::SyncContractTables;
 use baresync_core::migrations::EmbeddedMigration;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri_plugin_baresync::commands::{
@@ -75,6 +75,8 @@ impl SimulationHarness {
             migrations_path: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
+            sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+            sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
             poll_task_handle: tokio::sync::Mutex::new(None),
             poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {

@@ -4,13 +4,10 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: [],
-    css: false,
-  },
   server: {
+    headers: {
+      "Cache-Control": "no-store",
+    },
     host: "127.0.0.1",
     port: 5174,
     strictPort: true,

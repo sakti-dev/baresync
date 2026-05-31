@@ -8,7 +8,6 @@ import {
   type ReactNode,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -33,20 +32,19 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
       invoke,
     })
   );
-  const initialized = useRef(false);
 
   useEffect(() => {
-    if (initialized.current) {
-      return;
-    }
-    initialized.current = true;
-
-    client.startPolling();
+    client
+      .startPolling()
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
+      })
+      .catch(() => {});
 
     return () => {
       client.stopPolling().catch(() => {});
     };
-  }, [client]);
+  }, [client, queryClient]);
 
   useEffect(() => {
     let disposed = false;

@@ -1,0 +1,1 @@
+export const POLL_INTERVAL_SECONDS = 30;

@@ -653,7 +653,7 @@ describe("applyPushChanges", () => {
     const syncUpdatedAt = 1_700_000_123_000;
     const updatedAt = new Date(syncUpdatedAt).toISOString();
 
-    await repository.applyPushChanges({
+    const response = await repository.applyPushChanges({
       changes: [
         {
           table: "items",
@@ -678,6 +678,16 @@ describe("applyPushChanges", () => {
       scopeId: "default",
       syncUpdatedAt,
     });
+
+    expect(response.tables).toEqual([
+      {
+        acceptedCreatedIds: [],
+        acceptedDeletedIds: ["item-delete-me"],
+        acceptedUpdatedIds: ["item-existing", "item-new"],
+        rejected: [],
+        table: "items",
+      },
+    ]);
 
     const rows = await db
       .select()

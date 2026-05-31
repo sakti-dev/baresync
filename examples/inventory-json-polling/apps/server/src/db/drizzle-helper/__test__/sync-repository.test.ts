@@ -269,53 +269,27 @@ describe("simulation: inventory drizzle-helper repository flow", () => {
       "items",
       "stock_counts",
     ]);
-    expect(pushResult.cursor).toBe(
-      formatLatestSyncCursor({
-        id: "zz-stock-count",
-        syncUpdatedAt: PUSH_SYNC_UPDATED_AT,
-        tableName: "stock_counts",
-      })
-    );
-
-    expect(pushResult.tables[0].changedRows[0]).toMatchObject({
-      createdAt: "2026-05-20T00:00:01.000Z",
-      deletedAt: null,
-      id: "loc-front",
-      name: "Front Warehouse Updated",
-      scopeId: SCOPE_ID,
-      updatedAt: PUSH_TIME,
+    expect(pushResult.tables[0]).toMatchObject({
+      acceptedCreatedIds: [],
+      acceptedDeletedIds: [],
+      acceptedUpdatedIds: ["loc-front"],
+      rejected: [],
+      table: "locations",
     });
-    expect(pushResult.tables[0].deletedIds).toEqual(["loc-deleted"]);
-    expect(hasSyncUpdatedAt(pushResult.tables[0].changedRows[0])).toBe(false);
-
-    expect(pushResult.tables[1].changedRows[0]).toMatchObject({
-      createdAt: PUSH_TIME,
-      deletedAt: null,
-      id: "item-wrench",
-      locationId: "loc-front",
-      name: "Adjustable Wrench",
-      scopeId: SCOPE_ID,
-      sku: null,
-      updatedAt: PUSH_TIME,
+    expect(pushResult.tables[1]).toMatchObject({
+      acceptedCreatedIds: [],
+      acceptedDeletedIds: [],
+      acceptedUpdatedIds: ["item-wrench"],
+      rejected: [],
+      table: "items",
     });
-    expect(pushResult.tables[1].deletedIds).toEqual(["item-deleted"]);
-    expect(hasSyncUpdatedAt(pushResult.tables[1].changedRows[0])).toBe(false);
-
-    expect(pushResult.tables[2].changedRows[0]).toMatchObject({
-      countedQuantity: 7,
-      createdAt: PUSH_TIME,
-      deletedAt: null,
-      id: "zz-stock-count",
-      itemId: "item-wrench",
-      recordedAt: PUSH_TIME,
-      scopeId: SCOPE_ID,
-      updatedAt: PUSH_TIME,
+    expect(pushResult.tables[2]).toMatchObject({
+      acceptedCreatedIds: [],
+      acceptedDeletedIds: ["count-drill"],
+      acceptedUpdatedIds: ["zz-stock-count"],
+      rejected: [],
+      table: "stock_counts",
     });
-    expect(pushResult.tables[2].deletedIds).toEqual([
-      "count-drill",
-      "count-deleted",
-    ]);
-    expect(hasSyncUpdatedAt(pushResult.tables[2].changedRows[0])).toBe(false);
 
     const [updatedLocation] = await db
       .select()
@@ -362,6 +336,8 @@ describe("simulation: inventory drizzle-helper repository flow", () => {
       "stock_counts",
     ]);
     expect(finalStatus.hasChanges).toBe(true);
-    expect(finalStatus.cursor).toBe(pushResult.cursor);
+    expect(finalStatus.cursor).toBe(
+      `sync:${PUSH_SYNC_UPDATED_AT}:stock_counts:zz-stock-count`
+    );
   });
 });

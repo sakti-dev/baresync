@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "predev": "bun run src/db/seed.ts",
-    "dev": "bun --hot src/index.ts",
+    "dev": "PORT=3001 bun --hot src/index.ts",
     "build": "bunx tsc -p tsconfig.json --noEmit",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit",
     "db:generate": "bunx drizzle-kit generate --config drizzle.config.ts"

@@ -13,3 +13,4 @@ dist
 **/src-tauri/gen/
 examples/inventory/apps/tes/
 examples/inventory/apps/server/data/
+examples/inventory-json-polling/apps/server/data/

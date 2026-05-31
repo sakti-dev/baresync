@@ -1,3 +1,4 @@
+import { syncBatchRequests } from "@example/inventory-sync-contract/api-schema";
 import {
   items,
   locations,
@@ -79,6 +80,7 @@ export function getSeedCursor() {
 // `bun run src/db/seed.ts` uses this path through `predev`.
 export async function seedInventoryDatabaseForDev(): Promise<void> {
   const { db } = await createInventoryDatabase();
+  await db.delete(syncBatchRequests);
   await seedInventoryDatabase(db);
 }
 

@@ -7,7 +7,7 @@ use baresync_core::migrations::EmbeddedMigration;
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri_plugin_baresync::commands::{
@@ -206,6 +206,8 @@ impl TestCommandState {
             migrations_path: None,
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
+            sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+            sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
             poll_task_handle: tokio::sync::Mutex::new(None),
             poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
@@ -489,6 +491,22 @@ async fn sync_now_emits_data_changed_when_push_changes_local_rows() {
 }
 
 #[tokio::test]
+async fn sync_now_rejects_overlapping_sync() {
+    let transport = Arc::new(RecordingTransport::new(
+        push_response_with_table_ack(),
+        status_response(false),
+        pull_response_with_rows(Vec::new()),
+    ));
+    let harness = TestCommandState::new_with_transport(transport).await;
+    run_migrations_with_state(&harness.state).await.unwrap();
+    harness.state.sync_in_progress.store(true, Ordering::Release);
+
+    let result = sync_now_with_state(&harness.state, "scope-1".to_string()).await;
+
+    assert_eq!(result.unwrap_err(), "Sync already in progress");
+}
+
+#[tokio::test]
 async fn sync_full_resync_emits_data_changed_when_pull_and_push_change_rows() {
     let transport = Arc::new(RecordingTransport::new(
         push_response_with_table_ack(),
@@ -615,6 +633,8 @@ async fn migration_commands_apply_filesystem_migrations_from_path() {
             migrations_path: Some(migration_dir.clone()),
             poll_notify: Arc::new(Notify::new()),
             sync_in_progress: Arc::new(AtomicBool::new(false)),
+            sql_transaction_depth: Arc::new(AtomicUsize::new(0)),
+            sql_transaction_has_writes: Arc::new(AtomicBool::new(false)),
             poll_control_tx: tokio::sync::Mutex::new(None),
             poll_task_handle: tokio::sync::Mutex::new(None),
             poll_state: Arc::new(tokio::sync::Mutex::new(PollingState {
