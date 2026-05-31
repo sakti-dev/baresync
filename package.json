@@ -10,7 +10,9 @@
     "coverage": "bun run coverage:js && bun run coverage:rust",
     "coverage:js": "bun test --coverage --coverage-reporter=text --path-ignore-patterns=packages/baresync/src/generator/__test__/protobuf-workspace-drift.test.ts packages/baresync/src/__test__/cli.test.ts packages/baresync/src/db/__test__ packages/baresync/src/generator/__test__ packages/baresync/src/schema/__test__ packages/baresync/src/server/__test__ packages/baresync/src/tauri/__test__ tests/e2e/backend/__test__/fixture-server.contract.test.ts",
     "coverage:rust": "rm -rf target/llvm-cov-target && cargo llvm-cov --package baresync-core --lib --text --output-dir /tmp/llvmcov-core && rm -rf target/llvm-cov-target && cargo llvm-cov --package tauri-plugin-baresync --lib --text --output-dir /tmp/llvmcov-tauri-plugin",
-    "typecheck": "bun x tsc -p packages/baresync/tsconfig.json --noEmit",
+    "build:create": "bun run build --cwd packages/create-baresync",
+    "typecheck": "bun x tsc -p packages/baresync/tsconfig.json --noEmit && bun x tsc -p packages/create-baresync/tsconfig.json --noEmit",
+    "typecheck:create": "bun x tsc -p packages/create-baresync/tsconfig.json --noEmit",
     "typecheck:e2e": "bun x tsc -p tests/e2e/tsconfig.json --noEmit",
     "typecheck:fixture": "bun x tsc -p tests/fixture-app/tsconfig.json --noEmit"
   },

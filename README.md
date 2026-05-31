@@ -84,7 +84,15 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 
 ## Quick Start
 
-Start with [`examples/inventory-json-polling`](./examples/inventory-json-polling). It is the canonical fullstack starter in this repository and uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
+Start new projects with `create-baresync`:
+
+```bash
+bun create baresync
+```
+
+The generated starter uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
+
+For a richer fullstack reference, see [`examples/inventory-json-polling`](./examples/inventory-json-polling). It remains the canonical fullstack example in this repository.
 
 ```txt
 inventory/
