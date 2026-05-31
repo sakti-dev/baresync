@@ -3,7 +3,7 @@ import { createBaresyncRoutes } from "./sync-routes";
 
 const app = new Hono();
 
-app.route("/sync", createBaresyncRoutes({
+app.route("/api/v1/sync", createBaresyncRoutes({
   resolveScope: ({ scopeId }) => ({
     ok: true,
     scope: { scopeId },

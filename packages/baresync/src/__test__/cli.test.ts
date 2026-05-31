@@ -80,7 +80,6 @@ export const syncGeneratorConfig = defineSyncConfig({
   apiSyncedSchema: { categories: apiCategories },
   localSyncedSchema: { categories: localCategories },
   outputDir: ${JSON.stringify(outputDir)},
-  packageName: "inventory.sync.v1",
   tables: {
     categories: { scope: "scope_id" },
   },
@@ -98,24 +97,27 @@ describe("CLI runGenerate", () => {
 
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "cli.test.sync.v1",
       tables: [categoriesSynced],
     });
 
     const { runGenerate } = await import("../cli");
     await runGenerate(contract, outputDir);
 
-    expect(fs.existsSync(path.join(outputDir, "sync-contract.json"))).toBe(
-      true
-    );
-    expect(fs.existsSync(path.join(outputDir, "sync-table-order.ts"))).toBe(
-      true
-    );
+    const today = new Date().toISOString().slice(0, 10);
+    expect(
+      fs.existsSync(path.join(outputDir, today, "sync-contract.json"))
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(outputDir, today, "sync-table-order.ts"))
+    ).toBe(true);
 
     const parsed = JSON.parse(
-      fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
+      fs.readFileSync(
+        path.join(outputDir, today, "sync-contract.json"),
+        "utf-8"
+      )
     );
-    expect(parsed.packageName).toBe("cli.test.sync.v1");
+    expect(parsed).not.toHaveProperty("packageName");
 
     fs.rmSync(outputDir, { recursive: true, force: true });
   });
@@ -127,7 +129,6 @@ describe("CLI runGenerate", () => {
 
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "cli.config.sync.v1",
       tables: [categoriesSynced],
     });
     const config = {
@@ -138,10 +139,14 @@ describe("CLI runGenerate", () => {
     const { runGenerate } = await import("../cli");
     await runGenerate(config);
 
+    const today = new Date().toISOString().slice(0, 10);
     const parsed = JSON.parse(
-      fs.readFileSync(path.join(outputDir, "sync-contract.json"), "utf-8")
+      fs.readFileSync(
+        path.join(outputDir, today, "sync-contract.json"),
+        "utf-8"
+      )
     );
-    expect(parsed.packageName).toBe("cli.config.sync.v1");
+    expect(parsed).not.toHaveProperty("packageName");
 
     fs.rmSync(outputDir, { recursive: true, force: true });
   });
@@ -158,8 +163,9 @@ describe("CLI config discovery", () => {
       const { runGenerateCommand } = await import("../cli");
       await runGenerateCommand([]);
 
+      const today = new Date().toISOString().slice(0, 10);
       expect(
-        fs.existsSync(path.join(cwd, "generated", "sync-contract.json"))
+        fs.existsSync(path.join(cwd, "generated", today, "sync-contract.json"))
       ).toBe(true);
     } finally {
       process.chdir(previousCwd);
@@ -185,11 +191,14 @@ describe("CLI config discovery", () => {
       const { runGenerateCommand } = await import("../cli");
       await runGenerateCommand(["--config", "./custom/custom-sync.config.ts"]);
 
+      const today = new Date().toISOString().slice(0, 10);
       expect(
-        fs.existsSync(path.join(cwd, "custom-output", "sync-contract.json"))
+        fs.existsSync(
+          path.join(cwd, "custom-output", today, "sync-contract.json")
+        )
       ).toBe(true);
       expect(
-        fs.existsSync(path.join(cwd, "generated", "sync-contract.json"))
+        fs.existsSync(path.join(cwd, "generated", today, "sync-contract.json"))
       ).toBe(false);
     } finally {
       process.chdir(previousCwd);
@@ -243,7 +252,6 @@ describe("doctor output format", () => {
     const config = gtc(table);
     const contract: SyncContract = {
       encoding: "json",
-      packageName: "test",
       tables: [
         {
           table,

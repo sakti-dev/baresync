@@ -1,9 +1,9 @@
-import { syncBatchRequests } from "@example/inventory-sync-contract/api-schema";
+import { syncBatchRequests } from "@examples/sync-contract/api-schema";
 import {
   items,
   locations,
   stockCounts,
-} from "@example/inventory-sync-contract/api-synced-schema";
+} from "@examples/sync-contract/api-synced-schema";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { createInventoryDatabase } from "./client";
 

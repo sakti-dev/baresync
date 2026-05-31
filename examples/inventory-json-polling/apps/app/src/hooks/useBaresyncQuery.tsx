@@ -1,4 +1,4 @@
-import { INVENTORY_SCOPE_ID } from "@example/inventory-sync-contract/constants";
+import { SYNC_SCOPE } from "@examples/sync-contract/constants";
 import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -28,7 +28,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
     createSyncClient({
       apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
-      scopeId: INVENTORY_SCOPE_ID,
+      scopeId: SYNC_SCOPE,
       invoke,
     })
   );

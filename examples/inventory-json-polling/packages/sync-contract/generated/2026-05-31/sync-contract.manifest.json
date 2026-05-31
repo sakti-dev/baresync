@@ -1,8 +1,7 @@
 {
-  "contractVersion": 1,
+  "contractVersion": "2026-05-31",
   "generatorVersion": "0.1.0",
   "encoding": "json",
-  "packageName": "inventory.sync.v1",
   "tables": [
     {
       "fieldNumbers": {
@@ -91,16 +90,8 @@
     }
   ],
   "tableOrder": {
-    "upsert": [
-      "locations",
-      "items",
-      "stock_counts"
-    ],
-    "delete": [
-      "stock_counts",
-      "items",
-      "locations"
-    ]
+    "upsert": ["locations", "items", "stock_counts"],
+    "delete": ["stock_counts", "items", "locations"]
   },
   "outputPaths": [
     "sync-contract.json",

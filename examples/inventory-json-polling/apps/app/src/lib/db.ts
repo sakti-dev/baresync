@@ -1,12 +1,9 @@
-import {
-  syncCursors,
-  syncOutbox,
-} from "@example/inventory-sync-contract/local-schema";
+import { syncCursors, syncOutbox } from "@examples/sync-contract/local-schema";
 import {
   items,
   locations,
   stockCounts,
-} from "@example/inventory-sync-contract/local-synced-schema";
+} from "@examples/sync-contract/local-synced-schema";
 import { invoke } from "@tauri-apps/api/core";
 import { createTauriDrizzleDatabase } from "baresync/db";
 

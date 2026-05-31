@@ -129,13 +129,7 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
   for (const entry of entries) {
     process.stdout.write(`Running ${entry.label}\n`);
     if (entry.syncConfig) {
-      generateSyncArtifacts(
-        entry.syncConfig.contract,
-        entry.syncConfig.outputDir,
-        {
-          warningsAsErrors: options.warningsAsErrors,
-        }
-      );
+      generateSyncArtifacts(entry.syncConfig);
       continue;
     }
 
@@ -381,7 +375,7 @@ function buildNamedJsonEntry(
   }
 
   const outputDir = outputDirOverride ?? config.outputDir;
-  const key = `json:${outputDir}:${config.contract.packageName}:${config.contract.encoding}`;
+  const key = `json:${outputDir}:${config.contract.encoding}`;
   return {
     contract: config.contract,
     key,
@@ -400,7 +394,7 @@ function buildDefaultExportEntry(
 ): LoadedConfigEntry | null {
   if (isGeneratorConfig(config)) {
     const outputDir = outputDirOverride ?? config.outputDir;
-    const key = `json:${outputDir}:${config.contract.packageName}:${config.contract.encoding}`;
+    const key = `json:${outputDir}:${config.contract.encoding}`;
     return {
       contract: config.contract,
       key,
@@ -415,7 +409,7 @@ function buildDefaultExportEntry(
 
   if (isSyncContract(config)) {
     const outputDir = outputDirOverride ?? "./generated";
-    const key = `json:${outputDir}:${config.packageName}:${config.encoding}`;
+    const key = `json:${outputDir}:${config.encoding}`;
     return {
       contract: config,
       key,
@@ -436,7 +430,7 @@ function buildRawContractEntry(
   }
 
   const outputDir = outputDirOverride ?? "./generated";
-  const key = `json:${outputDir}:${config.packageName}:${config.encoding}`;
+  const key = `json:${outputDir}:${config.encoding}`;
   return {
     contract: config,
     key,
@@ -453,7 +447,6 @@ function isSyncContract(value: unknown): value is SyncContract {
   return (
     isRecord(value) &&
     typeof value.encoding === "string" &&
-    typeof value.packageName === "string" &&
     Array.isArray(value.tables) &&
     Array.isArray(value.tablesMeta) &&
     isRecord(value.limits)

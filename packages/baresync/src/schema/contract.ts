@@ -21,7 +21,6 @@ export interface SyncContractTableMeta {
 export interface SyncContract {
   encoding: SyncEncoding;
   limits: SyncContractLimits;
-  packageName: string;
   tables: SyncedTableDefinition[];
   tablesMeta: SyncContractTableMeta[];
 }
@@ -33,7 +32,6 @@ const DEFAULT_LIMITS: SyncContractLimits = {
 
 export function defineSyncContract(input: {
   encoding: SyncEncoding;
-  packageName: string;
   tables: SyncedTableDefinition[];
   limits?: Partial<SyncContractLimits>;
 }): SyncContract {
@@ -42,7 +40,6 @@ export function defineSyncContract(input: {
 
   return {
     encoding: input.encoding,
-    packageName: input.packageName,
     tables: input.tables,
     limits,
     tablesMeta,
@@ -50,14 +47,12 @@ export function defineSyncContract(input: {
 }
 
 export function syncSchema(input: {
-  packageName: string;
   tables: SyncedTableDefinition[];
   encoding?: SyncEncoding;
   limits?: Partial<SyncContractLimits>;
 }): SyncContract {
   return defineSyncContract({
     encoding: input.encoding ?? DEFAULT_SYNC_ENCODING,
-    packageName: input.packageName,
     tables: input.tables,
     limits: input.limits,
   });

@@ -45,7 +45,6 @@ function makeSyncedDef(table: ReturnType<typeof makeValidTable>) {
 function makeValidContract(tables: ReturnType<typeof makeSyncedDef>[]) {
   return defineSyncContract({
     encoding: "json",
-    packageName: "test.sync.v1",
     tables,
   });
 }
@@ -86,7 +85,6 @@ function buildRawContract(
 
   return {
     encoding: "json",
-    packageName: "test.raw.v1",
     tables: defs,
     tablesMeta,
     limits: { maxPushBytes: 2_097_152, maxPushRows: 2000 },
@@ -258,7 +256,7 @@ describe("runDiagnostics", () => {
     const d2 = makeSyncedDef(t2);
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [d1, d2],
     });
     const diagnostics = runDiagnostics(contract);
@@ -275,7 +273,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -294,7 +292,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -376,7 +374,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -406,7 +404,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -441,7 +439,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -499,7 +497,7 @@ describe("runDiagnostics", () => {
     const def = makeSyncedDef(table);
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     (contract as { encoding: string }).encoding = "xml";
@@ -613,7 +611,7 @@ describe("runDiagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -687,11 +685,14 @@ describe("generateSyncArtifacts with diagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     generateSyncArtifacts(contract, tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, "sync-contract.json"))).toBe(true);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(fs.existsSync(path.join(tmpDir, today, "sync-contract.json"))).toBe(
+      true
+    );
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -701,9 +702,12 @@ describe("generateSyncArtifacts with diagnostics", () => {
     const def = makeSyncedDef(table);
     const contract = makeValidContract([def]);
     generateSyncArtifacts(contract, tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, "sync-contract.json"))).toBe(true);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(fs.existsSync(path.join(tmpDir, today, "sync-contract.json"))).toBe(
+      true
+    );
     expect(
-      fs.existsSync(path.join(tmpDir, "sync-contract.manifest.json"))
+      fs.existsSync(path.join(tmpDir, today, "sync-contract.manifest.json"))
     ).toBe(true);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -717,7 +721,7 @@ describe("generateSyncArtifacts with diagnostics", () => {
     });
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     expect(() =>
@@ -734,7 +738,7 @@ describe("generateSyncArtifacts with diagnostics", () => {
     const def = makeSyncedDef(table);
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     (contract as { encoding: string }).encoding = "xml";
@@ -750,7 +754,7 @@ describe("generateSyncArtifacts with diagnostics", () => {
     const def = makeSyncedDef(table);
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     (contract as { encoding: string }).encoding = "xml";
@@ -771,7 +775,7 @@ describe("SyncDiagnosticError", () => {
     const def = makeSyncedDef(table);
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test",
+
       tables: [def],
     });
     (contract as { encoding: string }).encoding = "csv";

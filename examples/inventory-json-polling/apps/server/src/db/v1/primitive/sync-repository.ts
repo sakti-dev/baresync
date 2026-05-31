@@ -2,7 +2,7 @@ import {
   items,
   locations,
   stockCounts,
-} from "@example/inventory-sync-contract/api-synced-schema";
+} from "@examples/sync-contract/generated/2026-05-31/api-synced-schema";
 import {
   buildPullTables,
   changedTableNames,
@@ -12,7 +12,7 @@ import {
   validateSyncTable,
 } from "baresync/server";
 import { eq } from "drizzle-orm";
-import { getSeedCursor } from "../seed";
+import { getSeedCursor } from "../../seed";
 import {
   asRow,
   buildItemRow,

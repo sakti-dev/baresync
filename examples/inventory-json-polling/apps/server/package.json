@@ -13,7 +13,7 @@
     "baresync": "file:../../../../packages/baresync",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.16",
-    "@example/inventory-sync-contract": "workspace:*"
+    "@examples/sync-contract": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 import { defineSyncContract } from "../../schema/contract";
 import { defineSyncedTable } from "../../schema/synced-table";
 import { generateSyncArtifacts } from "../index";
@@ -61,22 +64,26 @@ describe("writeManifest", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test.manifest.v1",
       tables: [categoriesSynced, productsSynced],
     });
 
     generateSyncArtifacts(contract, tmpDir);
 
-    const manifestPath = path.join(tmpDir, "sync-contract.manifest.json");
+    const today = new Date().toISOString().slice(0, 10);
+    const manifestPath = path.join(
+      tmpDir,
+      today,
+      "sync-contract.manifest.json"
+    );
     expect(fs.existsSync(manifestPath)).toBe(true);
 
     const raw = fs.readFileSync(manifestPath, "utf-8");
     const manifest: SyncManifest = JSON.parse(raw);
 
-    expect(manifest.contractVersion).toBe(1);
+    expect(manifest.contractVersion).toMatch(ISO_DATE_RE);
     expect(manifest.generatorVersion).toBe("0.1.0");
     expect(manifest.encoding).toBe("json");
-    expect(manifest.packageName).toBe("test.manifest.v1");
+    expect(manifest).not.toHaveProperty("packageName");
     expect(manifest.tables).toHaveLength(2);
     expect(manifest.tables.map((t) => t.name)).toEqual([
       "categories",
@@ -97,13 +104,17 @@ describe("writeManifest", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test.manifest.v1",
       tables: [categoriesSynced, productsSynced],
     });
 
     generateSyncArtifacts(contract, tmpDir);
 
-    const manifestPath = path.join(tmpDir, "sync-contract.manifest.json");
+    const today = new Date().toISOString().slice(0, 10);
+    const manifestPath = path.join(
+      tmpDir,
+      today,
+      "sync-contract.manifest.json"
+    );
     const manifest: SyncManifest = JSON.parse(
       fs.readFileSync(manifestPath, "utf-8")
     );
@@ -118,13 +129,17 @@ describe("writeManifest", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
       encoding: "json",
-      packageName: "test.manifest.v1",
       tables: [categoriesSynced],
     });
 
     generateSyncArtifacts(contract, tmpDir);
 
-    const manifestPath = path.join(tmpDir, "sync-contract.manifest.json");
+    const today = new Date().toISOString().slice(0, 10);
+    const manifestPath = path.join(
+      tmpDir,
+      today,
+      "sync-contract.manifest.json"
+    );
     const manifest: SyncManifest = JSON.parse(
       fs.readFileSync(manifestPath, "utf-8")
     );

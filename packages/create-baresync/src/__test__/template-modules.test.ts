@@ -23,8 +23,6 @@ describe("template modules", () => {
     const pkg = files.find(
       (f) => f.path === "packages/sync-contract/package.json"
     );
-    expect(pkg?.content).toContain(
-      '"./generated/sync-contract": "./generated/sync-contract.json"'
-    );
+    expect(pkg?.content).toContain('"./generated/*": "./generated/*"');
   });
 });

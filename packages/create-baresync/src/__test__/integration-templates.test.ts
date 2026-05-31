@@ -16,7 +16,7 @@ describe("server and tauri scaffold templates", () => {
       (file) => file.path === "apps/server/src/sync-fallback-instructions.md"
     );
 
-    expect(serverIndex?.content).toContain('app.route("/sync"');
+    expect(serverIndex?.content).toContain('app.route("/api/v1/sync"');
     expect(serverIndex?.content).toContain("createBaresyncRoutes");
     expect(fallback?.content).toContain("Manual mount required");
   });

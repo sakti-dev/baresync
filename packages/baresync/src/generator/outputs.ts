@@ -3,27 +3,22 @@ import path from "node:path";
 import type { SyncContract } from "../schema/contract";
 import type { SyncTableOrder } from "./fk-order";
 
-export interface GeneratorOutputConfig {
-  contractName?: string;
-  outputDir: string;
-}
-
 export function writeSyncContractJson(
   contract: SyncContract,
   tableOrder: SyncTableOrder,
-  outputDir: string
+  outputDir: string,
+  version: string
 ): void {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const contractJson = {
-    version: 1,
+    version,
     generatorVersion: "0.1.0",
     encoding: contract.encoding,
-    packageName: contract.packageName,
     upsertOrder: tableOrder.upsertOrder,
     deleteOrder: tableOrder.deleteOrder,
     tables: Object.fromEntries(
-      contract.tablesMeta.map((t, _index) => [
+      contract.tablesMeta.map((t) => [
         t.tableName,
         {
           columns: t.columns,

@@ -2,7 +2,7 @@ import {
   items,
   locations,
   stockCounts,
-} from "@example/inventory-sync-contract/api-synced-schema";
+} from "@examples/sync-contract/generated/2026-05-31/api-synced-schema";
 import {
   createDrizzleSyncRepository,
   type DrizzleSyncReadRow,
@@ -11,7 +11,10 @@ import {
   requiredString,
 } from "baresync/server/drizzle";
 import { and, desc, eq, gt, type InferInsertModel } from "drizzle-orm";
-import type { InventoryDb, TableName } from "./utils";
+import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+
+type InventoryDb = BunSQLiteDatabase<Record<string, never>>;
+type TableName = "locations" | "items" | "stock_counts";
 
 export interface InventoryScope {
   scopeId: string;

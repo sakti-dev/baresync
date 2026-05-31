@@ -78,31 +78,31 @@ The repository documentation MUST point new users to the inventory example as th
 
 ### Requirement: Inventory server keeps both repository paths visible
 
-The inventory example SHALL keep the primitive repository path in `examples/inventory-json-polling/apps/server/src/db/primitive/sync-repository.ts` and `examples/inventory-json-polling/apps/server/src/db/primitive/utils.ts` while also adding a helper-backed repository path in `examples/inventory-json-polling/apps/server/src/db/drizzle-helper/sync-repository.ts` that uses the public Drizzle repository helper from `baresync/server/drizzle` for cursor timestamp parsing, changed/deleted row splitting, pull table response construction, status changed-table detection, latest cursor formatting, latest-cursor row selection, push table validation, and table-specific read/write callbacks.
+The inventory example SHALL keep the primitive repository path in `examples/inventory-json-polling/apps/server/src/db/v1/primitive/sync-repository.ts` and `examples/inventory-json-polling/apps/server/src/db/v1/primitive/utils.ts` while also keeping a helper-backed repository path in `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts` that uses the public Drizzle repository helper from `baresync/server/drizzle` for cursor timestamp parsing, changed/deleted row splitting, pull table response construction, status changed-table detection, latest cursor formatting, latest-cursor row selection, push table validation, and table-specific read/write callbacks.
 
 The example SHALL continue to keep inventory-specific row validation, row defaults, seed data, route handlers, and scope handling in app code.
 
 #### Scenario: Primitive repository remains available
 
-- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/primitive/sync-repository.ts`
+- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/v1/primitive/sync-repository.ts`
 - **THEN** the primitive inventory repository path SHALL remain available for comparison
 - **AND** its local sync mechanics SHALL remain visible
 
 #### Scenario: Helper-backed repository uses Drizzle helper for pull responses
 
-- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/drizzle-helper/sync-repository.ts`
+- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts`
 - **THEN** pull response construction SHALL be delegated to the Drizzle repository helper
 - **AND** the helper-backed repository SHALL NOT carry a custom local implementation of the same helper behavior
 
 #### Scenario: Helper-backed repository uses Drizzle helper for status responses
 
-- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/drizzle-helper/sync-repository.ts`
+- **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts`
 - **THEN** status changed-table detection SHALL be delegated to the Drizzle repository helper
 - **AND** the repository SHALL NOT carry a custom local implementation of the same helper behavior
 
 #### Scenario: Helper-backed repository keeps app-specific row mapping visible
 
-- **WHEN** a contributor reads table configuration in `examples/inventory-json-polling/apps/server/src/db/drizzle-helper/sync-repository.ts`
+- **WHEN** a contributor reads table configuration in `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts`
 - **THEN** table-specific `buildRow` functions SHALL remain explicit in the example
 - **AND** those `buildRow` functions SHALL use explicit validation/defaulting for inventory fields
 
@@ -226,3 +226,52 @@ The inventory app SHALL discover local SQLite migration SQL files from `src-taur
 - **WHEN** the inventory React app starts
 - **THEN** it SHALL start polling without first invoking a `run_migrations` command
 - **AND** local migrations SHALL have been applied by the plugin setup path
+
+### Requirement: Inventory example uses SYNC_SCOPE constant
+
+The inventory example SHALL export `SYNC_SCOPE` from `packages/sync-contract/src/constants.ts` as the shared scope identifier used by both app and server.
+
+#### Scenario: App imports SYNC_SCOPE
+
+- **WHEN** the inventory app needs a scope ID for sync operations
+- **THEN** it imports `SYNC_SCOPE` from `@examples/sync-contract/constants`
+
+#### Scenario: constants.ts only contains SYNC_SCOPE
+
+- **WHEN** a contributor reads `packages/sync-contract/src/constants.ts`
+- **THEN** it exports only `SYNC_SCOPE`
+- **AND** it does not export `INVENTORY_SCOPE_ID` or `INVENTORY_PACKAGE_NAME`
+
+### Requirement: Inventory server versioned route organization
+
+The inventory example server SHALL organize sync route handlers and sync repositories by contract version. Each version's code SHALL import from its matching generated dated directory.
+
+#### Scenario: Server has versioned route files
+
+- **WHEN** a contributor reads `apps/server/src/`
+- **THEN** they find versioned route files under `v1/` (or equivalent) containing `createSyncPushHandler`, `createSyncPullHandler`, `createSyncStatusHandler` for that version
+
+#### Scenario: Server has versioned sync repositories
+
+- **WHEN** a contributor reads `apps/server/src/db/`
+- **THEN** they find versioned sync repository files under `v1/` (or equivalent) containing drizzle queries that import schema tables from the matching generated directory
+
+#### Scenario: Shared DB client is not duplicated
+
+- **WHEN** a contributor reads the server structure
+- **THEN** `db/client.ts` is shared across versions and is not inside a versioned directory
+
+#### Scenario: Index registers versioned routes
+
+- **WHEN** a contributor reads `apps/server/src/index.ts`
+- **THEN** it registers routes with version-prefixed paths (e.g. `/api/v1/sync/push`)
+- **AND** each version's routes delegate to its versioned route module
+
+### Requirement: Inventory server route paths are versioned
+
+The inventory example server SHALL expose sync endpoints under versioned paths.
+
+#### Scenario: Sync endpoints are under /api/v1/
+
+- **WHEN** the inventory server starts
+- **THEN** sync push, pull, and status endpoints are available at `/api/v1/sync/push`, `/api/v1/sync/pull`, `/api/v1/sync/status`

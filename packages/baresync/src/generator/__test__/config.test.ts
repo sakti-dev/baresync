@@ -52,12 +52,11 @@ const apiSyncedSchema = {
 } as const;
 
 describe("defineSyncConfig", () => {
-  it("builds a generator config from paired local/API schemas", () => {
+  it("builds a generator config from paired local/API schemas without packageName", () => {
     const config = defineSyncConfig({
       apiSyncedSchema,
       localSyncedSchema,
       outputDir: "./generated",
-      packageName: "test.sync.v1",
       tables: {
         categories: { scope: "scope_id" },
         products: { scope: "scope_id" },
@@ -65,7 +64,6 @@ describe("defineSyncConfig", () => {
     });
 
     expect(config.outputDir).toBe("./generated");
-    expect(config.contract.packageName).toBe("test.sync.v1");
     expect(config.contract.encoding).toBe("json");
     expect(config.contract.tablesMeta.map((t) => t.tableName)).toEqual([
       "categories",
@@ -79,7 +77,6 @@ describe("defineSyncConfig", () => {
       apiSyncedSchema,
       localSyncedSchema,
       outputDir: tmpDir,
-      packageName: "test.sync.v1",
       tables: {
         categories: { scope: "scope_id" },
         products: { scope: "scope_id" },
@@ -88,10 +85,12 @@ describe("defineSyncConfig", () => {
 
     generateSyncArtifacts(config);
 
-    const contractPath = path.join(tmpDir, "sync-contract.json");
+    const today = new Date().toISOString().slice(0, 10);
+    const contractPath = path.join(tmpDir, today, "sync-contract.json");
     expect(fs.existsSync(contractPath)).toBe(true);
     const parsed = JSON.parse(fs.readFileSync(contractPath, "utf-8"));
     expect(parsed.upsertOrder).toEqual(["categories", "products"]);
+    expect(parsed).not.toHaveProperty("packageName");
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -101,7 +100,6 @@ describe("defineSyncConfig", () => {
       apiSyncedSchema,
       localSyncedSchema,
       outputDir: "./generated",
-      packageName: "test.sync.v1",
       tables: {
         categories: { scope: "scope_id" },
       },
@@ -135,7 +133,6 @@ describe("defineSyncConfig", () => {
       apiSyncedSchema: { drafts: apiWithAudit },
       localSyncedSchema: { drafts: localWithDraft },
       outputDir: "./generated",
-      packageName: "test.sync.v1",
       tables: {
         drafts: {
           localOnlyColumns: ["draftNote", "isSynced"],
@@ -173,7 +170,6 @@ describe("defineSyncConfig", () => {
         apiSyncedSchema: {},
         localSyncedSchema: { categories: localCategories },
         outputDir: "./generated",
-        packageName: "test.sync.v1",
         tables: {
           categories: { scope: "scope_id" },
         },
@@ -187,7 +183,6 @@ describe("defineSyncConfig", () => {
         apiSyncedSchema: { categories: apiCategories },
         localSyncedSchema: {},
         outputDir: "./generated",
-        packageName: "test.sync.v1",
         tables: {
           categories: { scope: "scope_id" },
         },
@@ -215,7 +210,6 @@ describe("defineSyncConfig", () => {
         apiSyncedSchema: { notes: apiWithoutExtra },
         localSyncedSchema: { notes: localWithExtra },
         outputDir: "./generated",
-        packageName: "test.sync.v1",
         tables: {
           notes: { scope: "scope_id" },
         },
@@ -243,11 +237,132 @@ describe("defineSyncConfig", () => {
         apiSyncedSchema: { audits: apiWithExtra },
         localSyncedSchema: { audits: localWithoutExtra },
         outputDir: "./generated",
-        packageName: "test.sync.v1",
         tables: {
           audits: { scope: "scope_id" },
         },
       })
     ).toThrow('unexpected server-only column "audit_version"');
+  });
+});
+
+describe("schema snapshot", () => {
+  it("copies api-synced-schema.ts into generated dated directory", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-snap-"));
+    const schemaDir = path.join(tmpDir, "schemas");
+    fs.mkdirSync(schemaDir);
+
+    const apiContent =
+      'import { sqliteTable, text } from "drizzle-orm/sqlite-core";\nexport const test = sqliteTable("test", { id: text("id").primaryKey() });\n';
+    const localContent =
+      'import { sqliteTable, text } from "drizzle-orm/sqlite-core";\nexport const test = sqliteTable("test", { id: text("id").primaryKey() });\n';
+
+    fs.writeFileSync(path.join(schemaDir, "api-synced-schema.ts"), apiContent);
+    fs.writeFileSync(
+      path.join(schemaDir, "local-synced-schema.ts"),
+      localContent
+    );
+
+    const config = defineSyncConfig({
+      apiSyncedSchema,
+      localSyncedSchema,
+      outputDir: path.join(tmpDir, "generated"),
+      schemaSourceDir: schemaDir,
+      tables: {
+        categories: { scope: "scope_id" },
+        products: { scope: "scope_id" },
+      },
+    });
+
+    generateSyncArtifacts(config);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const snapshotPath = path.join(
+      tmpDir,
+      "generated",
+      today,
+      "api-synced-schema.ts"
+    );
+    expect(fs.existsSync(snapshotPath)).toBe(true);
+    expect(fs.readFileSync(snapshotPath, "utf-8")).toBe(apiContent);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("copies local-synced-schema.ts into generated dated directory", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-snap-"));
+    const schemaDir = path.join(tmpDir, "schemas");
+    fs.mkdirSync(schemaDir);
+
+    const localContent = "// local schema content\nexport const test = {};\n";
+
+    fs.writeFileSync(path.join(schemaDir, "api-synced-schema.ts"), "// api\n");
+    fs.writeFileSync(
+      path.join(schemaDir, "local-synced-schema.ts"),
+      localContent
+    );
+
+    const config = defineSyncConfig({
+      apiSyncedSchema,
+      localSyncedSchema,
+      outputDir: path.join(tmpDir, "generated"),
+      schemaSourceDir: schemaDir,
+      tables: {
+        categories: { scope: "scope_id" },
+      },
+    });
+
+    generateSyncArtifacts(config);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const snapshotPath = path.join(
+      tmpDir,
+      "generated",
+      today,
+      "local-synced-schema.ts"
+    );
+    expect(fs.existsSync(snapshotPath)).toBe(true);
+    expect(fs.readFileSync(snapshotPath, "utf-8")).toBe(localContent);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("does not modify old snapshot when regenerating after schema edit", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-snap-"));
+    const schemaDir = path.join(tmpDir, "schemas");
+    fs.mkdirSync(schemaDir);
+
+    const v1Content = "// v1 schema\n";
+    fs.writeFileSync(path.join(schemaDir, "api-synced-schema.ts"), v1Content);
+    fs.writeFileSync(path.join(schemaDir, "local-synced-schema.ts"), v1Content);
+
+    const config = defineSyncConfig({
+      apiSyncedSchema,
+      localSyncedSchema,
+      outputDir: path.join(tmpDir, "generated"),
+      schemaSourceDir: schemaDir,
+      tables: {
+        categories: { scope: "scope_id" },
+      },
+    });
+
+    generateSyncArtifacts(config);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const snapshotPath = path.join(
+      tmpDir,
+      "generated",
+      today,
+      "api-synced-schema.ts"
+    );
+    expect(fs.readFileSync(snapshotPath, "utf-8")).toBe(v1Content);
+
+    const v2Content = "// v2 schema - EDITED\n";
+    fs.writeFileSync(path.join(schemaDir, "api-synced-schema.ts"), v2Content);
+
+    generateSyncArtifacts(config);
+
+    expect(fs.readFileSync(snapshotPath, "utf-8")).toBe(v2Content);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });

@@ -38,6 +38,7 @@ export type SyncConfigTables<
 export interface PairedSyncGeneratorConfig extends GeneratorConfig {
   apiSyncedSchema: SyncedSchemaModule;
   localSyncedSchema: SyncedSchemaModule;
+  schemaSourceDir?: string;
 }
 
 interface PairedSyncConfigInput<
@@ -49,7 +50,7 @@ interface PairedSyncConfigInput<
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;
-  packageName: string;
+  schemaSourceDir?: string;
   tables: SyncConfigTables<LocalSchema, ApiSchema>;
 }
 
@@ -106,11 +107,11 @@ function buildPairedSyncConfig<
     contract: syncSchema({
       encoding: input.encoding,
       limits: input.limits,
-      packageName: input.packageName,
       tables: tableDefinitions,
     }),
     localSyncedSchema: input.localSyncedSchema,
     outputDir: input.outputDir,
+    schemaSourceDir: input.schemaSourceDir,
   };
 }
 
@@ -123,7 +124,7 @@ export function defineSyncConfig<
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;
-  packageName: string;
+  schemaSourceDir?: string;
   tables: SyncConfigTables<LocalSchema, ApiSchema>;
 }): PairedSyncGeneratorConfig {
   return buildPairedSyncConfig(input);

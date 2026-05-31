@@ -2,7 +2,7 @@ import {
   items,
   locations,
   stockCounts,
-} from "@example/inventory-sync-contract/api-synced-schema";
+} from "@examples/sync-contract/generated/2026-05-31/api-synced-schema";
 import { pickLatestSyncCursorRow } from "baresync/server";
 import { and, desc, eq, gt, type InferSelectModel } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";

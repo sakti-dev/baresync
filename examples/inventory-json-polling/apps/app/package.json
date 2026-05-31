@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.80.7",
-    "@example/inventory-sync-contract": "workspace:*",
+    "@examples/sync-contract": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "baresync": "file:../../../../packages/baresync",
     "drizzle-orm": "^0.45.2",

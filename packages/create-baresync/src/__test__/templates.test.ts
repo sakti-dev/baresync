@@ -30,7 +30,7 @@ describe("buildRootScaffoldFiles", () => {
       'todos: { scope: "scope_id" }'
     );
     expect(fileMap.get("packages/sync-contract/sync.config.ts")).toContain(
-      "SYNC_CONTRACT_PACKAGE_NAME"
+      "schemaSourceDir"
     );
     expect(fileMap.get("apps/app/src-tauri/Cargo.toml")).toContain(
       'name = "acme-inventory-app"'
@@ -45,15 +45,7 @@ describe("buildRootScaffoldFiles", () => {
     expect(packageJson).toContain(
       '"./local-synced-schema": "./src/local-synced-schema.ts"'
     );
-    expect(packageJson).toContain(
-      '"./generated/sync-table-order": "./generated/sync-table-order.ts"'
-    );
-    expect(packageJson).toContain(
-      '"./generated/sync-contract": "./generated/sync-contract.json"'
-    );
-    expect(packageJson).toContain(
-      '"./generated/manifest": "./generated/sync-contract.manifest.json"'
-    );
+    expect(packageJson).toContain('"./generated/*": "./generated/*"');
     expect(packageJson).not.toContain('"./sync.config"');
   });
 

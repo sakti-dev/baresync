@@ -49,10 +49,9 @@ The generator SHALL compute `upsertOrder` (parent before child) and `deleteOrder
 
 The generated `sync-contract.json` SHALL contain:
 
-- `version`: contract version number (starts at 1)
+- `contractVersion`: ISO date string (`YYYY-MM-DD`) from generation time
 - `generatorVersion`: the baresync generator version
 - `encoding`: `"json"`
-- `packageName`: from the contract definition
 - `upsertOrder`: array of table names
 - `deleteOrder`: array of table names (reverse of upsertOrder)
 - `tables`: object keyed by table name, each containing:
@@ -62,10 +61,13 @@ The generated `sync-contract.json` SHALL contain:
   - `serverOnlyColumns`: array of excluded server column names
 - `limits`: object with `maxPushBytes` and `maxPushRows`
 
+The `packageName` field SHALL NOT appear in the generated output.
+
 #### Scenario: Contract JSON is valid and parseable
 
 - **WHEN** the generated `sync-contract.json` is parsed
 - **THEN** all fields above are present and match the input contract definition
+- **AND** no `packageName` field exists in the output
 
 ### Requirement: CLI generate command
 
@@ -123,20 +125,22 @@ The `packages/baresync/src/generator` public API SHALL export `defineSyncConfig(
 
 The input SHALL include:
 
-- `packageName`: sync package namespace
-- `outputDir`: generated artifact output directory
+- `outputDir`: generated artifact output directory (parent of dated subdirectories)
 - `localSyncedSchema`: object containing local-side replicated Drizzle tables
 - `apiSyncedSchema`: object containing API-side replicated Drizzle tables
 - `tables`: object keyed by table export name, with per-table sync settings
 - Optional `limits`
+- Optional `schemaSourceDir`: directory containing the source schema files to snapshot into the generated output
+
+The `packageName` field SHALL NOT be accepted by `defineSyncConfig`.
 
 Each `tables` key SHALL refer to a table present in both `localSyncedSchema` and `apiSyncedSchema`.
 
-#### Scenario: Paired config builds a generator config
+#### Scenario: Paired config builds a generator config without packageName
 
 - **WHEN** `defineSyncConfig` is called with matching `localSyncedSchema`, `apiSyncedSchema`, and `tables` entries for `locations`, `items`, and `stockCounts`
 - **THEN** it returns a `GeneratorConfig` accepted by `generateSyncArtifacts`
-- **AND** the generated contract uses the configured package name and output directory
+- **AND** the config does not contain a `packageName` field
 
 #### Scenario: Table names are typed from paired schemas
 

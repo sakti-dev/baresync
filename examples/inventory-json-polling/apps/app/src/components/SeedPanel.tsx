@@ -1,4 +1,4 @@
-import { INVENTORY_SCOPE_ID } from "@example/inventory-sync-contract/constants";
+import { SYNC_SCOPE } from "@examples/sync-contract/constants";
 import type { SyncClient } from "baresync";
 import { useState } from "react";
 import { useSyncClient } from "../hooks/useBaresyncQuery";
@@ -49,7 +49,7 @@ export async function createSampleInventoryRows(
       write: (writeTx) =>
         writeTx.insert(TABLE.locations).values({
           id: locationId,
-          scopeId: INVENTORY_SCOPE_ID,
+          scopeId: SYNC_SCOPE,
           name: `Aisle ${suffix}`,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -63,7 +63,7 @@ export async function createSampleInventoryRows(
       write: (writeTx) =>
         writeTx.insert(TABLE.items).values({
           id: itemId,
-          scopeId: INVENTORY_SCOPE_ID,
+          scopeId: SYNC_SCOPE,
           locationId,
           name: `Item ${suffix}`,
           sku: `SKU-${suffix}`,
@@ -79,7 +79,7 @@ export async function createSampleInventoryRows(
       write: (writeTx) =>
         writeTx.insert(TABLE.stockCounts).values({
           id: countId,
-          scopeId: INVENTORY_SCOPE_ID,
+          scopeId: SYNC_SCOPE,
           itemId,
           countedQuantity: 8 + sampleIndex,
           recordedAt: timestamp,

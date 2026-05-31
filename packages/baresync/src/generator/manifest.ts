@@ -4,11 +4,10 @@ import type { SyncContract } from "../schema/contract";
 import type { SyncTableOrder } from "./fk-order";
 
 export interface SyncManifest {
-  contractVersion: number;
+  contractVersion: string;
   encoding: string;
   generatorVersion: string;
   outputPaths: string[];
-  packageName: string;
   scopeMappings: Array<{ field: string; table: string }>;
   tableOrder: { delete: string[]; upsert: string[] };
   tables: Array<{
@@ -24,6 +23,7 @@ export function writeManifest(
   contract: SyncContract,
   tableOrder: SyncTableOrder,
   outputDir: string,
+  version: string,
   outputPaths: string[] = [
     "sync-contract.json",
     "sync-table-order.ts",
@@ -33,10 +33,9 @@ export function writeManifest(
   fs.mkdirSync(outputDir, { recursive: true });
 
   const manifest: SyncManifest = {
-    contractVersion: 1,
+    contractVersion: version,
     generatorVersion: GENERATOR_VERSION,
     encoding: contract.encoding,
-    packageName: contract.packageName,
     tables: contract.tablesMeta.map((t) => ({
       fieldNumbers: Object.fromEntries(
         t.columns.map((column, index) => [column, index + 1])
