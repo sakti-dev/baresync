@@ -76,7 +76,7 @@ console.log(pollStatus.last_sync_at); // timestamp or null
 Check the SQLite database file size and path:
 
 ```ts
-const dbInfo = await invoke("get_db_info");
+const dbInfo = await invoke("plugin:baresync|get_db_info");
 console.log(dbInfo.db_path);        // "/data/user/0/.../baresync.db"
 console.log(dbInfo.size_bytes);     // 1048576
 console.log(dbInfo.size_formatted); // "1.00 MB"

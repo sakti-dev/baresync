@@ -58,7 +58,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   // Create the client once — useState with an initializer never re-creates it
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:18181",
+      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: "your-scope-id",
       invoke,

@@ -932,7 +932,7 @@ use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 tauri::Builder::default()
     .plugin(
         BaresyncBuilder::new()
-            .api_base_url("http://127.0.0.1:18181")
+            .api_base_url("http://127.0.0.1:3001")
             .encoding("json")
             .db_path("baresync.db")
             .contract_tables(sync_tables())
@@ -1018,7 +1018,7 @@ import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:18181",
+  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "default",
   invoke,
@@ -1482,7 +1482,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:18181",
+      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: "default",
       invoke,
@@ -1551,7 +1551,7 @@ export function BaresyncProvider(props: ParentProps) {
   const queryClient = useQueryClient();
   const [client] = createSignal(
     createSyncClient({
-      apiUrl: "http://127.0.0.1:18181",
+      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: "default",
       invoke,
@@ -2144,4 +2144,3 @@ Expected:
 
 - Rust plugin still compiles.
 - Inventory app tests still pass.
-

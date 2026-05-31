@@ -27,7 +27,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:18181",
+      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: INVENTORY_SCOPE_ID,
       invoke,

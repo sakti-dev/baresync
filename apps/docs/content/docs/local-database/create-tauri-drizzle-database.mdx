@@ -35,7 +35,7 @@ interface TauriDrizzleDatabaseConfig {
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
   // Custom command names (rarely needed).
-  // Defaults to "run_sql" and "run_sql_batch".
+  // Defaults to "plugin:baresync|run_sql" and "plugin:baresync|run_sql_batch".
   commands?: {
     runSql?: string;
     runSqlBatch?: string;
@@ -52,14 +52,14 @@ interface TauriDrizzleDatabaseConfig {
 
 ## How it works
 
-`createTauriDrizzleDatabase` uses Drizzle's `sqlite-proxy` driver. Every query is serialized to `{ sql, params, method }` and sent via `invoke("run_sql", { query })` to the Rust side.
+`createTauriDrizzleDatabase` uses Drizzle's `sqlite-proxy` driver. Every query is serialized to `{ sql, params, method }` and sent via `invoke("plugin:baresync|run_sql", { query })` to the Rust side.
 
 ```txt
 db.select().from(TABLE.items)
   │
   ▼ Drizzle generates: SELECT "id", "name", ... FROM "items"
   │
-  ▼ invoke("run_sql", { query: { sql, params: [], method: "all" } })
+  ▼ invoke("plugin:baresync|run_sql", { query: { sql, params: [], method: "all" } })
   │
   ▼ Rust: DbClient.query(sql, params)
   │
@@ -99,7 +99,7 @@ await db.batch([
 ]);
 ```
 
-This calls `invoke("run_sql_batch", { statements })` which runs all statements inside a single Rust transaction. If any statement fails, the entire batch rolls back.
+This calls `invoke("plugin:baresync|run_sql_batch", { statements })` which runs all statements inside a single Rust transaction. If any statement fails, the entire batch rolls back.
 
 ## Error handling
 
@@ -123,7 +123,7 @@ Pass a mock `invoke` for unit tests:
 const mockDb = createTauriDrizzleDatabase({
   schema: TABLE,
   invoke: async (cmd, args) => {
-    if (cmd === "run_sql") return [];
+    if (cmd === "plugin:baresync|run_sql") return [];
     return { last_insert_id: 0, rows_affected: 0 };
   },
 });

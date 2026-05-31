@@ -23,7 +23,7 @@ startPolling() → loop runs every N seconds → sync_fn() → emit events
 
 ### Early sync on write
 
-When `run_sql` or `run_sql_batch` detects `rows_affected > 0`, it calls `notify_one()` on the polling loop's `Notify`. This wakes the loop immediately (if it is not paused or already syncing), so local writes are pushed sooner than the next tick.
+When `plugin:baresync|run_sql` or `plugin:baresync|run_sql_batch` detects `rows_affected > 0`, it calls `notify_one()` on the polling loop's `Notify`. This wakes the loop immediately (if it is not paused or already syncing), so local writes are pushed sooner than the next tick.
 
 ## Concurrency guard
 
@@ -60,7 +60,7 @@ Stopping also resets `last_sync_at` and sets `paused` to `false`.
 ## Polling status
 
 ```ts
-const status = await invoke("get_polling_status");
+const status = await invoke("plugin:baresync|get_polling_status");
 // { running: boolean, paused: boolean, last_sync_at: string | null }
 ```
 

@@ -112,7 +112,7 @@ function resolveFixtureApiUrl(device: DeviceTarget): string {
   }
 
   if (device.isEmulator) {
-    return "http://10.0.2.2:18080";
+    return "http://10.0.2.2:3001";
   }
 
   const hostAddress = inferHostAddress();
@@ -122,7 +122,7 @@ function resolveFixtureApiUrl(device: DeviceTarget): string {
     );
   }
 
-  return `http://${hostAddress}:18080`;
+  return `http://${hostAddress}:3001`;
 }
 
 async function delay(ms: number) {

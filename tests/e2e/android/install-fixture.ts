@@ -177,7 +177,7 @@ function resolveFixtureApiUrl(device: DeviceTarget): string {
 
   const hostAddress = device.isEmulator ? "10.0.2.2" : inferHostAddress();
   if (hostAddress) {
-    return `http://${hostAddress}:18080`;
+    return `http://${hostAddress}:3001`;
   }
 
   return fail(

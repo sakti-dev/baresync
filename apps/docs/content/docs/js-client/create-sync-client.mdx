@@ -5,7 +5,7 @@ description: Construct a sync client with your server URL, encoding, scope, and 
 
 # Create Sync Client
 
-`createSyncClient` builds a `SyncClient` instance that your app uses for every sync operation. You typically create one client per scope and hold it in a React context.
+`createSyncClient` builds a `SyncClient` instance that your app uses for every sync operation. You typically create one client per scope and hold it in a React context. By default it calls the Baresync Tauri plugin commands under the `plugin:baresync|...` namespace.
 
 ## Import
 
@@ -17,7 +17,7 @@ import { createSyncClient } from "baresync/tauri";
 
 ```ts
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:18181",
+  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "outlet-1",
   invoke,
@@ -29,6 +29,7 @@ const client = createSyncClient({
 | `apiUrl` | `string` | Yes | Your server's base URL (used by the Tauri plugin for HTTP requests) |
 | `encoding` | `"json"` | Yes | Wire encoding for sync payloads |
 | `scopeId` | `string` | Yes | The scope this client syncs under (must match a scope in your sync contract) |
+| `commands` | `SyncClientCommands` | No | Optional command-name overrides for legacy app-local wrappers |
 | `invoke` | `(cmd, args?) => Promise<unknown>` | No | Tauri IPC function. Defaults to a stub that throws outside Tauri runtime |
 
 ### apiUrl
@@ -51,7 +52,7 @@ In a Tauri app, pass `invoke` from `@tauri-apps/api/core`:
 import { invoke } from "@tauri-apps/api/core";
 
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:18181",
+  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "outlet-1",
   invoke,
@@ -59,6 +60,21 @@ const client = createSyncClient({
 ```
 
 If you omit `invoke`, the client throws with a descriptive error when you call any command. This is intentional — it prevents silent failures if the client is accidentally used outside a Tauri window.
+
+If you omit `commands`, the client uses the plugin namespace defaults:
+
+```txt
+plugin:baresync|sync_now
+plugin:baresync|sync_push
+plugin:baresync|sync_pull
+plugin:baresync|sync_full_resync
+plugin:baresync|get_sync_local_state
+plugin:baresync|start_polling
+plugin:baresync|stop_polling
+plugin:baresync|pause_polling
+plugin:baresync|resume_polling
+plugin:baresync|get_polling_status
+```
 
 ## Return type
 
@@ -96,7 +112,7 @@ const SyncClientContext = createContext<SyncClient | null>(null);
 export function SyncClientProvider({ children }: { children: ReactNode }) {
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:18181",
+      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: "outlet-1",
       invoke,

@@ -58,7 +58,7 @@ It also ensures the Drizzle proxy knows about every table in your schema, includ
 `createTauriDrizzleDatabase` creates a Drizzle `SQLiteProxyDatabase` that:
 
 1. Serializes your Drizzle query builder calls into SQL
-2. Sends the SQL to the Tauri plugin via `invoke("run_sql", { query })`
+2. Sends the SQL to the Tauri plugin via `invoke("plugin:baresync|run_sql", { query })`
 3. Returns the rows as plain objects
 
 You use standard Drizzle query methods (`select`, `insert`, `update`, `delete`) and the proxy handles the transport.

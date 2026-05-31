@@ -14,7 +14,7 @@ describe("createTauriDrizzleDatabase", () => {
 
     const mockInvoke: InvokeFn = (cmd, args) => {
       calls.push({ cmd, args: args ?? {} });
-      if (cmd === "run_sql") {
+      if (cmd === "plugin:baresync|run_sql") {
         return Promise.resolve([]);
       }
       return Promise.resolve({ last_insert_id: 0, rows_affected: 0 });
@@ -28,7 +28,7 @@ describe("createTauriDrizzleDatabase", () => {
     await db.select().from(items);
 
     expect(calls.length).toBe(1);
-    expect(calls[0].cmd).toBe("run_sql");
+    expect(calls[0].cmd).toBe("plugin:baresync|run_sql");
     expect((calls[0].args.query as { sql: string }).sql).toContain("items");
   });
 
@@ -37,7 +37,7 @@ describe("createTauriDrizzleDatabase", () => {
 
     const mockInvoke: InvokeFn = (cmd, args) => {
       calls.push({ cmd, args: args ?? {} });
-      if (cmd === "run_sql") {
+      if (cmd === "plugin:baresync|run_sql") {
         return Promise.resolve([]);
       }
       return Promise.resolve([{ rows: [] }, { rows: [] }]);
@@ -68,6 +68,29 @@ describe("createTauriDrizzleDatabase", () => {
         sql: 'insert into "items" ("id", "name", "count") values (?, ?, ?)',
       },
     ]);
+  });
+
+  test("uses plugin command defaults for batch queries", async () => {
+    const calls: Array<{ cmd: string }> = [];
+
+    const mockInvoke: InvokeFn = (cmd) => {
+      calls.push({ cmd });
+      if (cmd === "plugin:baresync|run_sql") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([{ rows: [] }]);
+    };
+
+    const db = createTauriDrizzleDatabase({
+      invoke: mockInvoke,
+      schema: { items },
+    });
+
+    await db.batch([
+      db.insert(items).values({ id: "test-1", name: "test-item-1" }),
+    ]);
+
+    expect(calls).toContainEqual({ cmd: "plugin:baresync|run_sql_batch" });
   });
 
   test("uses custom command names", async () => {

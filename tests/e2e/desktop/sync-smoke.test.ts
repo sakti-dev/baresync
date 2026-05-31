@@ -104,7 +104,7 @@ smokeSuite("public fixture desktop smoke", () => {
   if (beforeHook) {
     beforeHook(async () => {
       await fetch(
-        `${process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:18080"}/__reset`,
+        `${process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:3001"}/__reset`,
         { method: "POST" }
       );
     });
@@ -166,7 +166,7 @@ smokeSuite("public fixture desktop smoke", () => {
     await waitForText("#dirty-count", "0", "manual sync should complete");
 
     const backendState = await fetch(
-      `${process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:18080"}/__state`
+      `${process.env.BARESYNC_FIXTURE_API_URL ?? "http://127.0.0.1:3001"}/__state`
     ).then(
       (response) =>
         response.json() as Promise<{

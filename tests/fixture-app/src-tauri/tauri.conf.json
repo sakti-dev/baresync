@@ -22,7 +22,7 @@
   },
   "plugins": {
     "baresync": {
-      "api_base_url": "http://127.0.0.1:18080",
+      "api_base_url": "http://127.0.0.1:3001",
       "encoding": "json",
       "max_push_bytes": 262144,
       "max_push_rows": 2000,

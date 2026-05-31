@@ -8,7 +8,7 @@ TBD. Host-side polling lifecycle coverage for the Tauri plugin sync loop.
 The plugin SHALL run an optional background tokio task that periodically calls `sync_now` for a given `scope_id`.
 
 #### Scenario: Start polling
-- **WHEN** the JS client calls `invoke("start_polling", { scopeId: "outlet-1" })`
+- **WHEN** the JS client calls `invoke("plugin:baresync|start_polling", { scopeId: "outlet-1" })`
 - **THEN** the plugin SHALL spawn a background task that calls `sync_now` every `poll_interval_secs`
 
 #### Scenario: Start polling is idempotent
@@ -16,7 +16,7 @@ The plugin SHALL run an optional background tokio task that periodically calls `
 - **THEN** the plugin SHALL NOT spawn a duplicate task
 
 #### Scenario: Stop polling
-- **WHEN** the JS client calls `invoke("stop_polling")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|stop_polling")`
 - **THEN** the plugin SHALL terminate the background task
 
 #### Scenario: Stop polling when not running
@@ -27,7 +27,7 @@ The plugin SHALL run an optional background tokio task that periodically calls `
 After `run_sql` or `run_sql_batch` executes, the plugin SHALL notify the background task to perform an immediate push.
 
 #### Scenario: Write triggers immediate push
-- **WHEN** the frontend calls `invoke("run_sql", { query: ... })` while polling is active
+- **WHEN** the frontend calls `invoke("plugin:baresync|run_sql", { query: ... })` while polling is active
 - **THEN** the plugin SHALL execute the SQL, then signal the background task to push
 
 #### Scenario: Write-triggered push resets poll timer
@@ -35,33 +35,33 @@ After `run_sql` or `run_sql_batch` executes, the plugin SHALL notify the backgro
 - **THEN** the next timer-based sync SHALL be delayed by a full `poll_interval_secs` from the push completion time
 
 #### Scenario: Write notification when polling is not active
-- **WHEN** `run_sql` or `run_sql_batch` is called but polling has not been started
+- **WHEN** `plugin:baresync|run_sql` or `plugin:baresync|run_sql_batch` is called but polling has not been started
 - **THEN** the SQL SHALL execute normally and the notification SHALL be silently ignored
 
 ### Requirement: Debounce on any sync activity
 Every sync execution - whether triggered by the timer, a write event, or a manual command - SHALL reset the poll timer.
 
 #### Scenario: Manual sync_now resets poll timer
-- **WHEN** the frontend calls `invoke("sync_now", { scopeId: ... })` while polling is active
+- **WHEN** the frontend calls `invoke("plugin:baresync|sync_now", { scopeId: ... })` while polling is active
 - **THEN** the next automatic poll SHALL be scheduled for `poll_interval_secs` seconds after the manual sync completes
 
 #### Scenario: Manual sync_push resets poll timer
-- **WHEN** the frontend calls `invoke("sync_push", { scopeId: ... })` while polling is active
+- **WHEN** the frontend calls `invoke("plugin:baresync|sync_push", { scopeId: ... })` while polling is active
 - **THEN** the next automatic poll SHALL be rescheduled from the push completion time
 
 #### Scenario: Manual sync_pull resets poll timer
-- **WHEN** the frontend calls `invoke("sync_pull", { scopeId: ... })` while polling is active
+- **WHEN** the frontend calls `invoke("plugin:baresync|sync_pull", { scopeId: ... })` while polling is active
 - **THEN** the next automatic poll SHALL be rescheduled from the pull completion time
 
 ### Requirement: Pause and resume polling
 The plugin SHALL support pausing and resuming the background task without destroying it.
 
 #### Scenario: Pause polling
-- **WHEN** the frontend calls `invoke("pause_polling")` while polling is active
+- **WHEN** the frontend calls `invoke("plugin:baresync|pause_polling")` while polling is active
 - **THEN** the background task SHALL stop executing syncs but remain alive
 
 #### Scenario: Resume polling
-- **WHEN** the frontend calls `invoke("resume_polling")` after pausing
+- **WHEN** the frontend calls `invoke("plugin:baresync|resume_polling")` after pausing
 - **THEN** the background task SHALL resume executing syncs and reset the poll timer
 
 #### Scenario: Resume resets poll timer
@@ -89,15 +89,15 @@ By default, polling SHALL pause when the app is backgrounded and resume when it 
 The plugin SHALL expose a command to query the current polling state.
 
 #### Scenario: Get polling status while active
-- **WHEN** the frontend calls `invoke("get_polling_status")` while polling is running
+- **WHEN** the frontend calls `invoke("plugin:baresync|get_polling_status")` while polling is running
 - **THEN** the plugin SHALL return `{ running: true, paused: false, last_sync_at: "<ISO timestamp>" }`
 
 #### Scenario: Get polling status while paused
-- **WHEN** the frontend calls `invoke("get_polling_status")` while polling is paused
+- **WHEN** the frontend calls `invoke("plugin:baresync|get_polling_status")` while polling is paused
 - **THEN** the plugin SHALL return `{ running: true, paused: true, last_sync_at: "<ISO timestamp>" }`
 
 #### Scenario: Get polling status when not started
-- **WHEN** the frontend calls `invoke("get_polling_status")` when no polling task has been started
+- **WHEN** the frontend calls `invoke("plugin:baresync|get_polling_status")` when no polling task has been started
 - **THEN** the plugin SHALL return `{ running: false, paused: false, last_sync_at: null }`
 
 ### Requirement: Concurrency guard

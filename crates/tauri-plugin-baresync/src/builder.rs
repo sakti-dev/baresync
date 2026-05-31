@@ -3,6 +3,7 @@ use baresync_core::db::{self, EncryptionKeyProvider};
 use baresync_core::engine::SyncContractTables;
 use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use tauri::{
 };
 use tokio::sync::Notify;
 
-use crate::commands::{PluginEvent, PluginEventSink, PluginState};
+use crate::commands::{self, PluginEvent, PluginEventSink, PluginState};
 use crate::config::PluginConfig;
 use crate::polling::PollingState;
 
@@ -38,8 +39,10 @@ pub struct Builder {
     max_push_bytes: Option<usize>,
     max_push_rows: Option<usize>,
     db_path: Option<String>,
+    db_name: Option<String>,
     encryption_key_provider: Option<Arc<dyn EncryptionKeyProvider>>,
     contract_tables: Option<SyncContractTables>,
+    contract_json: Option<String>,
     embedded_migrations: Vec<EmbeddedMigration>,
     migrations_path: Option<PathBuf>,
     transport: Option<Arc<dyn SyncHttpTransport>>,
@@ -55,8 +58,10 @@ impl Builder {
             max_push_bytes: None,
             max_push_rows: None,
             db_path: None,
+            db_name: None,
             encryption_key_provider: None,
             contract_tables: None,
+            contract_json: None,
             embedded_migrations: Vec::new(),
             migrations_path: None,
             transport: None,
@@ -90,6 +95,11 @@ impl Builder {
         self
     }
 
+    pub fn db_name(mut self, name: impl Into<String>) -> Self {
+        self.db_name = Some(name.into());
+        self
+    }
+
     pub fn encryption_key_provider<P>(mut self, provider: P) -> Self
     where
         P: EncryptionKeyProvider + 'static,
@@ -100,6 +110,11 @@ impl Builder {
 
     pub fn contract_tables(mut self, tables: SyncContractTables) -> Self {
         self.contract_tables = Some(tables);
+        self
+    }
+
+    pub fn contract_json(mut self, json: impl Into<String>) -> Self {
+        self.contract_json = Some(json.into());
         self
     }
 
@@ -129,32 +144,50 @@ impl Builder {
     }
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, PluginConfig> {
-        let config = PluginConfig {
-            api_base_url: self.api_base_url.unwrap_or_default(),
-            encoding: self.encoding.unwrap_or_else(|| "json".to_string()),
-            max_push_bytes: self.max_push_bytes.unwrap_or(256 * 1024),
-            max_push_rows: self.max_push_rows.unwrap_or(2000),
-            db_path: self.db_path.unwrap_or_else(|| "baresync.db".to_string()),
-            contract_tables: self.contract_tables.unwrap_or(SyncContractTables {
-                upsert_order: vec![],
-                delete_order: vec![],
-                local_only_columns: vec![],
-            }),
-            transport: self.transport,
-            poll_interval_secs: self.poll_interval_secs.unwrap_or(30),
-            poll_on_background: self.poll_on_background.unwrap_or(false),
-        };
-
+        let api_base_url = self.api_base_url.unwrap_or_default();
+        let encoding = self.encoding.unwrap_or_else(|| "json".to_string());
+        let max_push_bytes = self.max_push_bytes.unwrap_or(256 * 1024);
+        let max_push_rows = self.max_push_rows.unwrap_or(2000);
+        let db_path = self.db_path;
+        let db_name = self.db_name;
+        let encryption_key_provider = self.encryption_key_provider;
+        let contract_tables = self.contract_tables;
+        let contract_json = self.contract_json;
         let embedded_migrations = self.embedded_migrations;
         let migrations_path = self.migrations_path;
-        let encryption_key_provider = self.encryption_key_provider;
+        let transport = self.transport;
+        let poll_interval_secs = self.poll_interval_secs.unwrap_or(30);
+        let poll_on_background = self.poll_on_background.unwrap_or(false);
 
         TauriPluginBuilder::<R, PluginConfig>::new("baresync")
+            .invoke_handler(tauri::generate_handler![
+                #![plugin(baresync)]
+                commands::run_sql,
+                commands::run_sql_batch,
+                commands::get_db_info,
+                commands::run_migrations,
+                commands::get_migration_status,
+                commands::sync_now,
+                commands::sync_push,
+                commands::sync_pull,
+                commands::sync_full_resync,
+                commands::get_sync_local_state,
+                commands::purge_synced_outbox,
+                commands::run_garbage_collection,
+                commands::start_polling,
+                commands::stop_polling,
+                commands::pause_polling,
+                commands::resume_polling,
+                commands::get_polling_status
+            ])
             .setup(move |app, _api| {
-                let config = config.clone();
                 validate_migration_sources(&embedded_migrations, migrations_path.as_deref())
                     .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
 
+                let resolved_db_path =
+                    resolve_database_path(app, db_path.as_deref(), db_name.as_deref())?;
+                let contract_tables =
+                    resolve_contract_tables(contract_tables.as_ref(), contract_json.as_deref())?;
                 let resolved_migrations_path =
                     migrations_path.as_deref().map_or(Ok(None), |path| {
                         resolve_migrations_path(path, |relative| {
@@ -174,13 +207,13 @@ impl Builder {
 
                 let db = tauri::async_runtime::block_on(async {
                     if let Some(provider) = encryption_key_provider.clone() {
-                        db::connect_db_with_encryption(&config.db_path, provider)
+                        db::connect_db_with_encryption(&resolved_db_path, provider)
                             .await
                             .map_err(|e| -> Box<dyn std::error::Error> {
                                 format!("Failed to connect to encrypted database: {}", e).into()
                             })
                     } else {
-                        db::connect_db(&config.db_path)
+                        db::connect_db(&resolved_db_path)
                             .await
                             .map_err(|e| -> Box<dyn std::error::Error> {
                                 format!("Failed to connect to database: {}", e).into()
@@ -188,13 +221,13 @@ impl Builder {
                     }
                 })?;
 
-                let transport = resolve_transport(&config)?;
+                let transport = resolve_transport(&transport)?;
 
                 let sync_config = SyncEngineConfig {
-                    api_url: config.api_base_url.clone(),
-                    encoding: config.encoding.clone(),
-                    max_push_bytes: config.max_push_bytes,
-                    max_push_rows: config.max_push_rows,
+                    api_url: api_base_url.clone(),
+                    encoding: encoding.clone(),
+                    max_push_bytes,
+                    max_push_rows,
                     transport,
                     ..Default::default()
                 };
@@ -220,8 +253,8 @@ impl Builder {
                 app.manage(PluginState {
                     db: Arc::new(db),
                     sync_config,
-                    contract_tables: config.contract_tables.clone(),
-                    db_path: PathBuf::from(&config.db_path),
+                    contract_tables,
+                    db_path: resolved_db_path,
                     embedded_migrations: Arc::new(embedded_migrations),
                     migrations_path: resolved_migrations_path.clone(),
                     poll_notify: Arc::new(Notify::new()),
@@ -232,8 +265,8 @@ impl Builder {
                         paused: false,
                         last_sync_at: None,
                     })),
-                    poll_interval_secs: config.poll_interval_secs,
-                    poll_on_background: config.poll_on_background,
+                    poll_interval_secs,
+                    poll_on_background,
                     event_sink: Arc::new(TauriAppEventSink { app: app.clone() }),
                 });
 
@@ -277,16 +310,136 @@ fn resolve_migrations_path(
     resolve_relative(path)
 }
 
-fn resolve_transport(config: &PluginConfig) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
-    Ok(config
-        .transport
+fn resolve_database_path<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    db_path: Option<&str>,
+    db_name: Option<&str>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let app_data_dir = app.path().app_data_dir().map_err(|error| {
+        format!("Failed to resolve app data directory for database name: {error}")
+    })?;
+    resolve_database_path_from_app_data_dir(db_path, db_name, Some(app_data_dir.as_path()))
+}
+
+fn resolve_database_path_from_app_data_dir(
+    db_path: Option<&str>,
+    db_name: Option<&str>,
+    app_data_dir: Option<&Path>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(path) = db_path {
+        return Ok(PathBuf::from(path));
+    }
+
+    if let Some(name) = db_name {
+        let app_data_dir = app_data_dir.ok_or_else(|| {
+            "Failed to resolve app data directory for database name".to_string()
+        })?;
+        return resolve_named_database_path(app_data_dir, name);
+    }
+
+    Ok(PathBuf::from("baresync.db"))
+}
+
+fn resolve_named_database_path(
+    app_data_dir: &Path,
+    db_name: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let resolved = app_data_dir.join(db_name);
+    if let Some(parent) = resolved.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Failed to create database directory {}: {}",
+                parent.display(),
+                error
+            )
+        })?;
+    }
+    Ok(resolved)
+}
+
+fn resolve_contract_tables(
+    explicit: Option<&SyncContractTables>,
+    contract_json: Option<&str>,
+) -> Result<SyncContractTables, Box<dyn std::error::Error>> {
+    if let Some(tables) = explicit {
+        return Ok(tables.clone());
+    }
+
+    if let Some(json) = contract_json {
+        return parse_contract_json(json)
+            .map_err(|error| format!("Failed to parse generated contract JSON: {error}").into());
+    }
+
+    Ok(SyncContractTables {
+        upsert_order: vec![],
+        delete_order: vec![],
+        local_only_columns: vec![],
+    })
+}
+
+fn resolve_transport(
+    transport: &Option<Arc<dyn SyncHttpTransport>>,
+) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
+    Ok(transport
         .clone()
         .unwrap_or_else(baresync_core::http::default_transport))
 }
 
+fn parse_contract_json(json: &str) -> Result<SyncContractTables, String> {
+    let contract: GeneratedContractJson = serde_json::from_str(json)
+        .map_err(|error| format!("invalid generated contract JSON: {error}"))?;
+
+    if contract.upsert_order.is_empty() {
+        return Err("generated contract JSON is missing `upsertOrder`".to_string());
+    }
+
+    if contract.delete_order.is_empty() {
+        return Err("generated contract JSON is missing `deleteOrder`".to_string());
+    }
+
+    let mut local_only_columns = Vec::new();
+    for (table_name, table) in contract.tables {
+        let Some(columns) = table.local_only_columns else {
+            return Err(format!(
+                "generated contract JSON is missing `localOnlyColumns` for table `{table_name}`"
+            ));
+        };
+
+        for column in columns {
+            if !local_only_columns.contains(&column) {
+                local_only_columns.push(column);
+            }
+        }
+    }
+
+    Ok(SyncContractTables {
+        upsert_order: contract.upsert_order,
+        delete_order: contract.delete_order,
+        local_only_columns,
+    })
+}
+
+#[derive(Deserialize)]
+struct GeneratedContractJson {
+    #[serde(rename = "upsertOrder")]
+    upsert_order: Vec<String>,
+    #[serde(rename = "deleteOrder")]
+    delete_order: Vec<String>,
+    tables: std::collections::BTreeMap<String, GeneratedContractTable>,
+}
+
+#[derive(Deserialize)]
+struct GeneratedContractTable {
+    #[serde(rename = "localOnlyColumns")]
+    local_only_columns: Option<Vec<String>>,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{resolve_migrations_path, resolve_transport, validate_migration_sources};
+    use super::{
+        parse_contract_json, resolve_database_path_from_app_data_dir, resolve_migrations_path,
+        resolve_named_database_path, resolve_transport, validate_migration_sources,
+    };
     use crate::config::PluginConfig;
     use baresync_core::engine::SyncContractTables;
     use baresync_core::http::SyncHttpTransport;
@@ -326,7 +479,7 @@ mod tests {
 
     fn test_config(encoding: &str, transport: Option<Arc<dyn SyncHttpTransport>>) -> PluginConfig {
         PluginConfig {
-            api_base_url: "http://127.0.0.1:18181".to_string(),
+            api_base_url: "http://127.0.0.1:3001".to_string(),
             encoding: encoding.to_string(),
             max_push_bytes: 256 * 1024,
             max_push_rows: 2000,
@@ -344,15 +497,66 @@ mod tests {
 
     #[test]
     fn json_uses_default_transport_when_missing() {
-        assert!(resolve_transport(&test_config("json", None)).is_ok());
+        assert!(resolve_transport(&test_config("json", None).transport).is_ok());
     }
 
     #[test]
     fn explicit_transport_is_used_when_present() {
         let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
-        let resolved = resolve_transport(&test_config("json", Some(transport.clone())))
+        let resolved = resolve_transport(&test_config("json", Some(transport.clone())).transport)
             .expect("explicit transport should resolve");
         assert!(Arc::ptr_eq(&transport, &resolved));
+    }
+
+    #[test]
+    fn generated_contract_json_parses_order_and_local_columns() {
+        let tables = parse_contract_json(
+            r#"{
+              "upsertOrder": ["lists", "todos"],
+              "deleteOrder": ["todos", "lists"],
+              "tables": {
+                "lists": { "localOnlyColumns": ["is_synced"] },
+                "todos": { "localOnlyColumns": ["is_synced", "draft"] }
+              }
+            }"#,
+        )
+        .expect("generated contract JSON should parse");
+
+        assert_eq!(tables.upsert_order, vec!["lists", "todos"]);
+        assert_eq!(tables.delete_order, vec!["todos", "lists"]);
+        assert_eq!(tables.local_only_columns, vec!["is_synced", "draft"]);
+    }
+
+    #[test]
+    fn generated_contract_json_requires_local_only_columns() {
+        let error = parse_contract_json(
+            r#"{
+              "upsertOrder": ["lists"],
+              "deleteOrder": ["lists"],
+              "tables": {
+                "lists": {}
+              }
+            }"#,
+        )
+        .expect_err("missing localOnlyColumns should fail");
+
+        assert!(error.contains("localOnlyColumns"));
+    }
+
+    #[test]
+    fn db_name_resolution_uses_app_data_dir_and_creates_parent_directory() {
+        let base_dir = std::env::temp_dir().join(format!(
+            "baresync-db-name-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base_dir);
+        let nested = base_dir.join("nested");
+        let resolved = resolve_named_database_path(&nested, "sync.db")
+            .expect("db name resolution should succeed");
+
+        assert_eq!(resolved, nested.join("sync.db"));
+        assert!(nested.exists());
+        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
@@ -398,5 +602,17 @@ mod tests {
             error.contains("embedded migrations") && error.contains("migrations_path"),
             "unexpected error message: {error}"
         );
+    }
+
+    #[test]
+    fn explicit_database_path_takes_precedence_over_db_name() {
+        let resolved = resolve_database_path_from_app_data_dir(
+            Some("/tmp/custom.db"),
+            Some("sync.db"),
+            Some(Path::new("/tmp/app-data")),
+        )
+            .expect("explicit db path should resolve");
+
+        assert_eq!(resolved, PathBuf::from("/tmp/custom.db"));
     }
 }

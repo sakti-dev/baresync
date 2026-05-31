@@ -14,7 +14,7 @@ The Tauri plugin exposes these IPC commands. The JS `SyncClient` calls them via 
 Execute a single SQL statement. Used by the Drizzle proxy.
 
 ```ts
-await invoke("run_sql", {
+await invoke("plugin:baresync|run_sql", {
   query: { sql: "SELECT * FROM items WHERE id = ?", params: ["item-1"], method: "all" },
 });
 ```
@@ -55,7 +55,7 @@ All statements run in a single transaction. If any fails, all roll back.
 Returns database file metadata. No parameters.
 
 ```ts
-const info = await invoke("get_db_info");
+const info = await invoke("plugin:baresync|get_db_info");
 // { db_path: "/path/to/baresync.db", size_bytes: 524288, size_formatted: "512 KB" }
 ```
 
@@ -64,7 +64,7 @@ const info = await invoke("get_db_info");
 Runs the configured migration source, either `migrations_path(...)` or embedded migrations. No parameters.
 
 ```ts
-await invoke("run_migrations");
+await invoke("plugin:baresync|run_migrations");
 ```
 
 Runs at plugin startup automatically. Call manually only if you need to re-run migrations after a hot-reload.
@@ -74,7 +74,7 @@ Runs at plugin startup automatically. Call manually only if you need to re-run m
 Lists applied migrations. No parameters.
 
 ```ts
-const status = await invoke("get_migration_status");
+const status = await invoke("plugin:baresync|get_migration_status");
 // [{ hash: "0001_create_items", created_at: 1747894800000 }, ...]
 ```
 
@@ -85,7 +85,7 @@ const status = await invoke("get_migration_status");
 Intelligent sync — decides mode based on local state and server status.
 
 ```ts
-const result = await invoke("sync_now", { scopeId: "merchant-1" });
+const result = await invoke("plugin:baresync|sync_now", { scopeId: "merchant-1" });
 ```
 
 | Parameter | Type | Description |
@@ -99,7 +99,7 @@ Returns `SyncNowResult` with `mode`, `status`, `push`, `pull`, `purged`, `skippe
 Push local outbox changes to the server.
 
 ```ts
-const result = await invoke("sync_push", { scopeId: "merchant-1" });
+const result = await invoke("plugin:baresync|sync_push", { scopeId: "merchant-1" });
 ```
 
 Returns `PushResult` with `tables_synced`, `rejected_tables`, `server_wins_count`, `server_time`.
@@ -109,7 +109,7 @@ Returns `PushResult` with `tables_synced`, `rejected_tables`, `server_wins_count
 Pull server changes to local.
 
 ```ts
-const result = await invoke("sync_pull", { scopeId: "merchant-1" });
+const result = await invoke("plugin:baresync|sync_pull", { scopeId: "merchant-1" });
 ```
 
 Returns `PullResult` with `rows_received`, `server_time`.
@@ -119,7 +119,7 @@ Returns `PullResult` with `rows_received`, `server_time`.
 Drop the cursor and re-sync from scratch.
 
 ```ts
-const result = await invoke("sync_full_resync", { scopeId: "merchant-1" });
+const result = await invoke("plugin:baresync|sync_full_resync", { scopeId: "merchant-1" });
 ```
 
 Returns `SyncNowResult`.
@@ -129,7 +129,7 @@ Returns `SyncNowResult`.
 Returns local sync state.
 
 ```ts
-const state = await invoke("get_sync_local_state", { scopeId: "merchant-1" });
+const state = await invoke("plugin:baresync|get_sync_local_state", { scopeId: "merchant-1" });
 // { local_dirty_count: 3, last_server_watermark: "sync:...", needs_baseline_sync: false }
 ```
 
@@ -164,7 +164,7 @@ Returns the number of deleted rows.
 Start the polling loop for a scope.
 
 ```ts
-await invoke("start_polling", { scopeId: "merchant-1" });
+await invoke("plugin:baresync|start_polling", { scopeId: "merchant-1" });
 ```
 
 ### `stop_polling`
@@ -172,7 +172,7 @@ await invoke("start_polling", { scopeId: "merchant-1" });
 Stop the polling loop entirely.
 
 ```ts
-await invoke("stop_polling");
+await invoke("plugin:baresync|stop_polling");
 ```
 
 ### `pause_polling`
@@ -180,7 +180,7 @@ await invoke("stop_polling");
 Pause polling (keeps the task alive).
 
 ```ts
-await invoke("pause_polling");
+await invoke("plugin:baresync|pause_polling");
 ```
 
 ### `resume_polling`
@@ -188,7 +188,7 @@ await invoke("pause_polling");
 Resume paused polling.
 
 ```ts
-await invoke("resume_polling");
+await invoke("plugin:baresync|resume_polling");
 ```
 
 ### `get_polling_status`
@@ -196,7 +196,7 @@ await invoke("resume_polling");
 Returns current polling state.
 
 ```ts
-const status = await invoke("get_polling_status");
+const status = await invoke("plugin:baresync|get_polling_status");
 // { running: true, paused: false, last_sync_at: "2026-05-22T10:30:00Z" }
 ```
 

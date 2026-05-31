@@ -4,6 +4,20 @@ Local SQLite runtime and Drizzle proxy behavior for Baresync Tauri apps.
 
 ## Requirements
 
+### Requirement: Drizzle proxy plugin command defaults
+
+The JS Drizzle proxy database helper SHALL use Baresync plugin command names by default while preserving command-name overrides.
+
+#### Scenario: Default DB proxy command names use plugin namespace
+
+- **WHEN** a Drizzle query is executed on a database returned by `createTauriDrizzleDatabase` without custom command-name overrides
+- **THEN** the helper SHALL invoke `plugin:baresync|run_sql` or `plugin:baresync|run_sql_batch` as appropriate
+
+#### Scenario: Legacy DB proxy command names remain configurable
+
+- **WHEN** a consumer configures custom `runSql` or `runSqlBatch` command names
+- **THEN** the helper SHALL invoke those configured command names instead of plugin namespace defaults
+
 ### Requirement: SQLite database client connection with standard configuration
 
 The `crates/baresync-core/src/db.rs` module SHALL export a `LocalDatabase` struct with a `connect` method that creates a `DbClient` backed by `rusqlite` and configured with:
@@ -111,12 +125,12 @@ The migration runner SHALL create a `__drizzle_migrations` table (with `id`, `ha
 
 The `packages/baresync/src/db/drizzle-proxy.ts` module SHALL export `createTauriDrizzleDatabase(input)` that accepts a `schema` object and an optional `commands` configuration mapping `runSql` and `runSqlBatch` to Tauri command names.
 
-The function SHALL return a Drizzle `BetterSQLite3Database` instance using the `drizzle-orm/sqlite-proxy` driver configured to invoke the specified Tauri commands.
+The function SHALL return a Drizzle `BetterSQLite3Database` instance using the `drizzle-orm/sqlite-proxy` driver configured to invoke Baresync plugin commands by default or the specified Tauri commands when overrides are provided.
 
 #### Scenario: Database helper invokes Tauri commands
 
 - **WHEN** a Drizzle query is executed on the returned database instance
-- **THEN** the corresponding Tauri command (`run_sql` or `run_sql_batch`) is invoked with the serialized query
+- **THEN** the corresponding Baresync plugin command (`plugin:baresync|run_sql` or `plugin:baresync|run_sql_batch`) is invoked with the serialized query
 
 #### Scenario: Database helper supports Tauri invoke directly
 

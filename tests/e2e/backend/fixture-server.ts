@@ -40,7 +40,7 @@ interface SqliteDatabase {
   run(sql: string, ...params: unknown[]): unknown;
 }
 
-const port = Number(process.env.BARESYNC_FIXTURE_BACKEND_PORT ?? "18080");
+const port = Number(process.env.BARESYNC_FIXTURE_BACKEND_PORT ?? "3001");
 const host = resolveFixtureBackendHost();
 const scopeId = process.env.BARESYNC_FIXTURE_SCOPE_ID ?? "merchant-1";
 const serverTime = "2026-05-20T00:00:00.000Z";
@@ -51,6 +51,7 @@ const runtime = globalThis as typeof globalThis & {
   Bun: {
     serve(options: {
       fetch: (request: Request) => Response | Promise<Response>;
+      host?: string;
       port: number;
     }): unknown;
   };

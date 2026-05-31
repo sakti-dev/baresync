@@ -3,9 +3,23 @@ import { syncOutbox } from "../schema/local-schema.js";
 
 export interface SyncClientConfig {
   apiUrl: string;
+  commands?: SyncClientCommands;
   encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   scopeId: string;
+}
+
+export interface SyncClientCommands {
+  fullResync?: string;
+  getPollingStatus?: string;
+  getState?: string;
+  pausePolling?: string;
+  pull?: string;
+  push?: string;
+  resumePolling?: string;
+  startPolling?: string;
+  stopPolling?: string;
+  syncNow?: string;
 }
 
 export interface PollingStatus {
@@ -99,6 +113,24 @@ function getSyncTableName(table: AnySQLiteTable): string {
 export function createSyncClient(config: SyncClientConfig): SyncClient {
   const invoke = config.invoke ?? createDefaultInvoke();
   const scopeId = config.scopeId;
+  const commands: Required<SyncClientCommands> = {
+    syncNow: config.commands?.syncNow ?? "plugin:baresync|sync_now",
+    push: config.commands?.push ?? "plugin:baresync|sync_push",
+    pull: config.commands?.pull ?? "plugin:baresync|sync_pull",
+    fullResync:
+      config.commands?.fullResync ?? "plugin:baresync|sync_full_resync",
+    getState:
+      config.commands?.getState ?? "plugin:baresync|get_sync_local_state",
+    startPolling:
+      config.commands?.startPolling ?? "plugin:baresync|start_polling",
+    stopPolling: config.commands?.stopPolling ?? "plugin:baresync|stop_polling",
+    pausePolling:
+      config.commands?.pausePolling ?? "plugin:baresync|pause_polling",
+    resumePolling:
+      config.commands?.resumePolling ?? "plugin:baresync|resume_polling",
+    getPollingStatus:
+      config.commands?.getPollingStatus ?? "plugin:baresync|get_polling_status",
+  };
 
   return {
     async enqueueChange(tx, options) {
@@ -118,38 +150,38 @@ export function createSyncClient(config: SyncClientConfig): SyncClient {
       });
     },
     syncNow() {
-      return invoke("sync_now", { scopeId });
+      return invoke(commands.syncNow, { scopeId });
     },
     push() {
-      return invoke("sync_push", { scopeId });
+      return invoke(commands.push, { scopeId });
     },
     pull() {
-      return invoke("sync_pull", { scopeId });
+      return invoke(commands.pull, { scopeId });
     },
     fullResync() {
-      return invoke("sync_full_resync", { scopeId });
+      return invoke(commands.fullResync, { scopeId });
     },
     getState() {
-      return invoke("get_sync_local_state", { scopeId }) as Promise<{
+      return invoke(commands.getState, { scopeId }) as Promise<{
         local_dirty_count: number;
         last_server_watermark: string;
         needs_baseline_sync: boolean;
       }>;
     },
     startPolling() {
-      return invoke("start_polling", { scopeId });
+      return invoke(commands.startPolling, { scopeId });
     },
     stopPolling() {
-      return invoke("stop_polling");
+      return invoke(commands.stopPolling);
     },
     pausePolling() {
-      return invoke("pause_polling");
+      return invoke(commands.pausePolling);
     },
     resumePolling() {
-      return invoke("resume_polling");
+      return invoke(commands.resumePolling);
     },
     getPollingStatus() {
-      return invoke("get_polling_status") as Promise<PollingStatus>;
+      return invoke(commands.getPollingStatus) as Promise<PollingStatus>;
     },
     async writeLocalChange(tx, options) {
       await options.write(tx);

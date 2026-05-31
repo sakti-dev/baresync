@@ -4,18 +4,33 @@ Tauri plugin builder configuration and command behavior for Baresync apps.
 
 ## Requirements
 
+### Requirement: Plugin-owned command registration
+
+The plugin SHALL register Baresync DB, migration, sync, and polling Tauri commands when `Builder::build()` is registered as a Tauri plugin.
+
+#### Scenario: Commands callable through plugin namespace
+
+- **WHEN** a consumer app registers `tauri_plugin_baresync::builder::Builder::new().build()`
+- **THEN** `run_sql`, `run_sql_batch`, `get_db_info`, `run_migrations`, `get_migration_status`, `sync_now`, `sync_push`, `sync_pull`, `sync_full_resync`, `get_sync_local_state`, `purge_synced_outbox`, `run_garbage_collection`, `start_polling`, `stop_polling`, `pause_polling`, `resume_polling`, and `get_polling_status` SHALL be callable through the Tauri plugin command namespace
+- **AND** the consumer app SHALL NOT be required to define app-local `#[command]` wrappers for those commands
+
+#### Scenario: Host-callable command logic remains available
+
+- **WHEN** Rust host tests call command logic directly with constructed plugin state
+- **THEN** the same command behavior SHALL remain testable without launching a Tauri app or WebView
+
 ### Requirement: DB proxy commands
 
 The plugin SHALL expose `run_sql`, `run_sql_batch`, and `get_db_info` Tauri commands that delegate to `baresync-core` DB functions using the plugin's `rusqlite` worker-backed `DbClient`.
 
 #### Scenario: run_sql through plugin
 
-- **WHEN** the JS client calls `invoke("run_sql", { query })`
+- **WHEN** the JS client calls `invoke("plugin:baresync|run_sql", { query })`
 - **THEN** the plugin SHALL execute the query using the shared database client and return rows
 
 #### Scenario: run_sql_batch through plugin
 
-- **WHEN** the JS client calls `invoke("run_sql_batch", { statements })`
+- **WHEN** the JS client calls `invoke("plugin:baresync|run_sql_batch", { statements })`
 - **THEN** the plugin SHALL execute all statements in a transaction and return the batch result
 
 #### Scenario: run_sql write with affected rows emits data changed
@@ -60,7 +75,7 @@ The plugin SHALL expose a `run_migrations` Tauri command that calls `baresync-co
 
 #### Scenario: run_migrations through plugin
 
-- **WHEN** the JS client calls `invoke("run_migrations")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|run_migrations")`
 - **THEN** the plugin SHALL execute all pending migrations and return success or error
 
 #### Scenario: run_migrations idempotent
@@ -74,7 +89,7 @@ The plugin SHALL expose a `get_migration_status` Tauri command that returns the 
 
 #### Scenario: get_migration_status through plugin
 
-- **WHEN** the JS client calls `invoke("get_migration_status")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|get_migration_status")`
 - **THEN** the plugin SHALL return the list of applied migration hashes and timestamps
 
 ### Requirement: Builder accepts migration path
@@ -123,27 +138,27 @@ The plugin SHALL expose `start_polling`, `stop_polling`, `pause_polling`, `resum
 
 #### Scenario: start_polling command
 
-- **WHEN** the JS client calls `invoke("start_polling", { scopeId: "outlet-1" })`
+- **WHEN** the JS client calls `invoke("plugin:baresync|start_polling", { scopeId: "outlet-1" })`
 - **THEN** the plugin SHALL start the background polling task for the given scope
 
 #### Scenario: stop_polling command
 
-- **WHEN** the JS client calls `invoke("stop_polling")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|stop_polling")`
 - **THEN** the plugin SHALL stop the background polling task
 
 #### Scenario: pause_polling command
 
-- **WHEN** the JS client calls `invoke("pause_polling")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|pause_polling")`
 - **THEN** the plugin SHALL pause the polling task without destroying it
 
 #### Scenario: resume_polling command
 
-- **WHEN** the JS client calls `invoke("resume_polling")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|resume_polling")`
 - **THEN** the plugin SHALL resume a paused polling task
 
 #### Scenario: get_polling_status command
 
-- **WHEN** the JS client calls `invoke("get_polling_status")`
+- **WHEN** the JS client calls `invoke("plugin:baresync|get_polling_status")`
 - **THEN** the plugin SHALL return the current polling state
 
 ### Requirement: Write notification on SQL execution
@@ -152,12 +167,12 @@ The `run_sql` and `run_sql_batch` commands SHALL notify the polling task after e
 
 #### Scenario: run_sql notifies polling
 
-- **WHEN** `invoke("run_sql", { query: ... })` completes successfully
+- **WHEN** `invoke("plugin:baresync|run_sql", { query: ... })` completes successfully
 - **THEN** the plugin SHALL signal the polling task to consider an immediate push
 
 #### Scenario: run_sql_batch notifies polling
 
-- **WHEN** `invoke("run_sql_batch", { statements: ... })` completes successfully
+- **WHEN** `invoke("plugin:baresync|run_sql_batch", { statements: ... })` completes successfully
 - **THEN** the plugin SHALL signal the polling task to consider an immediate push
 
 ### Requirement: Host-callable plugin command logic
@@ -194,11 +209,11 @@ The Tauri plugin builder integration SHALL document the required configuration a
 
 #### Scenario: Required builder inputs documented
 - **WHEN** a consumer reads plugin registration guidance
-- **THEN** it SHALL describe API base URL, encoding, max push bytes, max push rows, DB path, contract table metadata, and embedded migrations as explicit integration inputs
+- **THEN** it SHALL describe API base URL, encoding, max push bytes, max push rows, DB path or DB name, generated contract metadata, and migration source as explicit integration inputs
 
 #### Scenario: Builder config avoids hidden app coupling
 - **WHEN** a consumer registers the plugin
-- **THEN** the documented pattern SHALL NOT require private app modules, fixture app modules, or Sakti-specific command handlers
+- **THEN** the documented pattern SHALL NOT require private app modules, fixture app modules, Sakti-specific command handlers, or app-local wrappers for Baresync plugin commands
 
 ### Requirement: Plugin integration diagnostics
 The plugin integration SHALL provide documented or testable diagnostics for confirming registration and configuration.

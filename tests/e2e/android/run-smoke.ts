@@ -165,7 +165,7 @@ if (disableAnimations.code !== 0) {
 let fixtureBackendUrl = runtime.process.env.BARESYNC_FIXTURE_API_URL;
 if (!fixtureBackendUrl) {
   if (device.isEmulator) {
-    fixtureBackendUrl = "http://10.0.2.2:18080";
+    fixtureBackendUrl = "http://10.0.2.2:3001";
   } else {
     const hostAddress = inferHostAddress();
     if (!hostAddress) {
@@ -173,7 +173,7 @@ if (!fixtureBackendUrl) {
         "BARESYNC_FIXTURE_API_URL is required for this device because the host address could not be inferred."
       );
     }
-    fixtureBackendUrl = `http://${hostAddress}:18080`;
+    fixtureBackendUrl = `http://${hostAddress}:3001`;
   }
 }
 

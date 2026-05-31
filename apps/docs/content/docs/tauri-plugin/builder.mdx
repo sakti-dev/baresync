@@ -5,7 +5,7 @@ description: Configure the plugin with the builder pattern.
 
 # Builder
 
-The `Builder` constructs the Tauri plugin with your database path, server URL, encoding, contract tables, migrations, and polling settings.
+The `Builder` constructs the Tauri plugin with your database path, server URL, encoding, generated contract metadata, migrations, and polling settings.
 
 ## Import
 
@@ -19,15 +19,14 @@ use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 tauri::Builder::default()
     .plugin(
         BaresyncBuilder::new()
-            .api_base_url("http://127.0.0.1:18181")
+            .api_base_url("http://127.0.0.1:3001")
             .encoding("json")
-            .db_path(db_path())
-            .contract_tables(contract_tables())
+            .db_name("baresync.db")
+            .contract_json(include_str!("../../../../packages/sync-contract/generated/sync-contract.json"))
             .migrations_path("migrations")
             .poll_interval_secs(30)
             .build(),
     )
-    .invoke_handler(generate_handler![/* ... */])
     .run(generate_context!())
     .expect("failed to run app");
 ```
@@ -38,8 +37,10 @@ tauri::Builder::default()
 |---|---|---|---|---|
 | `api_base_url` | `impl Into<String>` | Yes | `""` | Your server's base URL |
 | `encoding` | `impl Into<String>` | Yes | `"json"` | Wire encoding (`"json"`) |
-| `db_path` | `impl Into<String>` | Yes | `"baresync.db"` | Path to the local SQLite file |
-| `contract_tables` | `SyncContractTables` | Yes | empty | Upsert order, delete order, local-only columns |
+| `db_path` | `impl Into<String>` | No | `None` | Explicit path to the local SQLite file |
+| `db_name` | `impl Into<String>` | No | `None` | Database file name resolved under the Tauri app data directory |
+| `contract_tables` | `SyncContractTables` | No | empty | Upsert order, delete order, local-only columns |
+| `contract_json` | `impl Into<String>` | No | `None` | Generated `sync-contract.json` metadata |
 | `migrations` | `Vec<EmbeddedMigration>` | Yes | empty | Embedded SQL migrations |
 | `migrations_path` | `impl Into<PathBuf>` | No | `None` | Path to `.sql` migrations bundled with the app or resolved absolutely |
 | `poll_interval_secs` | `u64` | No | `30` | Seconds between polling cycles |
@@ -89,7 +90,29 @@ fn contract_tables() -> SyncContractTables {
 }
 ```
 
-These values come from your generated `sync-table-order.ts`. See [Generated Files](/docs/generator/generated-files).
+These values come from your generated `sync-contract.json` or are supplied manually for tests and advanced integrations.
+
+### db_name
+
+Use `db_name` when you want the plugin to resolve the SQLite file under Tauri's app data directory:
+
+```rust
+BaresyncBuilder::new()
+    .db_name("baresync.db")
+```
+
+This is the recommended default for production apps. Use `db_path` only when you need a deterministic path for tests or custom deployment environments.
+
+### contract_json
+
+Pass the generated `sync-contract.json` here to avoid duplicating table order and local-only column metadata in Rust:
+
+```rust
+BaresyncBuilder::new()
+    .contract_json(include_str!("../../../../packages/sync-contract/generated/sync-contract.json"))
+```
+
+If you already have `SyncContractTables` in Rust, `contract_tables(...)` still works.
 
 ### migrations_path
 
@@ -122,7 +145,7 @@ On mobile, the plugin relies on app lifecycle and focus events exposed by Tauri.
 
 The builder's `setup` closure runs during Tauri initialization:
 
-1. Connects to SQLite at `db_path` (creates the file if missing, sets WAL mode, foreign keys on)
+1. Resolves `db_path` or `db_name` and connects to SQLite (creates the file if missing, sets WAL mode, foreign keys on)
 2. Runs `migrations_path` migrations in strict mode, if configured
 3. Runs embedded migrations in strict mode, if no migration path is configured
 4. Stores `PluginState` in Tauri's managed state

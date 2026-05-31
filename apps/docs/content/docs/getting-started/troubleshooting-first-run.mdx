@@ -31,7 +31,7 @@ bunx drizzle-kit generate --config drizzle.config.ts
 
 ## No data appears in the app
 
-1. **Is the server running?** Check `http://127.0.0.1:18181/health`.
+1. **Is the server running?** Check `http://127.0.0.1:3001/health`.
 2. **Is there data on the server?** Seed the server database.
 3. **Did polling start?** Open the Tauri devtools console and look for sync logs.
 4. **Are your query keys correct?** React Query caches are keyed by the array you pass to `useDrizzleQuery`. The invalidation in `SyncClientProvider` must match.

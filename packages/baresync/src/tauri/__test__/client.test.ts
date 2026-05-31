@@ -59,7 +59,7 @@ describe("createSyncClient", () => {
     expect(typeof client.enqueueChange).toBe("function");
   });
 
-  it("syncNow calls invoke with sync_now command", async () => {
+  it("syncNow calls invoke with plugin command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
       apiUrl: "https://api.example.com",
@@ -71,7 +71,9 @@ describe("createSyncClient", () => {
       },
     });
     await client.syncNow();
-    expect(calls).toEqual([{ cmd: "sync_now", args: { scopeId: "outlet-1" } }]);
+    expect(calls).toEqual([
+      { cmd: "plugin:baresync|sync_now", args: { scopeId: "outlet-1" } },
+    ]);
   });
 
   it("push calls invoke with sync_push command", async () => {
@@ -87,7 +89,7 @@ describe("createSyncClient", () => {
     });
     await client.push();
     expect(calls).toEqual([
-      { cmd: "sync_push", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|sync_push", args: { scopeId: "outlet-1" } },
     ]);
   });
 
@@ -104,7 +106,7 @@ describe("createSyncClient", () => {
     });
     await client.pull();
     expect(calls).toEqual([
-      { cmd: "sync_pull", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|sync_pull", args: { scopeId: "outlet-1" } },
     ]);
   });
 
@@ -121,7 +123,10 @@ describe("createSyncClient", () => {
     });
     await client.fullResync();
     expect(calls).toEqual([
-      { cmd: "sync_full_resync", args: { scopeId: "outlet-1" } },
+      {
+        cmd: "plugin:baresync|sync_full_resync",
+        args: { scopeId: "outlet-1" },
+      },
     ]);
   });
 
@@ -138,7 +143,63 @@ describe("createSyncClient", () => {
     });
     await client.getState();
     expect(calls).toEqual([
-      { cmd: "get_sync_local_state", args: { scopeId: "outlet-1" } },
+      {
+        cmd: "plugin:baresync|get_sync_local_state",
+        args: { scopeId: "outlet-1" },
+      },
+    ]);
+  });
+
+  it("supports custom command overrides", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      apiUrl: "https://api.example.com",
+      commands: {
+        fullResync: "sync_full_resync",
+        getPollingStatus: "get_polling_status",
+        getState: "get_sync_local_state",
+        pausePolling: "pause_polling",
+        pull: "sync_pull",
+        push: "sync_push",
+        resumePolling: "resume_polling",
+        startPolling: "start_polling",
+        stopPolling: "stop_polling",
+        syncNow: "sync_now",
+      },
+      encoding: "json",
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve({
+          last_sync_at: null,
+          paused: false,
+          running: false,
+        });
+      },
+    });
+
+    await client.syncNow();
+    await client.push();
+    await client.pull();
+    await client.fullResync();
+    await client.getState();
+    await client.startPolling();
+    await client.stopPolling();
+    await client.pausePolling();
+    await client.resumePolling();
+    await client.getPollingStatus();
+
+    expect(calls.map((call) => call.cmd)).toEqual([
+      "sync_now",
+      "sync_push",
+      "sync_pull",
+      "sync_full_resync",
+      "get_sync_local_state",
+      "start_polling",
+      "stop_polling",
+      "pause_polling",
+      "resume_polling",
+      "get_polling_status",
     ]);
   });
 
@@ -159,11 +220,11 @@ describe("createSyncClient", () => {
 
   it("returns resolved mocked invoke results from all sync methods", async () => {
     const results: Record<string, unknown> = {
-      sync_now: { ok: true, method: "syncNow" },
-      sync_push: { ok: true, method: "push" },
-      sync_pull: { ok: true, method: "pull" },
-      sync_full_resync: { ok: true, method: "fullResync" },
-      get_sync_local_state: {
+      "plugin:baresync|sync_now": { ok: true, method: "syncNow" },
+      "plugin:baresync|sync_push": { ok: true, method: "push" },
+      "plugin:baresync|sync_pull": { ok: true, method: "pull" },
+      "plugin:baresync|sync_full_resync": { ok: true, method: "fullResync" },
+      "plugin:baresync|get_sync_local_state": {
         local_dirty_count: 2,
         last_server_watermark: "sync:phase14",
         needs_baseline_sync: false,
@@ -176,11 +237,21 @@ describe("createSyncClient", () => {
       invoke: (cmd) => Promise.resolve(results[cmd]),
     });
 
-    await expect(client.syncNow()).resolves.toBe(results.sync_now);
-    await expect(client.push()).resolves.toBe(results.sync_push);
-    await expect(client.pull()).resolves.toBe(results.sync_pull);
-    await expect(client.fullResync()).resolves.toBe(results.sync_full_resync);
-    await expect(client.getState()).resolves.toBe(results.get_sync_local_state);
+    await expect(client.syncNow()).resolves.toBe(
+      results["plugin:baresync|sync_now"]
+    );
+    await expect(client.push()).resolves.toBe(
+      results["plugin:baresync|sync_push"]
+    );
+    await expect(client.pull()).resolves.toBe(
+      results["plugin:baresync|sync_pull"]
+    );
+    await expect(client.fullResync()).resolves.toBe(
+      results["plugin:baresync|sync_full_resync"]
+    );
+    await expect(client.getState()).resolves.toBe(
+      results["plugin:baresync|get_sync_local_state"]
+    );
   });
 
   it("propagates rejected mocked invoke errors unchanged", async () => {
@@ -234,11 +305,17 @@ describe("createSyncClient", () => {
     await client.getState();
 
     expect(calls).toEqual([
-      { cmd: "sync_now", args: { scopeId: "outlet-1" } },
-      { cmd: "sync_push", args: { scopeId: "outlet-1" } },
-      { cmd: "sync_pull", args: { scopeId: "outlet-1" } },
-      { cmd: "sync_full_resync", args: { scopeId: "outlet-1" } },
-      { cmd: "get_sync_local_state", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|sync_now", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|sync_push", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|sync_pull", args: { scopeId: "outlet-1" } },
+      {
+        cmd: "plugin:baresync|sync_full_resync",
+        args: { scopeId: "outlet-1" },
+      },
+      {
+        cmd: "plugin:baresync|get_sync_local_state",
+        args: { scopeId: "outlet-1" },
+      },
     ]);
   });
 
@@ -266,7 +343,7 @@ describe("createSyncClient", () => {
     });
     await client.startPolling();
     expect(calls).toEqual([
-      { cmd: "start_polling", args: { scopeId: "outlet-1" } },
+      { cmd: "plugin:baresync|start_polling", args: { scopeId: "outlet-1" } },
     ]);
   });
 
@@ -282,7 +359,7 @@ describe("createSyncClient", () => {
       },
     });
     await client.stopPolling();
-    expect(calls).toEqual([{ cmd: "stop_polling" }]);
+    expect(calls).toEqual([{ cmd: "plugin:baresync|stop_polling" }]);
   });
 
   it("pausePolling and resumePolling call correct commands", async () => {
@@ -299,8 +376,8 @@ describe("createSyncClient", () => {
     await client.pausePolling();
     await client.resumePolling();
     expect(calls).toEqual([
-      { cmd: "pause_polling" },
-      { cmd: "resume_polling" },
+      { cmd: "plugin:baresync|pause_polling" },
+      { cmd: "plugin:baresync|resume_polling" },
     ]);
   });
 
@@ -320,7 +397,7 @@ describe("createSyncClient", () => {
       },
     });
     const status = await client.getPollingStatus();
-    expect(calls).toEqual([{ cmd: "get_polling_status" }]);
+    expect(calls).toEqual([{ cmd: "plugin:baresync|get_polling_status" }]);
     expect(status).toEqual({
       running: false,
       paused: false,

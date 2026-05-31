@@ -1,333 +1,78 @@
 ---
 title: Register the Tauri Plugin
-description: Add the Baresync Rust plugin, migration discovery, and command handlers to your Tauri app.
+description: Add the Baresync Rust plugin to your Tauri app.
 ---
 
 # Register the Tauri Plugin
 
-The Baresync Tauri plugin owns the local SQLite database. It opens the database, applies migrations, runs the sync engine, and exposes Tauri commands that your JS code calls through `invoke`.
+The Baresync Tauri plugin owns the local SQLite database, runs migrations, and exposes commands through the standard Tauri plugin namespace:
+
+```txt
+plugin:baresync|run_sql
+plugin:baresync|sync_now
+plugin:baresync|get_polling_status
+```
+
+You normally do not register Baresync commands in your app's `generate_handler!` macro. The plugin registers its own IPC handlers.
 
 ## Add Rust dependencies
 
 Edit `apps/app/src-tauri/Cargo.toml`:
 
 ```toml
-[package]
-name = "app"
-version = "0.1.0"
-edition = "2021"
-build = "build.rs"
-
-[lib]
-crate-type = ["staticlib", "cdylib", "rlib"]
-
 [dependencies]
 baresync-core = { version = "0.1.0" }
 tauri = { version = "2", features = [] }
 tauri-plugin-baresync = { version = "0.1.0" }
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[workspace]
 ```
 
-If you use embedded migrations instead of `migrations_path(...)`, add `baresync-core` to `[build-dependencies]` for your own `build.rs`. The simple path-based setup shown below does not need it.
+## Configure the plugin
 
-## Create the migration file
-
-Create `apps/app/src-tauri/migrations/0001_init.sql`:
-
-```sql
-CREATE TABLE IF NOT EXISTS locations (
-  id TEXT PRIMARY KEY,
-  scope_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  deleted_at TEXT,
-  is_synced INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS items (
-  id TEXT PRIMARY KEY,
-  scope_id TEXT NOT NULL,
-  location_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  sku TEXT,
-  deleted_at TEXT,
-  is_synced INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS stock_counts (
-  id TEXT PRIMARY KEY,
-  scope_id TEXT NOT NULL,
-  item_id TEXT NOT NULL,
-  counted_quantity INTEGER NOT NULL,
-  recorded_at TEXT NOT NULL,
-  deleted_at TEXT,
-  is_synced INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS sync_outbox (
-  id TEXT PRIMARY KEY,
-  table_name TEXT NOT NULL,
-  row_id TEXT NOT NULL,
-  operation TEXT NOT NULL,
-  payload TEXT,
-  scope_id TEXT NOT NULL,
-  changed_at TEXT NOT NULL,
-  synced_at TEXT
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS sync_outbox_pending_row_unique
-  ON sync_outbox (table_name, row_id)
-  WHERE synced_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS sync_cursors (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  scope_id TEXT NOT NULL,
-  last_cursor TEXT NOT NULL DEFAULT '',
-  updated_at TEXT NOT NULL
-);
-```
-
-This migration creates your synced tables plus the two runtime tables (`sync_outbox` and `sync_cursors`) that Baresync uses internally.
-
-## Bundle the SQL files
-
-Put the `.sql` files in `apps/app/src-tauri/migrations/` and add them to your Tauri bundle resources:
-
-```json
-{
-  "bundle": {
-    "resources": ["migrations/*.sql"]
-  }
-}
-```
-
-## Write the plugin registration
-
-Create `apps/app/src-tauri/src/lib.rs`:
+Create or update `apps/app/src-tauri/src/lib.rs`:
 
 ```rust
-use std::env;
-use std::path::PathBuf;
-
-use tauri::{command, generate_context, generate_handler, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
-use tauri_plugin_baresync::commands::{self, PluginState};
-
-fn inventory_db_path() -> String {
-    let base = env::var("INVENTORY_DB_PATH").unwrap_or_else(|_| {
-        let mut path = std::env::temp_dir();
-        path.push("my-app.db");
-        path.to_string_lossy().to_string()
-    });
-
-    PathBuf::from(base).to_string_lossy().to_string()
-}
-
-fn inventory_contract_tables() -> baresync_core::engine::SyncContractTables {
-    baresync_core::engine::SyncContractTables {
-        upsert_order: vec![
-            "locations".to_string(),
-            "items".to_string(),
-            "stock_counts".to_string(),
-        ],
-        delete_order: vec![
-            "stock_counts".to_string(),
-            "items".to_string(),
-            "locations".to_string(),
-        ],
-        local_only_columns: vec!["is_synced".to_string()],
-    }
-}
-
-#[command]
-async fn run_sql(
-    query: baresync_core::drizzle_proxy::SqlQuery,
-    state: State<'_, PluginState>,
-) -> Result<Vec<baresync_core::drizzle_proxy::SqlRow>, String> {
-    commands::run_sql(query, state).await
-}
-
-#[command]
-async fn run_sql_batch(
-    statements: Vec<baresync_core::drizzle_proxy::SqlStatement>,
-    state: State<'_, PluginState>,
-) -> Result<baresync_core::drizzle_proxy::BatchResult, String> {
-    commands::run_sql_batch(statements, state).await
-}
-
-#[command]
-async fn get_db_info(state: State<'_, PluginState>) -> Result<baresync_core::db::DbInfo, String> {
-    commands::get_db_info(state).await
-}
-
-#[command]
-async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String> {
-    commands::run_migrations(state).await
-}
-
-#[command]
-async fn get_migration_status(
-    state: State<'_, PluginState>,
-) -> Result<Vec<baresync_core::migrations::MigrationRecord>, String> {
-    commands::get_migration_status(state).await
-}
-
-#[command]
-async fn sync_now(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::engine::SyncNowResult, String> {
-    commands::sync_now(state, scope_id).await
-}
-
-#[command]
-async fn sync_push(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::push::PushResult, String> {
-    commands::sync_push(state, scope_id).await
-}
-
-#[command]
-async fn sync_pull(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::pull::PullResult, String> {
-    commands::sync_pull(state, scope_id).await
-}
-
-#[command]
-async fn sync_full_resync(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::engine::SyncNowResult, String> {
-    commands::sync_full_resync(state, scope_id).await
-}
-
-#[command]
-async fn get_sync_local_state(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::state::LocalSyncState, String> {
-    commands::get_sync_local_state(state, scope_id).await
-}
-
-#[command]
-async fn purge_synced_outbox(
-    state: State<'_, PluginState>,
-    older_than: String,
-) -> Result<u64, String> {
-    commands::purge_synced_outbox(state, older_than).await
-}
-
-#[command]
-async fn run_garbage_collection(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<usize, String> {
-    commands::run_garbage_collection(state, scope_id).await
-}
-
-#[command]
-async fn start_polling(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<(), String> {
-    commands::start_polling(state, scope_id).await
-}
-
-#[command]
-async fn stop_polling(state: State<'_, PluginState>) -> Result<(), String> {
-    commands::stop_polling(state).await
-}
-
-#[command]
-async fn pause_polling(state: State<'_, PluginState>) -> Result<(), String> {
-    commands::pause_polling(state).await
-}
-
-#[command]
-async fn resume_polling(state: State<'_, PluginState>) -> Result<(), String> {
-    commands::resume_polling(state).await
-}
-
-#[command]
-async fn get_polling_status(
-    state: State<'_, PluginState>,
-) -> Result<tauri_plugin_baresync::polling::PollingStatus, String> {
-    commands::get_polling_status(state).await
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(
             BaresyncBuilder::new()
-                .api_base_url("http://127.0.0.1:18181")
+                .api_base_url("http://127.0.0.1:3001")
                 .encoding("json")
-                .db_path(inventory_db_path())
-                .contract_tables(inventory_contract_tables())
+                .db_name("baresync.db")
+                .contract_json(include_str!(
+                    "../../../../packages/sync-contract/generated/sync-contract.json"
+                ))
                 .migrations_path("migrations")
                 .poll_interval_secs(30)
                 .build(),
         )
-        .invoke_handler(generate_handler![
-            run_sql,
-            run_sql_batch,
-            get_db_info,
-            run_migrations,
-            get_migration_status,
-            sync_now,
-            sync_push,
-            sync_pull,
-            sync_full_resync,
-            get_sync_local_state,
-            purge_synced_outbox,
-            run_garbage_collection,
-            start_polling,
-            stop_polling,
-            pause_polling,
-            resume_polling,
-            get_polling_status,
-        ])
-        .run(generate_context!())
-        .expect("failed to run inventory app");
+        .run(tauri::generate_context!())
+        .expect("failed to run app");
 }
 ```
 
-### What the builder does
+## Where generated metadata comes from
 
-| Builder method | What it sets |
-|---|---|
-| `api_base_url` | Where your server is running |
-| `encoding` | `"json"` |
-| `db_path` | Path to the local SQLite file |
-| `contract_tables` | Upsert order, delete order, and local-only columns |
-| `migrations` | Embedded SQL migrations to apply on startup |
-| `poll_interval_secs` | How often the sync engine polls automatically |
+The plugin expects the generated sync contract metadata that Baresync writes from your `sync-contract` package. Use `contract_json(...)` to avoid duplicating table ordering and local-only column metadata in Rust.
 
-### What the command handlers do
+If you already have explicit `SyncContractTables` in a test or specialized setup, `contract_tables(...)` still works.
 
-Each `#[command]` function delegates to `tauri_plugin_baresync::commands::*`. This indirection exists because Tauri commands must be registered per-app. The plugin provides the logic; your app registers the commands.
+## Migrations
 
-The plugin applies pending migrations during setup, before any JS code runs. You do not need to call `run_migrations` from JavaScript.
+The plugin can load SQL migrations from `migrations_path(...)`, or you can embed them with `migrations(...)`. For the standard setup, keep your migration files in `apps/app/src-tauri/migrations/` and let the plugin load them from there.
 
-## Verify
+## Command registration
 
-Build the Rust side to confirm everything compiles:
+Your app can still define its own commands for app-specific behavior, such as reset or debug helpers. Those commands are separate from Baresync and belong in your app's own `generate_handler!` macro.
 
-```bash
-cd apps/app/src-tauri
-cargo check
+The Baresync commands themselves are already available through the plugin namespace, so the frontend calls the following directly:
+
+```ts
+await invoke("plugin:baresync|run_migrations");
+await invoke("plugin:baresync|run_sql", { query });
+await invoke("plugin:baresync|sync_now", { scopeId: "merchant-1" });
 ```
 
 Next: [Set Up the Local Database](/docs/getting-started/set-up-local-database).

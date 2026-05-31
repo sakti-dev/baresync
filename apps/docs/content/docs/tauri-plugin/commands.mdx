@@ -5,48 +5,19 @@ description: The Tauri commands the plugin exposes and how to register them.
 
 # Commands
 
-The plugin provides command logic, but each app must register the commands in its `generate_handler!` macro. This is a Tauri requirement — commands must be defined per-app.
+The plugin provides command logic and registers its own IPC handlers under the Tauri plugin namespace. Consumer apps usually only need to register the plugin itself with the builder.
 
 ## How commands work
 
-Each command is a `#[command]` function that takes `State<'_, PluginState>` and delegates to the plugin's implementation. Your `lib.rs` re-exports the same signatures:
+The plugin registers the command implementations from `tauri_plugin_baresync::commands` inside `Builder::build()`. Tauri exposes those commands through the standard plugin namespace:
 
-```rust
-use tauri::{command, generate_context, generate_handler, State};
-use tauri_plugin_baresync::commands::{self, PluginState};
-
-#[command]
-async fn sync_now(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::engine::SyncNowResult, String> {
-    commands::sync_now(state, scope_id).await
-}
+```txt
+plugin:baresync|run_sql
+plugin:baresync|sync_now
+plugin:baresync|get_polling_status
 ```
 
-Then register in `generate_handler!`:
-
-```rust
-.invoke_handler(generate_handler![
-    run_sql,
-    run_sql_batch,
-    get_db_info,
-    run_migrations,
-    get_migration_status,
-    sync_now,
-    sync_push,
-    sync_pull,
-    sync_full_resync,
-    get_sync_local_state,
-    purge_synced_outbox,
-    run_garbage_collection,
-    start_polling,
-    stop_polling,
-    pause_polling,
-    resume_polling,
-    get_polling_status,
-])
-```
+Consumer apps that still have local wrappers can keep them temporarily and point the JS helpers at the older command names through override config.
 
 ## Command reference
 
@@ -54,9 +25,9 @@ Then register in `generate_handler!`:
 
 | Command | JS invoke | Description |
 |---|---|---|
-| `run_sql` | `"run_sql"` | Execute a single SQL query (select or run) |
-| `run_sql_batch` | `"run_sql_batch"` | Execute multiple SQL statements in a transaction |
-| `get_db_info` | `"get_db_info"` | Return database file path and size |
+| `run_sql` | `"plugin:baresync|run_sql"` | Execute a single SQL query (select or run) |
+| `run_sql_batch` | `"plugin:baresync|run_sql_batch"` | Execute multiple SQL statements in a transaction |
+| `get_db_info` | `"plugin:baresync|get_db_info"` | Return database file path and size |
 
 `run_sql` accepts a `SqlQuery { sql, params, method }`. When `method` is `"run"`, it returns no rows but reports `rows_affected`. When `method` is `"all"`, it returns rows.
 
@@ -68,8 +39,8 @@ Both commands emit `baresync://data-changed` when `rows_affected > 0` and notify
 
 | Command | JS invoke | Description |
 |---|---|---|
-| `run_migrations` | `"run_migrations"` | Re-run migrations manually (usually unnecessary) |
-| `get_migration_status` | `"get_migration_status"` | List applied migrations with hashes |
+| `run_migrations` | `"plugin:baresync|run_migrations"` | Re-run migrations manually (usually unnecessary) |
+| `get_migration_status` | `"plugin:baresync|get_migration_status"` | List applied migrations with hashes |
 
 Migrations run automatically during plugin setup. You only need `run_migrations` if you want to trigger them again at runtime (for example, after a hot update).
 
@@ -77,11 +48,11 @@ Migrations run automatically during plugin setup. You only need `run_migrations`
 
 | Command | JS invoke | Returns |
 |---|---|---|
-| `sync_now` | `"sync_now"` | `SyncNowResult` |
-| `sync_push` | `"sync_push"` | `PushResult` |
-| `sync_pull` | `"sync_pull"` | `PullResult` |
-| `sync_full_resync` | `"sync_full_resync"` | `SyncNowResult` |
-| `get_sync_local_state` | `"get_sync_local_state"` | `LocalSyncState` |
+| `sync_now` | `"plugin:baresync|sync_now"` | `SyncNowResult` |
+| `sync_push` | `"plugin:baresync|sync_push"` | `PushResult` |
+| `sync_pull` | `"plugin:baresync|sync_pull"` | `PullResult` |
+| `sync_full_resync` | `"plugin:baresync|sync_full_resync"` | `SyncNowResult` |
+| `get_sync_local_state` | `"plugin:baresync|get_sync_local_state"` | `LocalSyncState` |
 
 All sync commands take `scope_id: String`. See [Sync Commands](/docs/js-client/sync-commands) for the JS-side usage.
 
@@ -89,18 +60,18 @@ All sync commands take `scope_id: String`. See [Sync Commands](/docs/js-client/s
 
 | Command | JS invoke | Description |
 |---|---|---|
-| `purge_synced_outbox` | `"purge_synced_outbox"` | Delete synced outbox entries older than a timestamp |
-| `run_garbage_collection` | `"run_garbage_collection"` | Remove soft-deleted rows that have been synced |
+| `purge_synced_outbox` | `"plugin:baresync|purge_synced_outbox"` | Delete synced outbox entries older than a timestamp |
+| `run_garbage_collection` | `"plugin:baresync|run_garbage_collection"` | Remove soft-deleted rows that have been synced |
 
 ### Polling
 
 | Command | JS invoke | Description |
 |---|---|---|
-| `start_polling` | `"start_polling"` | Start the polling loop for a scope |
-| `stop_polling` | `"stop_polling"` | Stop the polling loop |
-| `pause_polling` | `"pause_polling"` | Pause without stopping the timer |
-| `resume_polling` | `"resume_polling"` | Resume from pause |
-| `get_polling_status` | `"get_polling_status"` | Return running, paused, last_sync_at |
+| `start_polling` | `"plugin:baresync|start_polling"` | Start the polling loop for a scope |
+| `stop_polling` | `"plugin:baresync|stop_polling"` | Stop the polling loop |
+| `pause_polling` | `"plugin:baresync|pause_polling"` | Pause without stopping the timer |
+| `resume_polling` | `"plugin:baresync|resume_polling"` | Resume from pause |
+| `get_polling_status` | `"plugin:baresync|get_polling_status"` | Return running, paused, last_sync_at |
 
 See [Polling](/docs/tauri-plugin/polling) for the polling lifecycle.
 

@@ -7,11 +7,11 @@ use std::sync::Arc;
 
 use baresync_core::http::SyncHttpTransport;
 use serde::Serialize;
-use tauri::{command, generate_context, generate_handler, State};
+use tauri::{command, generate_context, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
 #[cfg(feature = "sqlcipher")]
 use tauri_plugin_baresync::{DatabaseKey, EncryptionKeyContext, EncryptionKeyProvider};
-use tauri_plugin_baresync::commands::{self, run_sql_batch_with_state, PluginState};
+use tauri_plugin_baresync::commands::{run_sql_batch_with_state, PluginState};
 
 #[derive(Serialize)]
 struct FixtureRuntimeConfig {
@@ -48,12 +48,12 @@ fn fixture_api_url() -> String {
         .unwrap_or_else(|| {
             #[cfg(target_os = "android")]
             {
-                "http://10.0.2.2:18080".to_string()
+                "http://10.0.2.2:3001".to_string()
             }
 
             #[cfg(not(target_os = "android"))]
             {
-                "http://127.0.0.1:18080".to_string()
+                "http://127.0.0.1:3001".to_string()
             }
         })
 }
@@ -126,39 +126,6 @@ async fn reset_fixture_state(state: State<'_, PluginState>) -> Result<(), String
 }
 
 #[command]
-async fn run_sql(
-    query: baresync_core::drizzle_proxy::SqlQuery,
-    state: State<'_, PluginState>,
-) -> Result<Vec<baresync_core::drizzle_proxy::SqlRow>, String> {
-    commands::run_sql(query, state).await
-}
-
-#[command]
-async fn run_sql_batch(
-    statements: Vec<baresync_core::drizzle_proxy::SqlStatement>,
-    state: State<'_, PluginState>,
-) -> Result<baresync_core::drizzle_proxy::BatchResult, String> {
-    commands::run_sql_batch(statements, state).await
-}
-
-#[command]
-async fn get_db_info(state: State<'_, PluginState>) -> Result<baresync_core::db::DbInfo, String> {
-    commands::get_db_info(state).await
-}
-
-#[command]
-async fn run_migrations(state: State<'_, PluginState>) -> Result<(), String> {
-    commands::run_migrations(state).await
-}
-
-#[command]
-async fn get_migration_status(
-    state: State<'_, PluginState>,
-) -> Result<Vec<baresync_core::migrations::MigrationRecord>, String> {
-    commands::get_migration_status(state).await
-}
-
-#[command]
 async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
     let config = FixtureRuntimeConfig {
         api_url: fixture_api_url(),
@@ -169,62 +136,6 @@ async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
         config.api_url, config.encoding
     );
     Ok(config)
-}
-
-#[command]
-async fn sync_now(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::engine::SyncNowResult, String> {
-    commands::sync_now(state, scope_id).await
-}
-
-#[command]
-async fn sync_push(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::push::PushResult, String> {
-    commands::sync_push(state, scope_id).await
-}
-
-#[command]
-async fn sync_pull(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::pull::PullResult, String> {
-    commands::sync_pull(state, scope_id).await
-}
-
-#[command]
-async fn sync_full_resync(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::engine::SyncNowResult, String> {
-    commands::sync_full_resync(state, scope_id).await
-}
-
-#[command]
-async fn get_sync_local_state(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<baresync_core::state::LocalSyncState, String> {
-    commands::get_sync_local_state(state, scope_id).await
-}
-
-#[command]
-async fn purge_synced_outbox(
-    state: State<'_, PluginState>,
-    older_than: String,
-) -> Result<u64, String> {
-    commands::purge_synced_outbox(state, older_than).await
-}
-
-#[command]
-async fn run_garbage_collection(
-    state: State<'_, PluginState>,
-    scope_id: String,
-) -> Result<usize, String> {
-    commands::run_garbage_collection(state, scope_id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -242,22 +153,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(plugin_builder.build())
-        .invoke_handler(generate_handler![
-            reset_fixture_state,
-            run_sql,
-            run_sql_batch,
-            get_db_info,
-            run_migrations,
-            get_migration_status,
-            get_fixture_runtime_config,
-            sync_now,
-            sync_push,
-            sync_pull,
-            sync_full_resync,
-            get_sync_local_state,
-            purge_synced_outbox,
-            run_garbage_collection,
-        ])
+        .invoke_handler(tauri::generate_handler![reset_fixture_state, get_fixture_runtime_config])
         .run(generate_context!())
         .expect("failed to run fixture app");
 }

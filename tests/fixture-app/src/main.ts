@@ -16,7 +16,7 @@ const state = {
 };
 
 let syncClient = createFixtureSyncClient({
-  api_url: "http://127.0.0.1:18080",
+  api_url: "http://127.0.0.1:3001",
   encoding: "json",
 });
 
@@ -80,7 +80,7 @@ function renderList(
 }
 
 async function ensureMigrations() {
-  await invoke("run_migrations");
+  await invoke("plugin:baresync|run_migrations");
 }
 
 function sqlRowToObject(row: { columns: string[]; values: unknown[] }) {
@@ -90,7 +90,7 @@ function sqlRowToObject(row: { columns: string[]; values: unknown[] }) {
 }
 
 async function queryRows(sql: string) {
-  const rows = (await invoke("run_sql", {
+  const rows = (await invoke("plugin:baresync|run_sql", {
     query: {
       sql,
       params: [],
@@ -105,10 +105,10 @@ async function refreshStatus() {
   const [dbInfo, migrationStatus, localState, categoryRows, productRows] =
     await Promise.all([
       invoke<{ db_path: string; size_bytes: number; size_formatted: string }>(
-        "get_db_info"
+        "plugin:baresync|get_db_info"
       ),
       invoke<Array<{ hash: string; created_at: number }>>(
-        "get_migration_status"
+        "plugin:baresync|get_migration_status"
       ),
       syncClient.getState(),
       queryRows(
@@ -181,7 +181,7 @@ async function createLocalRow() {
     createdAt: row.timestamp,
     updatedAt: row.timestamp,
   });
-  await invoke("run_sql_batch", {
+  await invoke("plugin:baresync|run_sql_batch", {
     statements: [
       {
         sql: "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
@@ -217,7 +217,7 @@ async function createLocalRow() {
     createdAt: row.timestamp,
     updatedAt: row.timestamp,
   });
-  await invoke("run_sql_batch", {
+  await invoke("plugin:baresync|run_sql_batch", {
     statements: [
       {
         sql: "INSERT INTO sync_outbox (id, table_name, row_id, operation, payload, scope_id, changed_at, synced_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",

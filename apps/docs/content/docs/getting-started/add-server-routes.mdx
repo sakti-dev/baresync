@@ -281,7 +281,7 @@ app.post("/sync/status", (c) => status(c.req.raw, {}));
 
 export default app;
 
-console.log("inventory server listening on http://127.0.0.1:18181");
+console.log("inventory server listening on http://127.0.0.1:3001");
 ```
 
 ### What resolveScope does
@@ -307,6 +307,6 @@ cd apps/server
 bun run dev
 ```
 
-You should see `inventory server listening on http://127.0.0.1:18181`.
+You should see `inventory server listening on http://127.0.0.1:3001`.
 
 Next: [Run Sync](/docs/getting-started/run-sync).

@@ -21,11 +21,11 @@ Use `fixture:backend:contract` or `fixture:backend:contract:json` to run the HTT
 
 Useful env vars:
 
-- `BARESYNC_FIXTURE_API_URL`: fixture app sync URL, default `http://127.0.0.1:18080`
+- `BARESYNC_FIXTURE_API_URL`: fixture app sync URL, default `http://127.0.0.1:3001`
 - `BARESYNC_FIXTURE_SCOPE_ID`: sync scope to use, default `merchant-1`
 - `BARESYNC_FIXTURE_ENCODING`: sync transport mode, default `json`
 - `BARESYNC_FIXTURE_RUN_ID`: run identifier used to derive a stable local DB path
-- `BARESYNC_FIXTURE_BACKEND_PORT`: backend listen port, default `18080`
+- `BARESYNC_FIXTURE_BACKEND_PORT`: backend listen port, default `3001`
 - `BARESYNC_FIXTURE_DB_PATH`: backend SQLite path, default `/tmp/baresync-fixture-${BARESYNC_FIXTURE_RUN_ID}.db`, or `:memory:` for contract tests
 
 ## Desktop
@@ -40,7 +40,7 @@ Example command:
 
 ```sh
 BARESYNC_DESKTOP_APP_PATH=/path/to/fixture-app \
-BARESYNC_FIXTURE_API_URL=http://127.0.0.1:18080 \
+BARESYNC_FIXTURE_API_URL=http://127.0.0.1:3001 \
 bun --cwd tests/e2e run desktop:sync
 ```
 
@@ -79,7 +79,7 @@ The Android smoke harness also exposes `android:sync:json` for explicit transpor
 
 Android backend rules:
 
-- Emulator builds should use the fixture backend URL that maps to the host, typically `http://10.0.2.2:18080`.
+- Emulator builds should use the fixture backend URL that maps to the host, typically `http://10.0.2.2:3001`.
 - Physical-device builds must use a LAN-reachable backend URL and should be built with `BARESYNC_FIXTURE_API_URL` set before packaging the app.
 - The public fixture app resolves the backend URL from Rust at startup, so the installed Android build must match the target it was built for.
 

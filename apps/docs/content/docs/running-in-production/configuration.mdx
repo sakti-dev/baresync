@@ -114,7 +114,7 @@ BaresyncBuilder::new()
 
 ```rust
 BaresyncBuilder::new()
-    .api_base_url("http://localhost:18080")
+    .api_base_url("http://localhost:3001")
     .db_path(":memory:")
     .poll_interval_secs(30) // only used if your test calls startPolling()
     .transport(mock_transport)  // record calls for assertions

@@ -74,7 +74,7 @@ The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defa
 The E2E package also exposes `fixture:backend:json`, `desktop:sync:json`, `android:sync:json`, and `android:maestro:sync:json` for explicit transport or runner selection.
 It also exposes `fixture:backend:contract:json` and `fixture:backend:contract:protobuf` for the host-side backend contract gate.
 
-Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:18080`. That leads to stale state, port conflicts, and false passes.
+Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:3001`. That leads to stale state, port conflicts, and false passes.
 
 The desktop WDIO config should:
 
@@ -161,7 +161,7 @@ Prerequisites:
 - connected emulator or physical device visible to `adb devices`
 - `BARESYNC_ANDROID_APP_ID`
 - `BARESYNC_ANDROID_READY_TEXT`
-- emulator builds should use the host-mapped backend URL `http://10.0.2.2:18080`
+- emulator builds should use the host-mapped backend URL `http://10.0.2.2:3001`
 - physical-device builds should be packaged with `BARESYNC_FIXTURE_API_URL` set to a LAN-reachable backend URL
 - the fixture Android build resolves the backend URL from Rust at startup, so the binary and the target need to match
 

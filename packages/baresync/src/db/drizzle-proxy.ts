@@ -26,8 +26,9 @@ function resolveInvoke(custom?: InvokeFn): InvokeFn {
 }
 
 export function createTauriDrizzleDatabase(config: TauriDrizzleDatabaseConfig) {
-  const runSqlCmd = config.commands?.runSql ?? "run_sql";
-  const runSqlBatchCmd = config.commands?.runSqlBatch ?? "run_sql_batch";
+  const runSqlCmd = config.commands?.runSql ?? "plugin:baresync|run_sql";
+  const runSqlBatchCmd =
+    config.commands?.runSqlBatch ?? "plugin:baresync|run_sql_batch";
 
   return drizzle(
     async (sql: string, params: unknown[], method: string) => {

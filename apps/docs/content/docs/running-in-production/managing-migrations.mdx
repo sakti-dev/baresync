@@ -116,7 +116,7 @@ The lower-level Rust migration API has a tolerant mode for specialized recovery 
 If your app exposes the migration status command, you can check which migrations have been applied:
 
 ```ts
-const status = await invoke("get_migration_status");
+const status = await invoke("plugin:baresync|get_migration_status");
 // Returns: Array<{ hash: string, created_at: number }>
 ```
 
@@ -125,7 +125,7 @@ This shows what the engine has recorded, not what's pending. If a migration name
 If your app exposes the migration command, you can also ask the plugin to run pending migrations:
 
 ```ts
-await invoke("run_migrations");
+await invoke("plugin:baresync|run_migrations");
 ```
 
 This is rarely needed — migrations run automatically on plugin init. Use it only if you're applying a migration file after the app has already started.
