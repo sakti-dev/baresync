@@ -13,7 +13,6 @@ The push handler accepts local changes from the client, validates them, orders t
 import { createSyncPushHandler } from "baresync/server";
 
 const push = createSyncPushHandler({
-  encoding: "json",
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
   idempotency: { db: idempotencyDb },

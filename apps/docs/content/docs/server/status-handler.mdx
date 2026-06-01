@@ -13,7 +13,6 @@ The status handler answers a simple question: "Has anything changed since this c
 import { createSyncStatusHandler } from "baresync/server";
 
 const status = createSyncStatusHandler({
-  encoding: "json",
   resolveScope,
   loadSyncStatus: async ({ cursor, scope }) =>
     repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),

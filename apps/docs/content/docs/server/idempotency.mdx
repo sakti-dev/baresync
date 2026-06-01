@@ -25,7 +25,6 @@ The push handler requires an `idempotency` config:
 import { createSyncPushHandler } from "baresync/server";
 
 const push = createSyncPushHandler({
-  encoding: "json",
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
   idempotency: { db: yourDrizzleDb },

@@ -20,6 +20,8 @@ The `packages/baresync/src/server` export path SHALL provide framework-neutral h
 
 The app SHALL provide `resolveScope` and `applyPushChanges` callbacks. The handler SHALL pass `scope`, `scopeId`, `clientId`, `idempotencyKey`, `requestHash`, ordered `changes`, and `syncUpdatedAt` to `applyPushChanges`.
 
+The handler options SHALL NOT include an `encoding` field — JSON is the only supported request and response format.
+
 #### Scenario: Push handler applies authorized changes
 
 - **WHEN** a valid push request is received and `resolveScope` returns an authorized scope
@@ -44,6 +46,8 @@ The app SHALL provide `resolveScope` and `applyPushChanges` callbacks. The handl
 
 The app SHALL provide `resolveScope` and `loadSyncStatus` callbacks. The handler SHALL pass `scope`, `scopeId`, and `cursor` to `loadSyncStatus`.
 
+The handler options SHALL NOT include an `encoding` field.
+
 #### Scenario: Status handler returns changed table metadata
 
 - **WHEN** a valid status request is received and `resolveScope` returns an authorized scope
@@ -61,6 +65,8 @@ The app SHALL provide `resolveScope` and `loadSyncStatus` callbacks. The handler
 `createSyncPullHandler` SHALL decode a JSON pull request, resolve the requested scope, call app-provided `loadPullChanges`, and encode the returned pull body as JSON.
 
 The app SHALL provide `resolveScope` and `loadPullChanges` callbacks. The handler SHALL pass `scope`, `scopeId`, `tables`, `cursor`, and `limit` to `loadPullChanges`.
+
+The handler options SHALL NOT include an `encoding` field.
 
 #### Scenario: Pull handler returns scoped changes
 

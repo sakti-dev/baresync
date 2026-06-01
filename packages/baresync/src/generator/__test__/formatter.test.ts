@@ -15,10 +15,7 @@ describe("formatGeneratedArtifacts", () => {
       tsPath,
       'export const tables=["products","categories"] as const\n'
     );
-    fs.writeFileSync(
-      jsonPath,
-      '{"encoding":"json","tables":["products","categories"]}'
-    );
+    fs.writeFileSync(jsonPath, '{"tables":["products","categories"]}');
     fs.writeFileSync(untouchedPath, "export const userCode={bad:true}\n");
 
     formatGeneratedArtifacts({
@@ -30,7 +27,7 @@ describe("formatGeneratedArtifacts", () => {
       'export const tables = ["products", "categories"] as const;\n'
     );
     expect(fs.readFileSync(jsonPath, "utf-8")).toBe(
-      '{ "encoding": "json", "tables": ["products", "categories"] }\n'
+      '{ "tables": ["products", "categories"] }\n'
     );
     expect(fs.readFileSync(untouchedPath, "utf-8")).toBe(
       "export const userCode={bad:true}\n"

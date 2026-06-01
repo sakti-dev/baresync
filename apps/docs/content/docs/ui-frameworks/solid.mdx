@@ -58,7 +58,6 @@ export const SyncClientProvider: ParentComponent = (props) => {
   // Create the client once — createSignal with an initializer never re-creates it
   const [client] = createSignal(
     createSyncClient({
-      encoding: "json",
       scopeId: "your-scope-id",
       invoke,
     })

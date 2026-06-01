@@ -23,9 +23,9 @@ export const syncGeneratorConfig = defineSyncConfig({
   outputDir: "./generated",
   packageName: INVENTORY_PACKAGE_NAME,
   tables: {
-    locations: { scope: "scope_id" },
-    items: { scope: "scope_id" },
-    stockCounts: { scope: "scope_id" },
+    locations: { scopeColumn: "scope_id" },
+    items: { scopeColumn: "scope_id" },
+    stockCounts: { scopeColumn: "scope_id" },
   },
 });
 ```
@@ -48,7 +48,7 @@ Each entry in `tables` maps an export name from your schemas to sync options:
 ```ts
 tables: {
   locations: {
-    scope: "scope_id",
+    scopeColumn: "scope_id",
     localOnlyColumns: ["isSynced"],
     serverOnlyColumns: ["syncUpdatedAt"],
   },

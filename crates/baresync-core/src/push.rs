@@ -59,7 +59,7 @@ pub(crate) fn build_upsert_statement(
 ) -> Result<(String, Vec<Value>), SyncError> {
     let obj = row
         .as_object()
-        .ok_or_else(|| SyncError::Encoding(format!("Row for {} is not a JSON object", table)))?;
+        .ok_or_else(|| SyncError::JsonParse(format!("Row for {} is not a JSON object", table)))?;
 
     let mut local_obj: serde_json::Map<String, Value> = obj
         .iter()

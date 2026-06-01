@@ -63,7 +63,6 @@ describe("writeManifest", () => {
   it("writes manifest with correct structure", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced, productsSynced],
     });
 
@@ -82,8 +81,7 @@ describe("writeManifest", () => {
 
     expect(manifest.contractVersion).toMatch(ISO_DATE_RE);
     expect(manifest.generatorVersion).toBe("0.1.0");
-    expect(manifest.encoding).toBe("json");
-    expect(manifest).not.toHaveProperty("packageName");
+    expect(manifest).not.toHaveProperty("encoding");
     expect(manifest.tables).toHaveLength(2);
     expect(manifest.tables.map((t) => t.name)).toEqual([
       "categories",
@@ -103,7 +101,6 @@ describe("writeManifest", () => {
   it("reflects FK analysis in tableOrder", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced, productsSynced],
     });
 
@@ -128,7 +125,6 @@ describe("writeManifest", () => {
   it("manifest tables contain field lists", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 

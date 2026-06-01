@@ -50,7 +50,7 @@ These do not block generation but may indicate problems:
 | `SYNC_SCHEMA_NO_CONFLICT_STRATEGY` | No conflict strategy defined |
 | `SYNC_SCHEMA_NO_DELETE_STRATEGY` | No delete strategy defined |
 | `SYNC_SCHEMA_LARGE_TEXT_FIELD` | Text column over 10,000 chars |
-| `SYNC_SCHEMA_JSON_ONLY_FIELD` | JSON-typed column may not work in all encodings |
+| `SYNC_SCHEMA_JSON_ONLY_FIELD` | JSON-typed column may not serialize cleanly in all cases |
 | `SYNC_INDEX_MISSING_SCOPE_WATERMARK` | No `(scope, sync_updated_at)` index |
 | `SYNC_INDEX_MISSING_LOCAL_DIRTY` | No `is_synced` index |
 | `SYNC_COMPAT_ADDITIVE_CHANGE` | Table removed from contract since last run |

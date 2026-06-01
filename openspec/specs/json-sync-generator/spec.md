@@ -51,7 +51,6 @@ The generated `sync-contract.json` SHALL contain:
 
 - `contractVersion`: ISO date string (`YYYY-MM-DD`) from generation time
 - `generatorVersion`: the baresync generator version
-- `encoding`: `"json"`
 - `upsertOrder`: array of table names
 - `deleteOrder`: array of table names (reverse of upsertOrder)
 - `tables`: object keyed by table name, each containing:
@@ -61,13 +60,14 @@ The generated `sync-contract.json` SHALL contain:
   - `serverOnlyColumns`: array of excluded server column names
 - `limits`: object with `maxPushBytes` and `maxPushRows`
 
-The `packageName` field SHALL NOT appear in the generated output.
+The `packageName` field SHALL NOT appear in the generated output. The `encoding` field SHALL NOT appear in the generated output — JSON is the only supported wire format.
 
 #### Scenario: Contract JSON is valid and parseable
 
 - **WHEN** the generated `sync-contract.json` is parsed
 - **THEN** all fields above are present and match the input contract definition
 - **AND** no `packageName` field exists in the output
+- **AND** no `encoding` field exists in the output
 
 ### Requirement: CLI generate command
 
@@ -132,15 +132,16 @@ The input SHALL include:
 - Optional `limits`
 - Optional `schemaSourceDir`: directory containing the source schema files to snapshot into the generated output
 
-The `packageName` field SHALL NOT be accepted by `defineSyncConfig`.
+The `packageName` field SHALL NOT be accepted by `defineSyncConfig`. The `encoding` field SHALL NOT be accepted by `defineSyncConfig`.
 
 Each `tables` key SHALL refer to a table present in both `localSyncedSchema` and `apiSyncedSchema`.
 
-#### Scenario: Paired config builds a generator config without packageName
+#### Scenario: Paired config builds a generator config without packageName or encoding
 
 - **WHEN** `defineSyncConfig` is called with matching `localSyncedSchema`, `apiSyncedSchema`, and `tables` entries for `locations`, `items`, and `stockCounts`
 - **THEN** it returns a `GeneratorConfig` accepted by `generateSyncArtifacts`
 - **AND** the config does not contain a `packageName` field
+- **AND** the config does not contain an `encoding` field
 
 #### Scenario: Table names are typed from paired schemas
 

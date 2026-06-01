@@ -1,21 +1,21 @@
 ---
-title: Add Server Routes
-description: Create push, pull, and status handlers on your Hono server.
+title: Server Routes
+description: What the scaffold generated for your server and how to customize it (Hono example).
 ---
 
-# Add Server Routes
+# Server Routes
 
-Your server needs three routes that the Baresync sync engine calls:
+The scaffold created three files that work together to handle sync requests from your Tauri app. The code below shows the Hono variant; if you chose Elysia during scaffolding, the structure is identical — only the router setup at the bottom of `routes.ts` differs.
 
-- `POST /api/v1/sync/status` — returns whether there are changes since a cursor
-- `POST /api/v1/sync/pull` — returns changed rows since a cursor
-- `POST /api/v1/sync/push` — accepts local changes and writes them to the server database
+- `apps/server/src/db/client.ts` — opens the server's SQLite database
+- `apps/server/src/db/v1/sync-repository.ts` — reads and writes synced tables
+- `apps/server/src/v1/routes.ts` — defines the `/api/v1/sync/{push,pull,status}` handlers
 
-Baresync provides handler factories that handle decoding, validation, limits, and ordering. You provide scope resolution and the actual database read/write logic.
+This page walks through each file so you know what to change when you add tables, swap databases, or wire up real authentication.
 
-## Set up the server database
+## Database connection
 
-The scaffold creates `apps/server/src/db/client.ts`:
+`apps/server/src/db/client.ts` opens a `better-sqlite3` connection and exports a `db` Drizzle instance:
 
 ```ts
 import fs from "node:fs/promises";
@@ -37,13 +37,13 @@ sqlite.pragma("foreign_keys = ON");
 export const db = drizzle(sqlite);
 ```
 
-This uses `better-sqlite3` and exports a `db` instance directly. No factory function needed. The database path is configurable via environment variable.
+The database path defaults to `./data/<project-name>-server.db` and is overridable via the `<PROJECT_NAME>_SERVER_DB_PATH` environment variable. The data directory is created at scaffold time, so the file just opens the connection.
 
-## Create the sync repository
+If you need a different driver (Postgres, MySQL, libSQL), replace the `drizzle()` call with the appropriate driver and update `apps/server/drizzle.config.ts` to match.
 
-The repository handles the actual read and write operations for each table. Baresync provides a `createDrizzleSyncRepository` helper that handles cursor pagination, table ordering, and change loading.
+## Sync repository
 
-The scaffold creates `apps/server/src/db/v1/sync-repository.ts`:
+`apps/server/src/db/v1/sync-repository.ts` wraps `createDrizzleSyncRepository` from `baresync/server/drizzle` with one entry per synced table:
 
 ```ts
 import { lists, todos } from "@sync-contract/generated/<YYYY-MM-DD>/api-synced-schema";
@@ -158,9 +158,13 @@ Each table entry has:
 - `softDeleteRow` — marks a row as deleted
 - `upsertRow` — inserts or updates a row
 
-## Wire up the routes
+### Adding a new synced table
 
-The scaffold creates a self-contained route module at `apps/server/src/v1/routes.ts`:
+When you add a table to `packages/sync-contract/sync.config.ts` and regenerate the contract, you also need to add a corresponding entry here. The `buildRow` and `readRows` functions use the Drizzle table object imported from `@sync-contract/generated/<YYYY-MM-DD>/api-synced-schema`, so the import needs to include the new table too.
+
+## Route handlers
+
+`apps/server/src/v1/routes.ts` wires the three sync endpoints using `createSyncPushHandler`, `createSyncPullHandler`, and `createSyncStatusHandler` from `baresync/server`. The example below shows the Hono variant; if you scaffolded with Elysia, the only difference is the router setup at the bottom of the file.
 
 ```ts
 import { Hono } from "hono";
@@ -191,7 +195,6 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
 const repository = createAppSyncRepository(db);
 
 const push = createSyncPushHandler({
-  encoding: "json",
   resolveScope,
   upsertOrder: repository.tableNames,
   applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
@@ -203,7 +206,6 @@ const push = createSyncPushHandler({
 });
 
 const pull = createSyncPullHandler({
-  encoding: "json",
   limit: 1000,
   resolveScope,
   loadPullChanges: async ({ cursor, scope, tables }) =>
@@ -215,7 +217,6 @@ const pull = createSyncPullHandler({
 });
 
 const status = createSyncStatusHandler({
-  encoding: "json",
   resolveScope,
   loadSyncStatus: async ({ cursor, scope }) =>
     repository.loadSyncStatus({
@@ -224,6 +225,7 @@ const status = createSyncStatusHandler({
     }),
 });
 
+// Hono variant — mounts the handlers under /api/v1/sync at the index level.
 const sync = new Hono();
 
 sync.post("/push", (c) => push(c.req.raw, {}));
@@ -233,7 +235,27 @@ sync.post("/status", (c) => status(c.req.raw, {}));
 export default sync;
 ```
 
-And mounts it in `apps/server/src/index.ts`:
+The handler factories handle body decoding, call your `resolveScope`, and delegate to the repository functions. The route module is self-contained — it imports the database client and repository directly, so you only need to import it from `index.ts`.
+
+### Customizing scope resolution
+
+`resolveScope` is the one piece of business logic you need to replace. The scaffold's default accepts only the `SYNC_SCOPE` constant from your sync contract. In a real app, replace it with your auth check — verify the session token, look up the user, and return the scope they have access to:
+
+```ts
+const resolveScope = async ({ scopeId }: { scopeId: string }) => {
+  const user = await getUserFromSession(request);
+  if (!user || !user.scopes.includes(scopeId)) {
+    return { ok: false as const, status: 403, body: { error: "forbidden" } };
+  }
+  return { ok: true as const, scope: { scopeId } };
+};
+```
+
+The handler factories call `resolveScope` on every request. If it returns `{ ok: false, status, body }`, the handler returns that response immediately without touching the database.
+
+## Mounting in index.ts
+
+`apps/server/src/index.ts` mounts the route module under `/api/v1/sync`. The Hono variant:
 
 ```ts
 import { Hono } from "hono";
@@ -251,26 +273,13 @@ console.log(
 );
 ```
 
-### What resolveScope does
-
-The handler factories call `resolveScope` on every request. This is where you check authorization and tenant membership. For this guide, we accept only the `"default"` scope. In a real app, you would verify the session and check that the user belongs to the requested scope.
-
-### What the handlers do
-
-Each handler factory handles:
-
-- Request body decoding (JSON)
-- Scope resolution (calling your `resolveScope`)
-- Response envelope formatting
-
-You provide the database operations through `applyPushChanges`, `loadPullChanges`, and `loadSyncStatus`. The `createDrizzleSyncRepository` helper implements these operations for you.
+You typically don't need to touch this file. If you need to add middleware (CORS, request logging, rate limiting), add it before `app.route("/api/v1/sync", sync)`.
 
 ## Verify
 
 Start the server to check it boots:
 
 ```bash
-cd apps/server
 bun run dev
 ```
 

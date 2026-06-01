@@ -17,7 +17,6 @@ const state = {
 
 let syncClient = createFixtureSyncClient({
   api_url: "http://127.0.0.1:3001",
-  encoding: "json",
 });
 
 const el = <T extends HTMLElement>(selector: string) =>
@@ -266,7 +265,7 @@ async function bootstrap() {
   try {
     const runtimeConfig = await getFixtureRuntimeConfig();
     syncClient = createFixtureSyncClient(runtimeConfig);
-    transportMode.textContent = runtimeConfig.encoding;
+    transportMode.textContent = "json";
     await ensureMigrations();
     await refreshStatus();
     state.ready = true;

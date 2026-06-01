@@ -36,11 +36,10 @@ async fn reset_fixture_state(state: State<'_, PluginState>) -> Result<(), String
 async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
     let config = FixtureRuntimeConfig {
         api_url: fixture_api_url(),
-        encoding: fixture_encoding(),
     };
     eprintln!(
-        "[inventory-app] get_fixture_runtime_config api_url={} encoding={}",
-        config.api_url, config.encoding
+        "[inventory-app] get_fixture_runtime_config api_url={}",
+        config.api_url
     );
     Ok(config)
 }
@@ -48,15 +47,10 @@ async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
 #[derive(Serialize)]
 struct FixtureRuntimeConfig {
     api_url: String,
-    encoding: String,
 }
 
 fn fixture_api_url() -> String {
     env::var("INVENTORY_API_URL").unwrap_or_else(|_| "http://127.0.0.1:3001".to_string())
-}
-
-fn fixture_encoding() -> String {
-    env::var("INVENTORY_ENCODING").unwrap_or_else(|_| "json".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -67,10 +61,9 @@ pub fn run() {
         .plugin(
             BaresyncBuilder::new()
                 .api_base_url("http://127.0.0.1:3001/api/v1")
-                .encoding("json")
                 .db_name("baresync.db")
                 .contract_json(include_str!(
-                    "../../../../packages/sync-contract/generated/2026-05-31/sync-contract.json"
+                    "../../../../packages/sync-contract/generated/2026-06-01/sync-contract.json"
                 ))
                 .migrations_path("migrations")
                 .poll_interval_secs(30)

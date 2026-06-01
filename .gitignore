@@ -1,6 +1,7 @@
 .claude
 .codex
 .opencode
+.commandcode
 .direnv
 .worktrees
 docs/external

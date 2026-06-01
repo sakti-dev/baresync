@@ -156,7 +156,6 @@ These four fields are required for the repository to split rows and compute curs
 
 ```ts
 const push = createSyncPushHandler({
-  encoding: "json",
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
   idempotency: { db },
@@ -165,7 +164,6 @@ const push = createSyncPushHandler({
 });
 
 const pull = createSyncPullHandler({
-  encoding: "json",
   limit: 1000,
   resolveScope,
   loadPullChanges: ({ cursor, scope, tables }) =>
@@ -173,7 +171,6 @@ const pull = createSyncPullHandler({
 });
 
 const status = createSyncStatusHandler({
-  encoding: "json",
   resolveScope,
   loadSyncStatus: ({ cursor, scope }) =>
     repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),

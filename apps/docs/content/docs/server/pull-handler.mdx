@@ -13,7 +13,6 @@ The pull handler returns all rows that changed since a given cursor, grouped by 
 import { createSyncPullHandler } from "baresync/server";
 
 const pull = createSyncPullHandler({
-  encoding: "json",
   limit: 1000,
   resolveScope,
   loadPullChanges: async ({ cursor, scope, tables }) =>

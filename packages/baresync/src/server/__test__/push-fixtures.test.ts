@@ -26,12 +26,11 @@ function createJsonRequest(body: unknown): Request {
   });
 }
 
-describe("push fixture encoding parity", () => {
+describe("push fixture JSON parity", () => {
   it("decodes push fixture and re-encodes consistently", async () => {
     const pushFixture = loadFixture("category-product-push.json");
 
     const decoded = await decodeSyncRequest({
-      encoding: "json",
       kind: "push",
       request: createJsonRequest(pushFixture),
     });
@@ -66,7 +65,6 @@ describe("push fixture encoding parity", () => {
           },
         ],
       },
-      encoding: "json",
       kind: "push",
     });
 
@@ -80,7 +78,6 @@ describe("push primitives with fixture data", () => {
   it("validates fixture push envelope", async () => {
     const pushFixture = loadFixture("category-product-push.json");
     const decoded = await decodeSyncRequest({
-      encoding: "json",
       kind: "push",
       request: createJsonRequest(pushFixture),
     });

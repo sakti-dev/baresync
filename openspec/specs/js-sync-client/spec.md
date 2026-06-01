@@ -19,10 +19,10 @@ The JS sync client SHALL use Baresync plugin command names by default while pres
 - **THEN** the client SHALL invoke those configured command names instead of plugin namespace defaults
 
 ### Requirement: createSyncClient factory
-The JS package SHALL export a `createSyncClient` function that accepts `{ encoding, scopeId, commands?, invoke? }` and returns a sync client object with methods `syncNow`, `push`, `pull`, `fullResync`, `getState`.
+The JS package SHALL export a `createSyncClient` function that accepts `{ scopeId, commands?, invoke? }` and returns a sync client object with methods `syncNow`, `push`, `pull`, `fullResync`, `getState`.
 
 #### Scenario: Create sync client with required options
-- **WHEN** `createSyncClient({ encoding: "json", scopeId: "outlet-1" })` is called
+- **WHEN** `createSyncClient({ scopeId: "outlet-1" })` is called
 - **THEN** a client object SHALL be returned with `syncNow`, `push`, `pull`, `fullResync`, and `getState` methods
 
 #### Scenario: Create sync client with custom invoke

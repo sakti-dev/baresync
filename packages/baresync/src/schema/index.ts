@@ -1,10 +1,8 @@
 import {
-  DEFAULT_SYNC_ENCODING,
   defineSyncContract,
   type SyncContract,
   type SyncContractLimits,
   type SyncContractTableMeta,
-  type SyncEncoding,
   syncSchema,
 } from "./contract.js";
 import {
@@ -32,7 +30,6 @@ export {
   createSyncBatchRequestsTable,
   createSyncCursorsTable,
   createSyncOutboxTable,
-  DEFAULT_SYNC_ENCODING,
   defineSyncContract,
   defineSyncedTable,
   localSyncColumns,
@@ -40,7 +37,6 @@ export {
   type SyncContract,
   type SyncContractLimits,
   type SyncContractTableMeta,
-  type SyncEncoding,
   type SyncedTableDefinition,
   syncBatchRequests,
   syncCursors,

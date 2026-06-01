@@ -16,10 +16,6 @@ export type SyncHandler<TContext> = (
   context: TContext
 ) => Promise<Response>;
 
-export interface SyncJsonEncodingConfig {
-  encoding: "json";
-}
-
 export interface SyncAuthorizedScope<TScope> {
   ok: true;
   scope: TScope;
@@ -113,26 +109,20 @@ interface SyncPullHandlerBase<TContext, TScope> {
   ) => Awaitable<SyncScopeResolution<TScope>>;
 }
 
-export type JsonSyncPushHandlerOptions<TContext, TScope> = SyncPushHandlerBase<
+export type SyncPushHandlerOptions<TContext, TScope> = SyncPushHandlerBase<
   TContext,
   TScope
-> &
-  SyncJsonEncodingConfig;
-export type SyncPushHandlerOptions<TContext, TScope> =
-  JsonSyncPushHandlerOptions<TContext, TScope>;
+>;
 
-export type JsonSyncStatusHandlerOptions<TContext, TScope> =
-  SyncStatusHandlerBase<TContext, TScope> & SyncJsonEncodingConfig;
-export type SyncStatusHandlerOptions<TContext, TScope> =
-  JsonSyncStatusHandlerOptions<TContext, TScope>;
-
-export type JsonSyncPullHandlerOptions<TContext, TScope> = SyncPullHandlerBase<
+export type SyncStatusHandlerOptions<TContext, TScope> = SyncStatusHandlerBase<
   TContext,
   TScope
-> &
-  SyncJsonEncodingConfig;
-export type SyncPullHandlerOptions<TContext, TScope> =
-  JsonSyncPullHandlerOptions<TContext, TScope>;
+>;
+
+export type SyncPullHandlerOptions<TContext, TScope> = SyncPullHandlerBase<
+  TContext,
+  TScope
+>;
 
 function toSyncErrorResponse(error: unknown): Response {
   const mapped = mapSyncError(error);
@@ -195,7 +185,6 @@ export function createSyncPushHandler<TContext, TScope>(
   return async (request, context) => {
     try {
       const decoded = await decodeSyncRequest({
-        encoding: options.encoding,
         kind: "push",
         request,
       });
@@ -244,7 +233,6 @@ export function createSyncPushHandler<TContext, TScope>(
 
       return encodeSyncResponse({
         body: result.result,
-        encoding: options.encoding,
         kind: "push",
       });
     } catch (error) {
@@ -259,7 +247,6 @@ export function createSyncStatusHandler<TContext, TScope>(
   return async (request, context) => {
     try {
       const decoded = await decodeSyncRequest({
-        encoding: options.encoding,
         kind: "status",
         request,
       });
@@ -285,7 +272,6 @@ export function createSyncStatusHandler<TContext, TScope>(
 
       return encodeSyncResponse({
         body: result,
-        encoding: options.encoding,
         kind: "status",
       });
     } catch (error) {
@@ -300,7 +286,6 @@ export function createSyncPullHandler<TContext, TScope>(
   return async (request, context) => {
     try {
       const decoded = await decodeSyncRequest({
-        encoding: options.encoding,
         kind: "pull",
         request,
       });
@@ -328,7 +313,6 @@ export function createSyncPullHandler<TContext, TScope>(
 
       return encodeSyncResponse({
         body: result,
-        encoding: options.encoding,
         kind: "pull",
       });
     } catch (error) {

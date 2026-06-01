@@ -60,12 +60,13 @@ The example MUST demonstrate the full sync path across a Tauri client, a Hono ba
 
 ### Requirement: JSON-first quick start
 
-The example documentation MUST present JSON sync encoding as the primary walkthrough path.
+The example documentation MUST present JSON sync as the primary walkthrough path without referencing alternative encodings or an `encoding` configuration option.
 
 #### Scenario: First-time user path is simple
 
 - **WHEN** a new user reads the quick start
 - **THEN** they can follow the example without needing transport implementation details first
+- **AND** the example code does not include `encoding: "json"` in `createSyncClient`, `defineSyncConfig`, or handler factory calls
 
 ### Requirement: Example documentation entry point
 

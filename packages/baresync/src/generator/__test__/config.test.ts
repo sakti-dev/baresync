@@ -58,13 +58,12 @@ describe("defineSyncConfig", () => {
       localSyncedSchema,
       outputDir: "./generated",
       tables: {
-        categories: { scope: "scope_id" },
-        products: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
+        products: { scopeColumn: "scope_id" },
       },
     });
 
     expect(config.outputDir).toBe("./generated");
-    expect(config.contract.encoding).toBe("json");
     expect(config.contract.tablesMeta.map((t) => t.tableName)).toEqual([
       "categories",
       "products",
@@ -78,8 +77,8 @@ describe("defineSyncConfig", () => {
       localSyncedSchema,
       outputDir: tmpDir,
       tables: {
-        categories: { scope: "scope_id" },
-        products: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
+        products: { scopeColumn: "scope_id" },
       },
     });
 
@@ -101,7 +100,7 @@ describe("defineSyncConfig", () => {
       localSyncedSchema,
       outputDir: "./generated",
       tables: {
-        categories: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
       },
     });
 
@@ -136,7 +135,7 @@ describe("defineSyncConfig", () => {
       tables: {
         drafts: {
           localOnlyColumns: ["draftNote", "isSynced"],
-          scope: "scope_id",
+          scopeColumn: "scope_id",
           serverOnlyColumns: ["auditVersion", "syncUpdatedAt"],
         },
       },
@@ -155,7 +154,7 @@ describe("defineSyncConfig", () => {
   it("rejects unknown table keys at the type level", () => {
     const invalidTables = {
       // @ts-expect-error unknown table keys are not part of both schemas
-      missing: { scope: "scope_id" },
+      missing: { scopeColumn: "scope_id" },
     } satisfies SyncConfigTables<
       typeof localSyncedSchema,
       typeof apiSyncedSchema
@@ -171,7 +170,7 @@ describe("defineSyncConfig", () => {
         localSyncedSchema: { categories: localCategories },
         outputDir: "./generated",
         tables: {
-          categories: { scope: "scope_id" },
+          categories: { scopeColumn: "scope_id" },
         },
       })
     ).toThrow('API synced schema is missing table export "categories"');
@@ -184,7 +183,7 @@ describe("defineSyncConfig", () => {
         localSyncedSchema: {},
         outputDir: "./generated",
         tables: {
-          categories: { scope: "scope_id" },
+          categories: { scopeColumn: "scope_id" },
         },
       })
     ).toThrow('Local synced schema is missing table export "categories"');
@@ -211,7 +210,7 @@ describe("defineSyncConfig", () => {
         localSyncedSchema: { notes: localWithExtra },
         outputDir: "./generated",
         tables: {
-          notes: { scope: "scope_id" },
+          notes: { scopeColumn: "scope_id" },
         },
       })
     ).toThrow('unexpected local-only column "local_note"');
@@ -238,7 +237,7 @@ describe("defineSyncConfig", () => {
         localSyncedSchema: { audits: localWithoutExtra },
         outputDir: "./generated",
         tables: {
-          audits: { scope: "scope_id" },
+          audits: { scopeColumn: "scope_id" },
         },
       })
     ).toThrow('unexpected server-only column "audit_version"');
@@ -268,8 +267,8 @@ describe("schema snapshot", () => {
       outputDir: path.join(tmpDir, "generated"),
       schemaSourceDir: schemaDir,
       tables: {
-        categories: { scope: "scope_id" },
-        products: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
+        products: { scopeColumn: "scope_id" },
       },
     });
 
@@ -307,7 +306,7 @@ describe("schema snapshot", () => {
       outputDir: path.join(tmpDir, "generated"),
       schemaSourceDir: schemaDir,
       tables: {
-        categories: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
       },
     });
 
@@ -341,7 +340,7 @@ describe("schema snapshot", () => {
       outputDir: path.join(tmpDir, "generated"),
       schemaSourceDir: schemaDir,
       tables: {
-        categories: { scope: "scope_id" },
+        categories: { scopeColumn: "scope_id" },
       },
     });
 

@@ -1,7 +1,6 @@
 {
-  "contractVersion": "2026-05-31",
+  "contractVersion": "2026-06-01",
   "generatorVersion": "0.1.0",
-  "encoding": "json",
   "tables": [
     {
       "fieldNumbers": {

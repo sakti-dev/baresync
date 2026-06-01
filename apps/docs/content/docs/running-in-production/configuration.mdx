@@ -32,7 +32,6 @@ BaresyncBuilder::new()
 |---|---|---|---|
 | `.api_base_url(url)` | `String` | `""` (required) | Your sync server's base URL. All sync endpoints are relative to this. |
 | `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative paths use the process working directory; absolute app-owned paths are safer in production. |
-| `.encoding(enc)` | `String` | `"json"` | Sync encoding: `"json"`. Must match the server. |
 | `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes after your app calls `startPolling()`. Do not call `startPolling()` if your app is manual-sync only. |
 | `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
 | `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
@@ -51,7 +50,6 @@ import { createSyncPushHandler } from "baresync/server";
 
 const pushHandler = createSyncPushHandler({
   applyPushChanges,
-  encoding: "json",
   idempotency: { db },
   resolveScope,
   upsertOrder: ["categories", "products"],
@@ -64,7 +62,6 @@ If you build your own server pipeline, use `validatePushEnvelope()` and pass the
 import { decodeSyncRequest, validatePushEnvelope } from "baresync/server";
 
 const decoded = await decodeSyncRequest({
-  encoding: "json",
   kind: "push",
   request,
 });
@@ -124,14 +121,13 @@ Use a real transport here instead of a mock if you want to exercise the live syn
 
 ## JS client configuration
 
-When you create a `SyncClient` in your frontend, you set the scope and encoding:
+When you create a `SyncClient` in your frontend, you set the scope and (optionally) a custom invoke:
 
 ```ts
 import { invoke } from "@tauri-apps/api/core";
 import { createSyncClient } from "baresync/tauri";
 
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "merchant-123",
   invoke,
 });
@@ -139,13 +135,10 @@ const client = createSyncClient({
 
 | Field | Required | Purpose |
 |---|---|---|
-| `encoding` | Yes | `"json"`. Must match the plugin and server. |
 | `scopeId` | Yes | The sync scope for this client. Determines which data is synced. |
 | `invoke` | No | Custom invoke function. Only useful for testing. |
 
 ## Common mistakes
-
-**Mismatched encoding** — the client, plugin, and server disagree about the sync format. Sync fails with encoding errors. Ensure all three layers use `"json"`.
 
 **DB path without a predictable app directory** — `db_path("baresync.db")` is relative to the process working directory. For production, resolve an app-owned data path explicitly, especially on mobile.
 

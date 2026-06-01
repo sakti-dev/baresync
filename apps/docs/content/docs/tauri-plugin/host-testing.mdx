@@ -34,7 +34,6 @@ async fn test_state() -> PluginState {
         db: Arc::new(db),
         sync_config: SyncEngineConfig {
             api_url: "http://localhost:0".to_string(),
-            encoding: "json".to_string(),
             scope_id: "test".to_string(),
             ..Default::default()
         },

@@ -8,10 +8,7 @@ export class SyncPayloadTooLargeError extends Error {
   }
 }
 
-export interface SyncRequestKind {
-  encoding: "json";
-  kind: "push" | "pull" | "status";
-}
+export type SyncRequestKind = "push" | "pull" | "status";
 
 function parseJsonRequestBody(rawBody: Uint8Array): Record<string, unknown> {
   const text = new TextDecoder().decode(rawBody);
@@ -35,7 +32,7 @@ function requireFields(
 }
 
 function validateSyncRequestBody(
-  kind: SyncRequestKind["kind"],
+  kind: SyncRequestKind,
   body: Record<string, unknown>
 ): void {
   switch (kind) {
@@ -80,8 +77,7 @@ export async function computeSyncRequestHash(body: unknown): Promise<string> {
 }
 
 export async function decodeSyncRequest(input: {
-  encoding: "json";
-  kind: "push" | "pull" | "status";
+  kind: SyncRequestKind;
   request: Request;
 }) {
   const rawBody = new Uint8Array(await input.request.arrayBuffer());
@@ -95,8 +91,7 @@ export async function decodeSyncRequest(input: {
 
 export function encodeSyncResponse(input: {
   body: unknown;
-  encoding: "json";
-  kind: "push" | "pull" | "status";
+  kind: SyncRequestKind;
 }): Response {
   return Response.json(input.body);
 }

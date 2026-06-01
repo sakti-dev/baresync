@@ -1,13 +1,11 @@
-import { createTauriDrizzleDatabase, type InvokeFn } from "@repo/baresync/db";
-import { syncedTable, syncSchema } from "@repo/baresync/schema";
-import { createSyncClient } from "@repo/baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase, type InvokeFn } from "baresync/db";
+import { syncedTable, syncSchema } from "baresync/schema";
+import { createSyncClient } from "baresync/tauri";
 import { desc } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { FixtureTransportMode } from "../../e2e/fixture-transport";
 
 export const fixtureScopeId = "merchant-1";
-export const fixturePackageName = "com.baresync.fixture.sync.v1";
 
 export const categories = sqliteTable("categories", {
   id: text("id").primaryKey(),
@@ -60,7 +58,6 @@ export const syncedProducts = syncedTable(products, {
 });
 
 export const syncContract = syncSchema({
-  packageName: fixturePackageName,
   tables: [syncedCategories, syncedProducts],
 });
 
@@ -81,16 +78,14 @@ export const fixtureDb = createTauriDrizzleDatabase({
 
 export interface FixtureRuntimeConfig {
   api_url: string;
-  encoding: FixtureTransportMode;
 }
 
 export async function getFixtureRuntimeConfig() {
   return (await invoke("get_fixture_runtime_config")) as FixtureRuntimeConfig;
 }
 
-export function createFixtureSyncClient(config: FixtureRuntimeConfig) {
+export function createFixtureSyncClient(_config: FixtureRuntimeConfig) {
   return createSyncClient({
-    encoding: config.encoding,
     scopeId: fixtureScopeId,
     invoke: invoke as unknown as InvokeFn,
   });

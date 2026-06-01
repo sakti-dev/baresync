@@ -39,8 +39,6 @@ const RESERVED_FIELDS = new Set([
   "sync_updated_at",
 ]);
 
-const SUPPORTED_ENCODINGS = new Set(["json"]);
-
 function camelToSnake(s: string): string {
   const result = s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
   return result.startsWith("_") ? result.slice(1) : result;
@@ -374,21 +372,6 @@ function checkReservedFieldReused(
   return diagnostics;
 }
 
-function checkEncoding(contract: SyncContract): SyncDiagnostic[] {
-  if (!SUPPORTED_ENCODINGS.has(contract.encoding)) {
-    return [
-      {
-        code: "SYNC_SCHEMA_ENCODING_UNSUPPORTED",
-        severity: "error",
-        message: `Encoding "${contract.encoding}" is not supported`,
-        why: 'Baresync only supports "json" encoding',
-        fix: 'Change the encoding to "json"',
-      },
-    ];
-  }
-  return [];
-}
-
 function checkFkCycleAndExternalFk(contract: SyncContract): SyncDiagnostic[] {
   const diagnostics: SyncDiagnostic[] = [];
   const schemaModule: Record<string, unknown> = {};
@@ -564,7 +547,7 @@ function checkJsonOnlyField(
         message: `Column "${col.name}" in table "${tableName}" uses JSON type (${col.columnType})`,
         table: tableName,
         column: col.name,
-        why: "JSON-typed columns require special handling during serialization and may not be supported in all sync encodings",
+        why: "JSON-typed columns require special handling during serialization",
         fix: "Consider storing JSON as a plain text column and parsing application-side",
       });
     }
@@ -667,7 +650,6 @@ export function runDiagnostics(
 ): SyncDiagnostic[] {
   const diagnostics: SyncDiagnostic[] = [];
 
-  diagnostics.push(...checkEncoding(contract));
   diagnostics.push(...checkDuplicateTableName(contract.tablesMeta));
   diagnostics.push(...checkFkCycleAndExternalFk(contract));
   diagnostics.push(...checkAdditiveChange(contract, options?.previousTables));

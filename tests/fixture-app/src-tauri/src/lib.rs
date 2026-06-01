@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fs;
 use std::sync::Arc;
 
-use baresync_core::http::SyncHttpTransport;
 use serde::Serialize;
 use tauri::{command, generate_context, State};
 use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
@@ -16,7 +15,6 @@ use tauri_plugin_baresync::commands::{run_sql_batch_with_state, PluginState};
 #[derive(Serialize)]
 struct FixtureRuntimeConfig {
     api_url: String,
-    encoding: String,
 }
 
 fn fixture_db_path() -> String {
@@ -58,12 +56,6 @@ fn fixture_api_url() -> String {
         })
 }
 
-fn fixture_encoding() -> String {
-    let _ = env::var("BARESYNC_FIXTURE_ENCODING");
-    let _ = option_env!("BARESYNC_FIXTURE_ENCODING");
-    "json".to_string()
-}
-
 fn fixture_contract_tables() -> baresync_core::engine::SyncContractTables {
     baresync_core::engine::SyncContractTables {
         upsert_order: vec!["categories".to_string(), "products".to_string()],
@@ -77,11 +69,6 @@ fn fixture_migrations() -> Vec<baresync_core::migrations::EmbeddedMigration> {
         name: "0001_init_fixture_schema",
         sql: include_str!("../migrations/0001_init_fixture_schema.sql"),
     }]
-}
-
-fn fixture_transport() -> Option<Arc<dyn SyncHttpTransport>> {
-    let _ = fixture_encoding();
-    None
 }
 
 #[cfg(feature = "sqlcipher")]
@@ -129,11 +116,10 @@ async fn reset_fixture_state(state: State<'_, PluginState>) -> Result<(), String
 async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
     let config = FixtureRuntimeConfig {
         api_url: fixture_api_url(),
-        encoding: fixture_encoding(),
     };
     eprintln!(
-        "[fixture-app] get_fixture_runtime_config api_url={} encoding={}",
-        config.api_url, config.encoding
+        "[fixture-app] get_fixture_runtime_config api_url={}",
+        config.api_url
     );
     Ok(config)
 }
@@ -142,11 +128,10 @@ async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
 pub fn run() {
     let plugin_builder = BaresyncBuilder::new()
         .api_base_url(fixture_api_url())
-        .encoding(fixture_encoding())
         .db_path(fixture_db_path())
         .contract_tables(fixture_contract_tables())
         .migrations(fixture_migrations())
-        .transport(fixture_transport().unwrap_or_else(baresync_core::http::default_transport));
+        .transport(baresync_core::http::default_transport());
 
     #[cfg(feature = "sqlcipher")]
     let plugin_builder = plugin_builder.encryption_key_provider(FixtureEncryptionKeyProvider);

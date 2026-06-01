@@ -5,7 +5,7 @@ pub enum SyncError {
     Network(String),
     Validation(String),
     Database(String),
-    Encoding(String),
+    JsonParse(String),
     Migration(String),
     Http {
         status: u16,
@@ -24,7 +24,7 @@ impl fmt::Display for SyncError {
             Self::Network(msg) => write!(f, "Network error: {}", msg),
             Self::Validation(msg) => write!(f, "Validation error: {}", msg),
             Self::Database(msg) => write!(f, "Database error: {}", msg),
-            Self::Encoding(msg) => write!(f, "Encoding error: {}", msg),
+            Self::JsonParse(msg) => write!(f, "JSON parse error: {}", msg),
             Self::Migration(msg) => write!(f, "Migration error: {}", msg),
             Self::Http { status, body, kind } => {
                 write!(f, "HTTP error ({}): {} - {}", kind, status, body)

@@ -38,7 +38,6 @@ function createMockClient(overrides?: {
   };
 
   return createSyncClient({
-    encoding: "json",
     scopeId: "test",
     invoke: (cmd) => Promise.resolve(results[cmd]),
   });
@@ -50,7 +49,6 @@ function createMockClient(overrides?: {
 ```ts
 const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "test",
   invoke: (cmd, args) => {
     calls.push({ cmd, args });
@@ -80,7 +78,6 @@ const mockTx = {
 };
 
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "test",
   invoke: () => Promise.resolve({}),
 });
@@ -105,7 +102,6 @@ expect(inserted[0]?.values).toMatchObject({
 ```ts
 const error = { code: "AUTH_EXPIRED", message: "session expired" };
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "test",
   invoke: () => Promise.reject(error),
 });
@@ -119,7 +115,6 @@ Rejected values pass through unchanged — no wrapping, no transformation.
 
 ```ts
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "test",
   invoke: (cmd) => {
     if (cmd === "get_polling_status") {

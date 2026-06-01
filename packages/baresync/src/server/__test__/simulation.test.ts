@@ -319,7 +319,6 @@ describe("simulation: full server primitive pipeline", () => {
     });
 
     const decoded = await decodeSyncRequest({
-      encoding: "json",
       kind: "push",
       request: pushRequest,
     });
@@ -350,7 +349,6 @@ describe("simulation: full server primitive pipeline", () => {
 
     const response = encodeSyncResponse({
       body: guardResult.result,
-      encoding: "json",
       kind: "push",
     });
 

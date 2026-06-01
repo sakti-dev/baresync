@@ -14,7 +14,6 @@ export function writeSyncContractJson(
   const contractJson = {
     version,
     generatorVersion: "0.1.0",
-    encoding: contract.encoding,
     upsertOrder: tableOrder.upsertOrder,
     deleteOrder: tableOrder.deleteOrder,
     tables: Object.fromEntries(

@@ -1,10 +1,6 @@
 import { getTableConfig, type SQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { SyncedTableDefinition } from "./synced-table";
 
-export type SyncEncoding = "json";
-
-export const DEFAULT_SYNC_ENCODING: SyncEncoding = "json";
-
 export interface SyncContractLimits {
   maxPushBytes: number;
   maxPushRows: number;
@@ -19,7 +15,6 @@ export interface SyncContractTableMeta {
 }
 
 export interface SyncContract {
-  encoding: SyncEncoding;
   limits: SyncContractLimits;
   tables: SyncedTableDefinition[];
   tablesMeta: SyncContractTableMeta[];
@@ -31,7 +26,6 @@ const DEFAULT_LIMITS: SyncContractLimits = {
 };
 
 export function defineSyncContract(input: {
-  encoding: SyncEncoding;
   tables: SyncedTableDefinition[];
   limits?: Partial<SyncContractLimits>;
 }): SyncContract {
@@ -39,7 +33,6 @@ export function defineSyncContract(input: {
   const tablesMeta = input.tables.map((t) => validateAndExtractTableMeta(t));
 
   return {
-    encoding: input.encoding,
     tables: input.tables,
     limits,
     tablesMeta,
@@ -48,11 +41,9 @@ export function defineSyncContract(input: {
 
 export function syncSchema(input: {
   tables: SyncedTableDefinition[];
-  encoding?: SyncEncoding;
   limits?: Partial<SyncContractLimits>;
 }): SyncContract {
   return defineSyncContract({
-    encoding: input.encoding ?? DEFAULT_SYNC_ENCODING,
     tables: input.tables,
     limits: input.limits,
   });

@@ -18,7 +18,6 @@ use tauri_plugin_baresync::Builder;
 
 Builder::new()
     .api_base_url("https://api.example.com")
-    .encoding("json")
     .db_path("baresync.db")
     .encryption_key_provider(MyKeyProvider)
     .poll_interval_secs(30)
@@ -34,7 +33,6 @@ Builder::new()
 |---|---|---|---|
 | `new()` | - | - | Create a new builder |
 | `api_base_url(url)` | `impl Into<String>` | `""` | Server base URL |
-| `encoding(enc)` | `impl Into<String>` | `"json"` | Wire format: `"json"` |
 | `db_path(path)` | `impl Into<String>` | `"baresync.db"` | SQLite database file path |
 | `encryption_key_provider(provider)` | `impl EncryptionKeyProvider` | - | App-owned raw 32-byte key provider used during setup |
 | `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
@@ -115,7 +113,6 @@ pub struct SyncEngineConfig {
     pub scope_id: String,
     pub api_url: String,
     pub client_id: String,
-    pub encoding: String,
     pub target_push_bytes: usize,
     pub max_push_bytes: usize,
     pub max_push_rows: usize,
@@ -123,7 +120,7 @@ pub struct SyncEngineConfig {
 }
 ```
 
-Defaults: `encoding="json"`, `target_push_bytes=256KB`, `max_push_bytes=2MB`, `max_push_rows=2000`.
+Defaults: `target_push_bytes=256KB`, `max_push_bytes=2MB`, `max_push_rows=2000`.
 
 ### `SyncNowMode`
 

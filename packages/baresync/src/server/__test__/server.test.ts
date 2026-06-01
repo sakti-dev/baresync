@@ -68,7 +68,6 @@ describe("decodeSyncRequest", () => {
       tables: [],
     };
     const result = await decodeSyncRequest({
-      encoding: "json",
       kind: "push",
       request: createJsonRequest(body),
     });
@@ -85,7 +84,6 @@ describe("decodeSyncRequest", () => {
     const rawBody = JSON.stringify(body);
     const request = createJsonRequest(body);
     const result = await decodeSyncRequest({
-      encoding: "json",
       kind: "status",
       request,
     });
@@ -97,7 +95,6 @@ describe("decodeSyncRequest", () => {
   it("rejects status requests without scopeId", async () => {
     await expect(
       decodeSyncRequest({
-        encoding: "json",
         kind: "status",
         request: createJsonRequest({
           cursor: "sync:123:categories:row-1",
@@ -117,7 +114,6 @@ describe("encodeSyncResponse", () => {
     };
     const response = encodeSyncResponse({
       body,
-      encoding: "json",
       kind: "status",
     });
 

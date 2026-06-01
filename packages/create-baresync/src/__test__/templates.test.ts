@@ -24,10 +24,10 @@ describe("buildRootScaffoldFiles", () => {
       fileMap.get("packages/sync-contract/src/local-synced-schema.ts")
     ).toContain("references(() => lists.id");
     expect(fileMap.get("packages/sync-contract/sync.config.ts")).toContain(
-      'lists: { scope: "scope_id" }'
+      'lists: { scopeColumn: "scope_id" }'
     );
     expect(fileMap.get("packages/sync-contract/sync.config.ts")).toContain(
-      'todos: { scope: "scope_id" }'
+      'todos: { scopeColumn: "scope_id" }'
     );
     expect(fileMap.get("packages/sync-contract/sync.config.ts")).toContain(
       "schemaSourceDir"

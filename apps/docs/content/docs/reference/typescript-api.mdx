@@ -27,7 +27,6 @@ The main client for interacting with the sync engine from JavaScript.
 import { createSyncClient } from "baresync";
 
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "merchant-1",
   invoke, // optional — defaults to Tauri's invoke
 });
@@ -37,7 +36,6 @@ const client = createSyncClient({
 
 ```ts
 interface SyncClientConfig {
-  encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   scopeId: string;
 }
@@ -45,7 +43,6 @@ interface SyncClientConfig {
 
 | Field | Description |
 |---|---|
-| `encoding` | Sync wire format — `"json"` (default) |
 | `invoke` | Tauri IPC invoke function. Defaults to `@tauri-apps/api/core::invoke`. Pass a mock for testing. |
 | `scopeId` | The sync scope — partitions data (e.g. merchant ID, tenant ID) |
 
@@ -366,7 +363,6 @@ import { defineSyncContract } from "baresync";
 
 const contract = defineSyncContract({
   packageName: "@repo/sync-contract",
-  encoding: "json",
   tables: [
     defineSyncedTable({ table: items, scope: { column: items.scopeId, field: "scope_id", source: "scope" } }),
   ],
@@ -376,7 +372,6 @@ const contract = defineSyncContract({
 
 ```ts
 function defineSyncContract(input: {
-  encoding: "json";
   packageName: string;
   tables: SyncedTableDefinition[];
   limits?: Partial<SyncContractLimits>;
@@ -438,8 +433,8 @@ const config = defineSyncConfig({
   apiSyncedSchema,
   outputDir: "./packages/sync-contract/generated",
   tables: {
-    items: { scope: "scope_id" },
-    locations: { scope: "scope_id" },
+    items: { scopeColumn: "scope_id" },
+    locations: { scopeColumn: "scope_id" },
   },
 });
 ```
@@ -450,7 +445,6 @@ function defineSyncConfig<
   ApiSchema extends Record<string, AnySQLiteTable>,
 >(input: {
   apiSyncedSchema: ApiSchema;
-  encoding?: "json";
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;
@@ -538,7 +532,6 @@ Creates a push endpoint handler.
 import { createSyncPushHandler } from "baresync/server";
 
 const pushHandler = createSyncPushHandler({
-  encoding: "json",
   resolveScope: async ({ scopeId }) => {
     if (!isAuthorized(scopeId)) return { ok: false, status: 403, body: { error: "forbidden" } };
     return { ok: true, scope: { scopeId } };
@@ -555,7 +548,6 @@ Creates a status endpoint handler. Returns `has_changes` and `cursor` for the cl
 
 ```ts
 const statusHandler = createSyncStatusHandler({
-  encoding: "json",
   resolveScope,
   loadSyncStatus: async ({ scopeId, cursor }) => { ... },
 });
@@ -567,7 +559,6 @@ Creates a pull endpoint handler.
 
 ```ts
 const pullHandler = createSyncPullHandler({
-  encoding: "json",
   resolveScope,
   loadPullChanges: async ({ scopeId, cursor, limit, tables }) => { ... },
   limit: 500,

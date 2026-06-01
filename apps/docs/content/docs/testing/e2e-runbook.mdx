@@ -64,7 +64,7 @@ Your test backend should provide:
 | State inspection endpoint | Lets the test assert what the backend received |
 | Fixed baseline data | Lets the test prove pull applies server rows |
 | Push recording | Lets the test prove local changes reached the backend |
-| Same encoding as production | Exercises JSON exactly as your app uses it |
+| Same wire format as production | Exercises JSON exactly as your app uses it |
 
 The backend contract test should also confirm that the JSON transport is actually in use.
 - the generated artifacts are checked in and regenerated when the schema changes
@@ -98,7 +98,7 @@ A useful backend contract test should:
 9. Call `POST /sync/push` with representative local rows.
 10. Assert the push response acknowledges the accepted rows.
 11. Call `GET /__state` and assert the pushed rows were recorded.
-12. Run the same test for every encoding mode your app supports.
+12. Run the same test against every backend scenario your app supports.
 
 The rows should come from your domain. For example, a POS app might use one category and one product. A notes app might use one notebook and one note. Keep it small, but make it real enough to exercise table ordering and foreign keys.
 
@@ -434,7 +434,7 @@ Your app should keep the same testing principles, but replace the fixture schema
 
 Before you trust an E2E change, collect evidence:
 
-- backend contract tests pass for the encoding your app uses
+- backend contract tests pass for the wire format your app uses
 - desktop smoke passes on the platform you support
 - mobile smoke passes on a real target or emulator when mobile is in scope
 - test logs show the backend URL, run ID, and database path used

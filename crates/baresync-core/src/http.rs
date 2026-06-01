@@ -48,7 +48,7 @@ impl SyncHttpTransport for JsonHttpTransport {
 
             log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
             serde_json::from_str(&body)
-                .map_err(|e| SyncError::Encoding(format!("Failed to parse push response: {}", e)))
+                .map_err(|e| SyncError::JsonParse(format!("Failed to parse push response: {}", e)))
         })
     }
 
@@ -78,7 +78,7 @@ impl SyncHttpTransport for JsonHttpTransport {
 
             log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
             serde_json::from_str(&resp_body)
-                .map_err(|e| SyncError::Encoding(format!("Failed to parse status response: {}", e)))
+                .map_err(|e| SyncError::JsonParse(format!("Failed to parse status response: {}", e)))
         })
     }
 
@@ -108,7 +108,7 @@ impl SyncHttpTransport for JsonHttpTransport {
 
             log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
             serde_json::from_str(&resp_body)
-                .map_err(|e| SyncError::Encoding(format!("Failed to parse pull response: {}", e)))
+                .map_err(|e| SyncError::JsonParse(format!("Failed to parse pull response: {}", e)))
         })
     }
 }

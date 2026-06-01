@@ -159,10 +159,8 @@ describe("syncedTable", () => {
 describe("defineSyncContract validation", () => {
   it("creates contract with valid tables", () => {
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
-    expect(contract.encoding).toBe("json");
     expect(contract.tables).toHaveLength(1);
     expect(contract.limits.maxPushBytes).toBe(2 * 1024 * 1024);
     expect(contract.limits.maxPushRows).toBe(2000);
@@ -170,8 +168,6 @@ describe("defineSyncContract validation", () => {
 
   it("uses custom limits", () => {
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [categoriesSynced],
       limits: { maxPushBytes: 1024 },
     });
@@ -181,12 +177,12 @@ describe("defineSyncContract validation", () => {
 });
 
 describe("syncSchema", () => {
-  it("uses default encoding and limits", () => {
+  it("uses default limits", () => {
     const contract = syncSchema({
       tables: [categoriesSynced],
     });
-    expect(contract.encoding).toBe("json");
     expect(contract.limits.maxPushBytes).toBe(2 * 1024 * 1024);
+    expect(contract.limits.maxPushRows).toBe(2000);
   });
 });
 
@@ -206,8 +202,6 @@ describe("structural validation", () => {
     });
     expect(() =>
       defineSyncContract({
-        encoding: "json",
-
         tables: [def],
       })
     ).toThrow('missing a primary key column "id"');
@@ -229,8 +223,6 @@ describe("structural validation", () => {
     });
     expect(() =>
       defineSyncContract({
-        encoding: "json",
-
         tables: [def],
       })
     ).toThrow('scope field "merchantId" does not map');
@@ -251,8 +243,6 @@ describe("structural validation", () => {
     });
     expect(() =>
       defineSyncContract({
-        encoding: "json",
-
         tables: [def],
       })
     ).toThrow('missing "deleted_at"');

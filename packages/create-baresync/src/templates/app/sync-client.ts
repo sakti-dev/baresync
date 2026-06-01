@@ -5,7 +5,6 @@ export function createAppSyncClient(
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
 ) {
   return createSyncClient({
-    encoding: "json",
     scopeId: SYNC_SCOPE,
     invoke,
   });

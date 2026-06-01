@@ -32,7 +32,6 @@ import {
 
 ```ts
 const decoded = await decodeSyncRequest({
-  encoding: "json",
   kind: "push", // "push" | "pull" | "status"
   request,
 });
@@ -52,7 +51,6 @@ Validates required fields based on `kind`:
 ```ts
 const response = encodeSyncResponse({
   body: result,
-  encoding: "json",
   kind: "push",
 });
 

@@ -26,7 +26,6 @@ function createRecordingTx() {
 describe("createSyncClient", () => {
   it("returns client with all methods", () => {
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });
@@ -61,7 +60,6 @@ describe("createSyncClient", () => {
   it("syncNow calls invoke with plugin command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -77,7 +75,6 @@ describe("createSyncClient", () => {
   it("push calls invoke with sync_push command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -93,7 +90,6 @@ describe("createSyncClient", () => {
   it("pull calls invoke with sync_pull command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -109,7 +105,6 @@ describe("createSyncClient", () => {
   it("fullResync calls invoke with sync_full_resync command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -128,7 +123,6 @@ describe("createSyncClient", () => {
   it("getState calls invoke with get_sync_local_state command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -159,7 +153,6 @@ describe("createSyncClient", () => {
         stopPolling: "stop_polling",
         syncNow: "sync_now",
       },
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -199,7 +192,6 @@ describe("createSyncClient", () => {
   it("uses custom invoke for testability", async () => {
     let called = false;
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "test",
       invoke: () => {
         called = true;
@@ -223,7 +215,6 @@ describe("createSyncClient", () => {
       },
     };
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd) => Promise.resolve(results[cmd]),
     });
@@ -248,7 +239,6 @@ describe("createSyncClient", () => {
   it("propagates rejected mocked invoke errors unchanged", async () => {
     const error = new Error("device invoke failed");
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.reject(error),
     });
@@ -267,7 +257,6 @@ describe("createSyncClient", () => {
       retryable: false,
     };
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.reject(error),
     });
@@ -278,7 +267,6 @@ describe("createSyncClient", () => {
   it("preserves command argument shape across all sync methods", async () => {
     const calls: Array<{ args?: Record<string, unknown>; cmd: string }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -309,7 +297,6 @@ describe("createSyncClient", () => {
 
   it("throws descriptive error without Tauri runtime", async () => {
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "test",
     });
     await expect(client.syncNow()).rejects.toThrow(
@@ -320,7 +307,6 @@ describe("createSyncClient", () => {
   it("startPolling calls invoke with start_polling command", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -336,7 +322,6 @@ describe("createSyncClient", () => {
   it("stopPolling calls invoke without scopeId", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -350,7 +335,6 @@ describe("createSyncClient", () => {
   it("pausePolling and resumePolling call correct commands", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -368,7 +352,6 @@ describe("createSyncClient", () => {
   it("getPollingStatus calls invoke with get_polling_status", async () => {
     const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
@@ -391,7 +374,6 @@ describe("createSyncClient", () => {
   it("polling methods propagate errors unchanged", async () => {
     const error = new Error("polling failed");
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.reject(error),
     });
@@ -411,7 +393,6 @@ describe("createSyncClient", () => {
       },
     };
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });
@@ -432,7 +413,6 @@ describe("createSyncClient", () => {
       },
     };
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });
@@ -445,7 +425,6 @@ describe("createSyncClient", () => {
   it("enqueueChange derives table name, configured scope, timestamp, and outbox id", async () => {
     const { inserted, tx } = createRecordingTx();
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });
@@ -476,7 +455,6 @@ describe("createSyncClient", () => {
     const events: string[] = [];
     const { inserted, tx } = createRecordingTx();
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });
@@ -504,7 +482,6 @@ describe("createSyncClient", () => {
   it("supports bulk flows by enqueueing once per affected row", async () => {
     const { inserted, tx } = createRecordingTx();
     const client = createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke: () => Promise.resolve({}),
     });

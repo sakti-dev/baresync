@@ -26,7 +26,6 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
 const repository = createAppSyncRepository(db);
 
 const push = createSyncPushHandler({
-  encoding: "json",
   resolveScope,
   upsertOrder: repository.tableNames,
   applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
@@ -38,7 +37,6 @@ const push = createSyncPushHandler({
 });
 
 const pull = createSyncPullHandler({
-  encoding: "json",
   limit: 1000,
   resolveScope,
   loadPullChanges: async ({ cursor, scope, tables }) =>
@@ -50,7 +48,6 @@ const pull = createSyncPullHandler({
 });
 
 const status = createSyncStatusHandler({
-  encoding: "json",
   resolveScope,
   loadSyncStatus: async ({ cursor, scope }) =>
     repository.loadSyncStatus({

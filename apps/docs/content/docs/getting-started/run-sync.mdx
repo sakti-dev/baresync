@@ -174,7 +174,7 @@ Both are cached under the `["sync-state"]` query key, which the provider invalid
 
 ### How this works
 
-1. **`createAppSyncClient`** (from `baresync-sync-client.ts`) wraps `createSyncClient` and configures the encoding, scope, and Tauri `invoke` for you.
+1. **`createAppSyncClient`** (from `baresync-sync-client.ts`) wraps `createSyncClient` and configures the scope and Tauri `invoke` for you.
 2. **`client.startPolling()`** tells the plugin to run the sync engine every 30 seconds (as configured in `lib.rs`).
 3. **`listen("baresync://data-changed")`** fires when the plugin detects that local data changed (after a pull, or after `rows_affected > 0` from a local write). Your React Query caches get invalidated, causing a re-fetch from the local database.
 4. **`listen("baresync://sync-status-changed")`** fires when the sync engine status changes (syncing, idle, error).

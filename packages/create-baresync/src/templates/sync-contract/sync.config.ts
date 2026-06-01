@@ -11,7 +11,7 @@ export const syncGeneratorConfig = defineSyncConfig({
   outputDir: "./generated",
   schemaSourceDir: `${__dirname}src`,
   tables: {
-    lists: { scope: "scope_id" },
-    todos: { scope: "scope_id" },
+    lists: { scopeColumn: "scope_id" },
+    todos: { scopeColumn: "scope_id" },
   },
 });

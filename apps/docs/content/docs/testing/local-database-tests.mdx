@@ -133,7 +133,6 @@ it("runs the write before enqueueing the outbox row", async () => {
   };
 
   const client = createSyncClient({
-    encoding: "json",
     scopeId: "merchant-1",
     invoke: async () => ({}),
   });

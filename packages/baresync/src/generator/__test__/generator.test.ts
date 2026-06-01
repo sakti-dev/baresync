@@ -142,7 +142,6 @@ describe("generateSyncArtifacts", () => {
   it("writes sync-contract.json with all required fields", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced, productsSynced],
     });
 
@@ -154,8 +153,8 @@ describe("generateSyncArtifacts", () => {
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
     expect(parsed.version).toMatch(ISO_DATE_RE);
-    expect(parsed.encoding).toBe("json");
     expect(parsed).not.toHaveProperty("packageName");
+    expect(parsed).not.toHaveProperty("encoding");
     expect(parsed.upsertOrder).toEqual(["categories", "products"]);
     expect(parsed.deleteOrder).toEqual(["products", "categories"]);
     expect(parsed.tables).toHaveProperty("categories");
@@ -174,7 +173,6 @@ describe("generateSyncArtifacts", () => {
   it("uses same date for directory name, contract version, and manifest version", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 
@@ -204,7 +202,6 @@ describe("generateSyncArtifacts", () => {
   it("overwrites same-day directory on re-generation", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 
@@ -238,7 +235,6 @@ describe("generateSyncArtifacts", () => {
   it("creates new directory for different-day generation without touching old", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 
@@ -278,7 +274,6 @@ describe("generateSyncArtifacts", () => {
     );
 
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 
@@ -325,7 +320,6 @@ describe("generateSyncArtifacts", () => {
     );
 
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 

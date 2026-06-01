@@ -16,13 +16,12 @@ The full sync contract. Contains:
 - Local-only and server-only column lists
 - Upsert and delete order
 - Push limits (`maxPushBytes`, `maxPushRows`)
-- Encoding and package name
+- Package name
 
 ```json
 {
   "version": 1,
   "generatorVersion": "0.1.0",
-  "encoding": "json",
   "packageName": "inventory.sync.v1",
   "upsertOrder": ["locations", "items", "stock_counts"],
   "deleteOrder": ["stock_counts", "items", "locations"],
@@ -67,7 +66,7 @@ import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-orde
 A flat manifest for build tooling and CI. Contains:
 
 - Contract version and generator version
-- Package name and encoding
+- Package name
 - Table list with field numbers
 - Scope mappings
 - Table order

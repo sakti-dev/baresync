@@ -5,7 +5,7 @@ description: Configure the plugin with the builder pattern.
 
 # Builder
 
-The `Builder` constructs the Tauri plugin with your database path, server URL, encoding, generated contract metadata, migrations, and polling settings.
+The `Builder` constructs the Tauri plugin with your database path, server URL, generated contract metadata, migrations, and polling settings.
 
 ## Import
 
@@ -20,7 +20,6 @@ tauri::Builder::default()
     .plugin(
         BaresyncBuilder::new()
             .api_base_url("http://127.0.0.1:3001")
-            .encoding("json")
             .db_name("baresync.db")
             .contract_json(include_str!("../../../../packages/sync-contract/generated/sync-contract.json"))
             .migrations_path("migrations")
@@ -36,7 +35,6 @@ tauri::Builder::default()
 | Method | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `api_base_url` | `impl Into<String>` | Yes | `""` | Your server's base URL |
-| `encoding` | `impl Into<String>` | Yes | `"json"` | Wire encoding (`"json"`) |
 | `db_path` | `impl Into<String>` | No | `None` | Explicit path to the local SQLite file |
 | `db_name` | `impl Into<String>` | No | `None` | Database file name resolved under the Tauri app data directory |
 | `contract_tables` | `SyncContractTables` | No | empty | Upsert order, delete order, local-only columns |

@@ -81,7 +81,7 @@ export const syncGeneratorConfig = defineSyncConfig({
   localSyncedSchema: { categories: localCategories },
   outputDir: ${JSON.stringify(outputDir)},
   tables: {
-    categories: { scope: "scope_id" },
+    categories: { scopeColumn: "scope_id" },
   },
 });
 `;
@@ -96,7 +96,6 @@ describe("CLI runGenerate", () => {
     );
 
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
 
@@ -128,7 +127,6 @@ describe("CLI runGenerate", () => {
     );
 
     const contract = defineSyncContract({
-      encoding: "json",
       tables: [categoriesSynced],
     });
     const config = {
@@ -251,7 +249,6 @@ describe("doctor output format", () => {
       require("drizzle-orm/sqlite-core") as typeof import("drizzle-orm/sqlite-core");
     const config = gtc(table);
     const contract: SyncContract = {
-      encoding: "json",
       tables: [
         {
           table,

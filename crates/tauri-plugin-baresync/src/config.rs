@@ -7,7 +7,6 @@ use std::sync::Arc;
 #[serde(default)]
 pub struct PluginConfig {
     pub api_base_url: String,
-    pub encoding: String,
     pub max_push_bytes: usize,
     pub max_push_rows: usize,
     pub db_path: String,
@@ -28,7 +27,6 @@ impl Default for PluginConfig {
     fn default() -> Self {
         Self {
             api_base_url: String::new(),
-            encoding: String::new(),
             max_push_bytes: 0,
             max_push_rows: 0,
             db_path: String::new(),

@@ -199,4 +199,4 @@ When the sync engine runs next, it reads pending outbox entries, batches them, a
 - Always use `writeTransaction` + `writeLocalChange` for data that needs to sync. Direct Drizzle writes bypass the outbox and will not be pushed.
 - The `sync_outbox` table has a unique index on `(table_name, row_id) WHERE synced_at IS NULL`. Writing to the same row twice within a scope upserts the outbox entry rather than creating duplicates.
 
-Next: [Add Server Routes](/docs/getting-started/add-server-routes).
+Next: [Server Routes](/docs/getting-started/server-routes).

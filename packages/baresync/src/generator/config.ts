@@ -6,7 +6,6 @@ import {
 import {
   type SyncContract,
   type SyncContractLimits,
-  type SyncEncoding,
   syncSchema,
 } from "../schema/contract";
 import { syncedTable } from "../schema/synced-table";
@@ -24,7 +23,7 @@ type SharedSchemaKey<
 
 export interface SyncConfigTableOptions {
   localOnlyColumns?: readonly string[];
-  scope: string;
+  scopeColumn: string;
   serverOnlyColumns?: readonly string[];
 }
 
@@ -46,7 +45,6 @@ interface PairedSyncConfigInput<
   ApiSchema extends SyncedSchemaModule,
 > {
   apiSyncedSchema: ApiSchema;
-  encoding?: SyncEncoding;
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;
@@ -95,7 +93,7 @@ function buildPairedSyncConfig<
       });
 
       return syncedTable(localTable, {
-        scope: options.scope,
+        scope: options.scopeColumn,
         localOnlyColumns: [...localOnlyColumns],
         serverOnlyColumns: [...serverOnlyColumns],
       });
@@ -105,7 +103,6 @@ function buildPairedSyncConfig<
   return {
     apiSyncedSchema: input.apiSyncedSchema,
     contract: syncSchema({
-      encoding: input.encoding,
       limits: input.limits,
       tables: tableDefinitions,
     }),
@@ -120,7 +117,6 @@ export function defineSyncConfig<
   ApiSchema extends SyncedSchemaModule,
 >(input: {
   apiSyncedSchema: ApiSchema;
-  encoding?: SyncEncoding;
   limits?: Partial<SyncContractLimits>;
   localSyncedSchema: LocalSchema;
   outputDir: string;

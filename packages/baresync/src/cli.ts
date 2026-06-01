@@ -375,7 +375,7 @@ function buildNamedJsonEntry(
   }
 
   const outputDir = outputDirOverride ?? config.outputDir;
-  const key = `json:${outputDir}:${config.contract.encoding}`;
+  const key = `${outputDir}`;
   return {
     contract: config.contract,
     key,
@@ -394,7 +394,7 @@ function buildDefaultExportEntry(
 ): LoadedConfigEntry | null {
   if (isGeneratorConfig(config)) {
     const outputDir = outputDirOverride ?? config.outputDir;
-    const key = `json:${outputDir}:${config.contract.encoding}`;
+    const key = `${outputDir}`;
     return {
       contract: config.contract,
       key,
@@ -409,7 +409,7 @@ function buildDefaultExportEntry(
 
   if (isSyncContract(config)) {
     const outputDir = outputDirOverride ?? "./generated";
-    const key = `json:${outputDir}:${config.encoding}`;
+    const key = `${outputDir}`;
     return {
       contract: config,
       key,
@@ -430,7 +430,7 @@ function buildRawContractEntry(
   }
 
   const outputDir = outputDirOverride ?? "./generated";
-  const key = `json:${outputDir}:${config.encoding}`;
+  const key = `${outputDir}`;
   return {
     contract: config,
     key,
@@ -446,7 +446,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isSyncContract(value: unknown): value is SyncContract {
   return (
     isRecord(value) &&
-    typeof value.encoding === "string" &&
     Array.isArray(value.tables) &&
     Array.isArray(value.tablesMeta) &&
     isRecord(value.limits)

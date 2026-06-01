@@ -35,7 +35,6 @@ impl<R: Runtime> PluginEventSink for TauriAppEventSink<R> {
 
 pub struct Builder {
     api_base_url: Option<String>,
-    encoding: Option<String>,
     max_push_bytes: Option<usize>,
     max_push_rows: Option<usize>,
     db_path: Option<String>,
@@ -54,7 +53,6 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             api_base_url: None,
-            encoding: None,
             max_push_bytes: None,
             max_push_rows: None,
             db_path: None,
@@ -72,11 +70,6 @@ impl Builder {
 
     pub fn api_base_url(mut self, url: impl Into<String>) -> Self {
         self.api_base_url = Some(url.into());
-        self
-    }
-
-    pub fn encoding(mut self, enc: impl Into<String>) -> Self {
-        self.encoding = Some(enc.into());
         self
     }
 
@@ -145,7 +138,6 @@ impl Builder {
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, Option<PluginConfig>> {
         let api_base_url = self.api_base_url.unwrap_or_default();
-        let encoding = self.encoding.unwrap_or_else(|| "json".to_string());
         let max_push_bytes = self.max_push_bytes.unwrap_or(256 * 1024);
         let max_push_rows = self.max_push_rows.unwrap_or(2000);
         let db_path = self.db_path;
@@ -189,9 +181,8 @@ impl Builder {
                 let contract_tables =
                     resolve_contract_tables(contract_tables.as_ref(), contract_json.as_deref())?;
                 log::info!(
-                    "[baresync] plugin setup: api_url={}, encoding={}, db={}",
+                    "[baresync] plugin setup: api_url={}, db={}",
                     api_base_url,
-                    encoding,
                     resolved_db_path.display()
                 );
                 log::info!(
@@ -237,7 +228,6 @@ impl Builder {
 
                 let sync_config = SyncEngineConfig {
                     api_url: api_base_url.clone(),
-                    encoding: encoding.clone(),
                     max_push_bytes,
                     max_push_rows,
                     transport,
@@ -491,10 +481,9 @@ mod tests {
         }
     }
 
-    fn test_config(encoding: &str, transport: Option<Arc<dyn SyncHttpTransport>>) -> PluginConfig {
+    fn test_config(transport: Option<Arc<dyn SyncHttpTransport>>) -> PluginConfig {
         PluginConfig {
             api_base_url: "http://127.0.0.1:3001".to_string(),
-            encoding: encoding.to_string(),
             max_push_bytes: 256 * 1024,
             max_push_rows: 2000,
             db_path: ":memory:".to_string(),
@@ -510,14 +499,14 @@ mod tests {
     }
 
     #[test]
-    fn json_uses_default_transport_when_missing() {
-        assert!(resolve_transport(&test_config("json", None).transport).is_ok());
+    fn default_transport_used_when_missing() {
+        assert!(resolve_transport(&test_config(None).transport).is_ok());
     }
 
     #[test]
     fn explicit_transport_is_used_when_present() {
         let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
-        let resolved = resolve_transport(&test_config("json", Some(transport.clone())).transport)
+        let resolved = resolve_transport(&test_config(Some(transport.clone())).transport)
             .expect("explicit transport should resolve");
         assert!(Arc::ptr_eq(&transport, &resolved));
     }

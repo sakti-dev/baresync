@@ -15,7 +15,7 @@ Use these tests for:
 - scope authorization
 - table ordering
 - idempotency
-- JSON encoding if your app uses Baresync
+- JSON payloads if your app uses Baresync
 - persistence of accepted changes
 
 ## Test Handlers With Real Requests
@@ -40,7 +40,6 @@ it("authorizes and applies push changes in table order", async () => {
 
   const handler = createSyncPushHandler({
     applyPushChanges,
-    encoding: "json",
     idempotency: { db: createTestIdempotencyDb() },
     resolveScope: async ({ scopeId }) => ({
       ok: true,
@@ -83,7 +82,6 @@ it("rejects unauthorized scopes before applying changes", async () => {
   const applyPushChanges = vi.fn();
   const handler = createSyncPushHandler({
     applyPushChanges,
-    encoding: "json",
     idempotency: { db: createTestIdempotencyDb() },
     resolveScope: async () => ({
       body: { error: "forbidden" },
@@ -111,7 +109,6 @@ import { createSyncPullHandler, createSyncStatusHandler } from "baresync/server"
 
 it("returns status for an authorized scope", async () => {
   const handler = createSyncStatusHandler({
-    encoding: "json",
     loadSyncStatus: async ({ cursor, scopeId }) => ({
       changedTables: ["items"],
       cursor,
@@ -141,7 +138,6 @@ it("returns status for an authorized scope", async () => {
 
 it("returns requested pull tables", async () => {
   const handler = createSyncPullHandler({
-    encoding: "json",
     limit: 100,
     loadPullChanges: async ({ tables }) => ({
       cursor: "sync:1:items:item-1",

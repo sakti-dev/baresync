@@ -17,7 +17,6 @@ Full contract definition consumed by the Rust plugin at startup.
 {
   "version": 1,
   "generatorVersion": "0.x.x",
-  "encoding": "json",
   "packageName": "@repo/sync-contract",
   "upsertOrder": ["locations", "items", "stock_counts"],
   "deleteOrder": ["stock_counts", "items", "locations"],
@@ -50,7 +49,6 @@ Manifest for detecting contract changes between generator runs. Contains field n
 {
   "contractVersion": 1,
   "generatorVersion": "0.x.x",
-  "encoding": "json",
   "packageName": "@repo/sync-contract",
   "tables": [
     { "name": "items", "fields": ["id", "name", ...], "fieldNumbers": { "id": 1, "name": 2 } }

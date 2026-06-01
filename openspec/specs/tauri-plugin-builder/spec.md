@@ -209,7 +209,7 @@ The Tauri plugin builder integration SHALL document the required configuration a
 
 #### Scenario: Required builder inputs documented
 - **WHEN** a consumer reads plugin registration guidance
-- **THEN** it SHALL describe API base URL, encoding, max push bytes, max push rows, DB path or DB name, generated contract metadata, and migration source as explicit integration inputs
+- **THEN** it SHALL describe API base URL, max push bytes, max push rows, DB path or DB name, generated contract metadata, and migration source as explicit integration inputs
 
 #### Scenario: Builder config avoids hidden app coupling
 - **WHEN** a consumer registers the plugin
@@ -222,7 +222,7 @@ The plugin SHALL log configuration and contract resolution at startup using the 
 #### Scenario: Plugin logs setup info
 
 - **WHEN** the plugin is registered
-- **THEN** it SHALL log api_url, encoding, db path, and contract tables (upsert_order, delete_order) at info level
+- **THEN** it SHALL log api_url, db path, and contract tables (upsert_order, delete_order) at info level
 
 #### Scenario: Polling logs errors instead of swallowing
 
@@ -237,5 +237,5 @@ The plugin integration SHALL provide documented or testable diagnostics for conf
 - **THEN** it SHALL be possible to confirm that DB, migration, local state, and sync commands are callable through the registered plugin
 
 #### Scenario: Config mismatch is actionable
-- **WHEN** a consumer misconfigures encoding, API URL, DB path, limits, migrations, or contract table metadata
+- **WHEN** a consumer misconfigures API URL, DB path, limits, migrations, or contract table metadata
 - **THEN** the integration guidance or helper checks SHALL identify the likely mismatch before full device smoke validation where practical

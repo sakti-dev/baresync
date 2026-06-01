@@ -5,7 +5,6 @@ import type { SyncTableOrder } from "./fk-order";
 
 export interface SyncManifest {
   contractVersion: string;
-  encoding: string;
   generatorVersion: string;
   outputPaths: string[];
   scopeMappings: Array<{ field: string; table: string }>;
@@ -35,7 +34,6 @@ export function writeManifest(
   const manifest: SyncManifest = {
     contractVersion: version,
     generatorVersion: GENERATOR_VERSION,
-    encoding: contract.encoding,
     tables: contract.tablesMeta.map((t) => ({
       fieldNumbers: Object.fromEntries(
         t.columns.map((column, index) => [column, index + 1])

@@ -26,7 +26,6 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [client] = useState(() =>
     createSyncClient({
-      encoding: "json",
       scopeId: SYNC_SCOPE,
       invoke,
     })

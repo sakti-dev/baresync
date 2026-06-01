@@ -44,7 +44,6 @@ function makeSyncedDef(table: ReturnType<typeof makeValidTable>) {
 
 function makeValidContract(tables: ReturnType<typeof makeSyncedDef>[]) {
   return defineSyncContract({
-    encoding: "json",
     tables,
   });
 }
@@ -84,7 +83,6 @@ function buildRawContract(
   });
 
   return {
-    encoding: "json",
     tables: defs,
     tablesMeta,
     limits: { maxPushBytes: 2_097_152, maxPushRows: 2000 },
@@ -255,8 +253,6 @@ describe("runDiagnostics", () => {
     const d1 = makeSyncedDef(t1);
     const d2 = makeSyncedDef(t2);
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [d1, d2],
     });
     const diagnostics = runDiagnostics(contract);
@@ -272,8 +268,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -291,8 +285,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -373,8 +365,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -403,8 +393,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -438,8 +426,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: items.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -490,21 +476,6 @@ describe("runDiagnostics", () => {
     expect(diagnostics.some((d) => d.code === "SYNC_SCHEMA_FK_CYCLE")).toBe(
       true
     );
-  });
-
-  it("reports SYNC_SCHEMA_ENCODING_UNSUPPORTED for unknown encoding", () => {
-    const table = makeValidTable("encoding_table");
-    const def = makeSyncedDef(table);
-    const contract = defineSyncContract({
-      encoding: "json",
-
-      tables: [def],
-    });
-    (contract as { encoding: string }).encoding = "xml";
-    const diagnostics = runDiagnostics(contract);
-    expect(
-      diagnostics.some((d) => d.code === "SYNC_SCHEMA_ENCODING_UNSUPPORTED")
-    ).toBe(true);
   });
 
   it("reports SYNC_SCHEMA_MISSING_SCOPE_COLUMN when scope field not found", () => {
@@ -610,8 +581,6 @@ describe("runDiagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     const diagnostics = runDiagnostics(contract);
@@ -643,16 +612,16 @@ describe("runDiagnostics", () => {
     ).toBe(true);
   });
 
-  it("rejects unsupported encoding", () => {
-    const table = makeValidTable("json_only");
-    const def = makeSyncedDef(table);
-    const contract = makeValidContract([def]);
-    (contract as { encoding: string }).encoding = "binary";
-
+  it("rejects duplicate table names", () => {
+    const tableA = makeValidTable("dup");
+    const tableB = makeValidTable("dup");
+    const defA = makeSyncedDef(tableA);
+    const defB = makeSyncedDef(tableB);
+    const contract = makeValidContract([defA, defB]);
     const diagnostics = runDiagnostics(contract);
 
     expect(
-      diagnostics.some((d) => d.code === "SYNC_SCHEMA_ENCODING_UNSUPPORTED")
+      diagnostics.some((d) => d.code === "SYNC_SCHEMA_DUPLICATE_TABLE_NAME")
     ).toBe(true);
   });
 
@@ -684,8 +653,6 @@ describe("generateSyncArtifacts with diagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     generateSyncArtifacts(contract, tmpDir);
@@ -720,8 +687,6 @@ describe("generateSyncArtifacts with diagnostics", () => {
       scope: { source: "scope", field: "scope", column: table.scope },
     });
     const contract = defineSyncContract({
-      encoding: "json",
-
       tables: [def],
     });
     expect(() =>
@@ -732,16 +697,13 @@ describe("generateSyncArtifacts with diagnostics", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("throws SyncDiagnosticError for encoding errors", () => {
+  it("throws SyncDiagnosticError when contract has duplicate tables", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
-    const table = makeValidTable("err_encoding");
-    const def = makeSyncedDef(table);
-    const contract = defineSyncContract({
-      encoding: "json",
-
-      tables: [def],
-    });
-    (contract as { encoding: string }).encoding = "xml";
+    const tableA = makeValidTable("dup_a");
+    const tableB = makeValidTable("dup_a");
+    const defA = makeSyncedDef(tableA);
+    const defB = makeSyncedDef(tableB);
+    const contract = makeValidContract([defA, defB]);
     expect(() => generateSyncArtifacts(contract, tmpDir)).toThrow(
       SyncDiagnosticError
     );
@@ -750,14 +712,11 @@ describe("generateSyncArtifacts with diagnostics", () => {
 
   it("writes zero files when errors block generation", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
-    const table = makeValidTable("err_no_files");
-    const def = makeSyncedDef(table);
-    const contract = defineSyncContract({
-      encoding: "json",
-
-      tables: [def],
-    });
-    (contract as { encoding: string }).encoding = "xml";
+    const tableA = makeValidTable("err_no_files");
+    const tableB = makeValidTable("err_no_files");
+    const defA = makeSyncedDef(tableA);
+    const defB = makeSyncedDef(tableB);
+    const contract = makeValidContract([defA, defB]);
     try {
       generateSyncArtifacts(contract, tmpDir);
     } catch {
@@ -771,14 +730,11 @@ describe("generateSyncArtifacts with diagnostics", () => {
 
 describe("SyncDiagnosticError", () => {
   it("contains diagnostics array with error details", () => {
-    const table = makeValidTable("err_diag");
-    const def = makeSyncedDef(table);
-    const contract = defineSyncContract({
-      encoding: "json",
-
-      tables: [def],
-    });
-    (contract as { encoding: string }).encoding = "csv";
+    const tableA = makeValidTable("err_diag_a");
+    const tableB = makeValidTable("err_diag_a");
+    const defA = makeSyncedDef(tableA);
+    const defB = makeSyncedDef(tableB);
+    const contract = makeValidContract([defA, defB]);
     try {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
       generateSyncArtifacts(contract, tmpDir);

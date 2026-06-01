@@ -17,7 +17,7 @@ The sync engine reports errors as `SyncError` variants. Here's what each one mea
 | `SyncError::Http { status, body, kind }` | Server returned an error. See [HTTP errors](#http-status-codes) below. | Depends on the status code. |
 | `SyncError::Database(msg)` | SQLite error: query failed, table missing, constraint violation | Check your migrations ran. Check DB file permissions. |
 | `SyncError::Validation(msg)` | Push data doesn't match the contract schema | Compare your generated artifacts with the server's contract. |
-| `SyncError::Encoding(msg)` | JSON serialization failed | Ensure client and server use the same `encoding`. |
+| `SyncError::JsonParse(msg)` | JSON parse error in sync response body | Ensure server returns valid JSON; check contract version matches client. |
 | `SyncError::Migration(msg)` | Migration SQL failed | Fix the migration SQL. Delete DB and restart if needed. |
 | `SyncError::SingleRowTooLarge { table, id }` | One row exceeds the server's `maxBytes` limit | Reduce the row's data size, or increase the server's `maxBytes`. This can't be auto-retried. |
 

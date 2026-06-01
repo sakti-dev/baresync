@@ -44,7 +44,7 @@ pub async fn apply_pull_batch_tables_tx(
                 .get("table")
                 .and_then(|t| t.as_str())
                 .ok_or_else(|| {
-                    SyncError::Encoding("Pull table entry missing 'table' field".to_string())
+                    SyncError::JsonParse("Pull table entry missing 'table' field".to_string())
                 })?;
 
             if let Some(changed_rows) = table_entry.get("changedRows").and_then(|r| r.as_array()) {

@@ -1,6 +1,6 @@
 ---
 title: Create Sync Client
-description: Construct a sync client with your server URL, encoding, scope, and invoke function.
+description: Construct a sync client with your server URL, scope, and invoke function.
 ---
 
 # Create Sync Client
@@ -17,7 +17,6 @@ import { createSyncClient } from "baresync/tauri";
 
 ```ts
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "outlet-1",
   invoke,
 });
@@ -25,14 +24,9 @@ const client = createSyncClient({
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `encoding` | `"json"` | Yes | Wire encoding for sync payloads |
 | `scopeId` | `string` | Yes | The scope this client syncs under (must match a scope in your sync contract) |
 | `commands` | `SyncClientCommands` | No | Optional command-name overrides for legacy app-local wrappers |
 | `invoke` | `(cmd, args?) => Promise<unknown>` | No | Tauri IPC function. Defaults to a stub that throws outside Tauri runtime |
-
-### encoding
-
-Set to `"json"`. Baresync currently uses JSON-only sync payloads.
 
 ### scopeId
 
@@ -46,7 +40,6 @@ In a Tauri app, pass `invoke` from `@tauri-apps/api/core`:
 import { invoke } from "@tauri-apps/api/core";
 
 const client = createSyncClient({
-  encoding: "json",
   scopeId: "outlet-1",
   invoke,
 });
@@ -105,7 +98,6 @@ const SyncClientContext = createContext<SyncClient | null>(null);
 export function SyncClientProvider({ children }: { children: ReactNode }) {
   const [client] = useState(() =>
     createSyncClient({
-      encoding: "json",
       scopeId: "outlet-1",
       invoke,
     })

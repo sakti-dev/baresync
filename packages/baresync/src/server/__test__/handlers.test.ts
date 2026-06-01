@@ -60,7 +60,6 @@ describe("createSyncPushHandler", () => {
         scopeId: input.scopeId,
         serverTime: "2026-05-20T00:00:00.000Z",
       })),
-      encoding: "json",
       idempotency: { db },
       resolveScope: vi.fn(async ({ scopeId }) =>
         authorizedScope({ merchantId: scopeId })
@@ -97,7 +96,6 @@ describe("createSyncPushHandler", () => {
       { merchantId: string }
     >({
       applyPushChanges,
-      encoding: "json",
       idempotency: { db },
       resolveScope: vi.fn(async () =>
         unauthorizedScope({ error: "forbidden" }, 403)
@@ -131,7 +129,6 @@ describe("createSyncPushHandler", () => {
       { merchantId: string }
     >({
       applyPushChanges,
-      encoding: "json",
       idempotency: { db },
       resolveScope: vi.fn(async ({ scopeId }) =>
         authorizedScope({ merchantId: scopeId })
@@ -162,7 +159,6 @@ describe("createSyncStatusHandler", () => {
       { sessionId: string },
       { merchantId: string }
     >({
-      encoding: "json",
       loadSyncStatus: vi.fn(async (input) => ({
         changedTables: ["categories", "products"],
         cursor: input.cursor,
@@ -197,7 +193,6 @@ describe("createSyncStatusHandler", () => {
       { sessionId: string },
       { merchantId: string }
     >({
-      encoding: "json",
       loadSyncStatus,
       resolveScope: vi.fn(async () =>
         unauthorizedScope({ error: "forbidden" }, 403)
@@ -224,7 +219,6 @@ describe("createSyncPullHandler", () => {
       { sessionId: string },
       { merchantId: string }
     >({
-      encoding: "json",
       loadPullChanges: vi.fn(async (input) => ({
         cursor: input.cursor,
         hasMore: false,
@@ -282,7 +276,6 @@ describe("createSyncPullHandler", () => {
       { sessionId: string },
       { merchantId: string }
     >({
-      encoding: "json",
       loadPullChanges,
       limit: 25,
       resolveScope: vi.fn(async () =>

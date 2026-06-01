@@ -3,7 +3,6 @@ import { syncOutbox } from "../schema/local-schema.js";
 
 export interface SyncClientConfig {
   commands?: SyncClientCommands;
-  encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   scopeId: string;
 }

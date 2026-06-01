@@ -529,7 +529,6 @@ async function handleStatusRequest(request: Request): Promise<Response> {
 
   return encodeSyncResponse({
     body: responseStatus(String(body.cursor ?? "")),
-    encoding: transportMode,
     kind: "status",
   });
 }
@@ -550,7 +549,6 @@ async function handlePullRequest(request: Request): Promise<Response> {
           String(new URL(request.url).searchParams.get("cursor") ?? "")
         ),
       },
-      encoding: transportMode,
       kind: "pull",
     });
   }
@@ -574,7 +572,6 @@ async function handlePullRequest(request: Request): Promise<Response> {
       serverTime,
       tables: responseTables(String(body.cursor ?? "")),
     },
-    encoding: transportMode,
     kind: "pull",
   });
 }
@@ -607,7 +604,6 @@ async function handlePushRequest(request: Request): Promise<Response> {
         rejected: [],
       })),
     },
-    encoding: transportMode,
     kind: "push",
   });
 }
@@ -618,7 +614,6 @@ async function decodeFixtureRequest(input: {
 }): Promise<{ body: Record<string, unknown> } | { response: Response }> {
   try {
     const decoded = await decodeSyncRequest({
-      encoding: transportMode,
       kind: input.kind,
       request: input.request,
     });
@@ -629,7 +624,6 @@ async function decodeFixtureRequest(input: {
       response: Response.json(
         {
           error: "invalid_request_body",
-          encoding: transportMode,
           kind: input.kind,
           message,
         },

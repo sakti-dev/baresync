@@ -1,7 +1,6 @@
 {
-  "version": "2026-05-31",
+  "version": "2026-06-01",
   "generatorVersion": "0.1.0",
-  "encoding": "json",
   "upsertOrder": ["locations", "items", "stock_counts"],
   "deleteOrder": ["stock_counts", "items", "locations"],
   "tables": {
