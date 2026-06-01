@@ -1,0 +1,66 @@
+<mxfile host="Electron">
+  <diagram name="Page-1" id="DKpwcOpHOjxbBcdL4Vy0">
+    <mxGraphModel dx="1318" dy="849" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4ff;strokeColor=#6c8ebf;fontStyle=1;fontColor=#0f172a;" value="JS Client&#xa;SyncClient" vertex="1">
+          <mxGeometry height="80" width="240" x="20" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3" parent="1" style="swimlane;html=1;rounded=1;startSize=40;container=1;collapsible=0;fillColor=#f4effa;strokeColor=#9673a6;fontStyle=1;fontColor=#0f172a;" value="Tauri Plugin&#xa;Rust" vertex="1">
+          <mxGeometry height="310" width="280" x="340" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="5" parent="3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontColor=#0f172a;" value="Sync Engine&#xa;status · push · pull · gc" vertex="1">
+          <mxGeometry height="80" width="200" x="40" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="6" parent="3" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontColor=#0f172a;" value="SQLite&#xa;tables · outbox · cursors" vertex="1">
+          <mxGeometry height="90" width="200" x="40" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="15" edge="1" parent="3" source="5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef8ef;strokeColor=#82b366;fontStyle=1;fontColor=#0f172a;" value="Server&#xa;Routes" vertex="1">
+          <mxGeometry height="80" width="240" x="700" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="10" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;fontColor=#ffffff;" value="commands">
+          <mxGeometry relative="1" x="-0.1202" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="300" y="135" />
+              <mxPoint x="300" y="180" />
+              <mxPoint x="340" y="180" />
+            </Array>
+            <mxPoint x="260" y="135" as="sourcePoint" />
+            <mxPoint x="340" y="180" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="11" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;fontColor=#ffffff;" value="events">
+          <mxGeometry relative="1" x="0.4728" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="340" y="65" />
+              <mxPoint x="300" y="65" />
+              <mxPoint x="300" y="95" />
+            </Array>
+            <mxPoint x="340" y="65" as="sourcePoint" />
+            <mxPoint x="260" y="95" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="12" edge="1" parent="1" source="3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;fontColor=#ffffff;exitX=1;exitY=0.12;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="4" value="HTTP">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="13" edge="1" parent="1" source="4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;fontColor=#ffffff;exitX=0;exitY=0.7;exitDx=0;exitDy=0;" value="response">
+          <mxGeometry relative="1" x="-0.1295" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="660" y="136" />
+              <mxPoint x="660" y="180" />
+              <mxPoint x="620" y="180" />
+            </Array>
+            <mxPoint x="620" y="180" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

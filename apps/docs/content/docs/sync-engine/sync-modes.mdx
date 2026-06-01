@@ -9,7 +9,30 @@ When you call `sync_now`, the engine inspects local and server state, then picks
 
 ## Decision logic
 
-<SyncModesDiagram />
+```mermaid
+flowchart TD
+    A[syncNow called] --> B{dirty_count > 0?}
+    B -->|no| C{pending_pull?}
+    B -->|yes| D{can_push?}
+    C -->|no| E[NoOp]
+    C -->|yes| F[PullOnly]
+    D -->|no| G{has_server_changes?}
+    D -->|yes| H{has_server_changes?}
+    G -->|no| I[NoOp]
+    G -->|yes| J[PullOnly]
+    H -->|no| K[PushOnly]
+    H -->|yes| L{capabilities match?}
+    L -->|yes| M[FullSync]
+    L -->|no| N[FullResync]
+
+    style E fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style F fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style I fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style J fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style K fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style M fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style N fill:#f8cecc,stroke:#b85450,color:#0f172a
+```
 
 ## Mode summary
 

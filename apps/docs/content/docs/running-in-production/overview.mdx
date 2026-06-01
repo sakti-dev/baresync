@@ -11,7 +11,29 @@ You've built your app, tested it locally, and now you're shipping it to real use
 
 Every time your app syncs, this is what happens:
 
-<SyncLifecycleDiagram />
+```mermaid
+flowchart TD
+    A["App starts"] --> B["Migrations run\nautomatically"]
+    B --> C["Plugin connects to SQLite"]
+    C --> D["User creates/edits data"]
+    D --> E["Write to local DB"]
+    D --> F["writeLocalChange()"]
+    F --> G["sync_outbox entry\ndirty count increases"]
+    G --> H["Polling tick / syncNow()"]
+    H --> I["Read dirty outbox"]
+    H --> J["Check server changes\nsince last cursor"]
+    I --> K["Push to server\nif dirty rows exist"]
+    J --> L["Pull from server\nif server has changes"]
+    K --> M["Garbage collection\nremove synced soft-deletes"]
+    L --> M
+    M --> N["Dirty count = 0"]
+
+    style G fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style N fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style A fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
+    style D fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
+    style H fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+```
 
 Most of this is automatic. Your job is to configure it correctly, verify it's working, and fix it when it breaks.
 

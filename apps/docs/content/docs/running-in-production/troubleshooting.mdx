@@ -86,7 +86,26 @@ Your server threw an unhandled error.
 
 ## Diagnostic flowchart: "My data isn't syncing"
 
-<TroubleshootingDiagram />
+```mermaid
+flowchart TD
+    A["1. Check local state\nclient.getState()"] --> B{dirty_count > 0?}
+    B -->|yes| C["Changes not pushed yet\nContinue to Step 2"]
+    B -->|no| D["Changes were pushed\nContinue to Step 3"]
+    C --> E["2. Check push result\nclient.syncNow()"]
+    D --> F["3. Check pull on device\nlast_server_watermark"]
+    E --> G["Push succeeded\nServer has data"]
+    E --> H["Tables rejected\nCheck server logs"]
+    E --> I["Push didn't run"]
+    E --> J["Push threw error\nCheck error type"]
+    F --> K["4. Check server\nQuery server DB directly"]
+    K --> L["5. Nuclear option\nclient.fullResync()"]
+    style G fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style H fill:#f8cecc,stroke:#b85450,color:#0f172a
+    style J fill:#f8cecc,stroke:#b85450,color:#0f172a
+    style L fill:#f8cecc,stroke:#b85450,color:#0f172a
+    style C fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style I fill:#fff2cc,stroke:#d6b656,color:#0f172a
+```
 
 ## Common failure patterns
 
