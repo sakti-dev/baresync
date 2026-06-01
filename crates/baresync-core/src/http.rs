@@ -25,6 +25,7 @@ impl SyncHttpTransport for JsonHttpTransport {
     fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture {
         Box::pin(async move {
             let url = format!("{}/sync/push", api_url.trim_end_matches('/'));
+            log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client
                 .post(&url)
@@ -41,9 +42,11 @@ impl SyncHttpTransport for JsonHttpTransport {
                 .map_err(|e| SyncError::Network(format!("Failed to read response body: {}", e)))?;
 
             if !status.is_success() {
+                log::error!("[baresync] HTTP POST {} -> {} {}", url, status.as_u16(), &body[..body.len().min(200)]);
                 return Err(classify_http_error(status.as_u16(), &body));
             }
 
+            log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
             serde_json::from_str(&body)
                 .map_err(|e| SyncError::Encoding(format!("Failed to parse push response: {}", e)))
         })
@@ -52,6 +55,7 @@ impl SyncHttpTransport for JsonHttpTransport {
     fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         Box::pin(async move {
             let url = format!("{}/sync/status", api_url.trim_end_matches('/'));
+            log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client
                 .post(&url)
@@ -62,16 +66,18 @@ impl SyncHttpTransport for JsonHttpTransport {
                 .map_err(|e| SyncError::Network(format!("Status request failed: {}", e)))?;
 
             let status = response.status();
-            let body = response
+            let resp_body = response
                 .text()
                 .await
                 .map_err(|e| SyncError::Network(format!("Failed to read response body: {}", e)))?;
 
             if !status.is_success() {
-                return Err(classify_http_error(status.as_u16(), &body));
+                log::error!("[baresync] HTTP POST {} -> {} {}", url, status.as_u16(), &resp_body[..resp_body.len().min(200)]);
+                return Err(classify_http_error(status.as_u16(), &resp_body));
             }
 
-            serde_json::from_str(&body)
+            log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
+            serde_json::from_str(&resp_body)
                 .map_err(|e| SyncError::Encoding(format!("Failed to parse status response: {}", e)))
         })
     }
@@ -79,6 +85,7 @@ impl SyncHttpTransport for JsonHttpTransport {
     fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         Box::pin(async move {
             let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
+            log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client
                 .post(&url)
@@ -89,16 +96,18 @@ impl SyncHttpTransport for JsonHttpTransport {
                 .map_err(|e| SyncError::Network(format!("Pull request failed: {}", e)))?;
 
             let status = response.status();
-            let body = response
+            let resp_body = response
                 .text()
                 .await
                 .map_err(|e| SyncError::Network(format!("Failed to read response body: {}", e)))?;
 
             if !status.is_success() {
-                return Err(classify_http_error(status.as_u16(), &body));
+                log::error!("[baresync] HTTP POST {} -> {} {}", url, status.as_u16(), &resp_body[..resp_body.len().min(200)]);
+                return Err(classify_http_error(status.as_u16(), &resp_body));
             }
 
-            serde_json::from_str(&body)
+            log::debug!("[baresync] HTTP POST {} -> {}", url, status.as_u16());
+            serde_json::from_str(&resp_body)
                 .map_err(|e| SyncError::Encoding(format!("Failed to parse pull response: {}", e)))
         })
     }

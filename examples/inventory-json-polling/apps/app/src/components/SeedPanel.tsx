@@ -1,4 +1,4 @@
-import { SYNC_SCOPE } from "@examples/sync-contract/constants";
+import { SYNC_SCOPE } from "@sync-contract/constants";
 import type { SyncClient } from "baresync";
 import { useState } from "react";
 import { useSyncClient } from "../hooks/useBaresyncQuery";

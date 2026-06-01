@@ -12,6 +12,7 @@ baresync-core = { version = "0.1.0", path = "../../../../../crates/baresync-core
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-baresync = { version = "0.1.0", path = "../../../../../crates/tauri-plugin-baresync" }
+env_logger = "0.11"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

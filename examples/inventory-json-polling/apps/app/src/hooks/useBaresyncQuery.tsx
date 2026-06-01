@@ -1,4 +1,4 @@
-import { SYNC_SCOPE } from "@examples/sync-contract/constants";
+import { SYNC_SCOPE } from "@sync-contract/constants";
 import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -26,7 +26,6 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: SYNC_SCOPE,
       invoke,
@@ -39,7 +38,9 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
       .then(async () => {
         await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[baresync] startPolling failed:", err);
+      });
 
     return () => {
       client.stopPolling().catch(() => {});

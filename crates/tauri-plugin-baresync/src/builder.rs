@@ -188,6 +188,18 @@ impl Builder {
                     resolve_database_path(app, db_path.as_deref(), db_name.as_deref())?;
                 let contract_tables =
                     resolve_contract_tables(contract_tables.as_ref(), contract_json.as_deref())?;
+                log::info!(
+                    "[baresync] plugin setup: api_url={}, encoding={}, db={}",
+                    api_base_url,
+                    encoding,
+                    resolved_db_path.display()
+                );
+                log::info!(
+                    "[baresync] contract tables: upsert_order={:?}, delete_order={:?}, local_only_columns={:?}",
+                    contract_tables.upsert_order,
+                    contract_tables.delete_order,
+                    contract_tables.local_only_columns
+                );
                 let resolved_migrations_path =
                     migrations_path.as_deref().map_or(Ok(None), |path| {
                         resolve_migrations_path(path, |relative| {

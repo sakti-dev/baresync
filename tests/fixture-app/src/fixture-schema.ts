@@ -90,7 +90,6 @@ export async function getFixtureRuntimeConfig() {
 
 export function createFixtureSyncClient(config: FixtureRuntimeConfig) {
   return createSyncClient({
-    apiUrl: config.api_url,
     encoding: config.encoding,
     scopeId: fixtureScopeId,
     invoke: invoke as unknown as InvokeFn,

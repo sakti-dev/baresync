@@ -71,6 +71,11 @@ pub async fn polling_loop<F, Fut>(
 {
     let interval = Duration::from_secs(interval_secs);
     let mut next_tick = Instant::now() + interval;
+    log::info!(
+        "[baresync] polling_loop started: scope_id={}, interval={}s",
+        scope_id,
+        interval_secs
+    );
 
     loop {
         let timer = tokio::time::sleep_until(next_tick);
@@ -97,6 +102,8 @@ pub async fn polling_loop<F, Fut>(
                     if outcome.status_changed {
                         event_sink.emit(PluginEvent::SyncStatusChanged);
                     }
+                } else {
+                    log::error!("[baresync] polling sync_fn failed for scope_id={}", scope_id);
                 }
                 end_sync(&sync_in_progress);
 
@@ -125,6 +132,8 @@ pub async fn polling_loop<F, Fut>(
                     if outcome.status_changed {
                         event_sink.emit(PluginEvent::SyncStatusChanged);
                     }
+                } else {
+                    log::error!("[baresync] polling notify-sync failed for scope_id={}", scope_id);
                 }
                 end_sync(&sync_in_progress);
 
@@ -144,6 +153,7 @@ pub async fn polling_loop<F, Fut>(
                         next_tick = Instant::now() + interval;
                     }
                     ControlMsg::Stop => {
+                        log::info!("[baresync] polling_loop stopping: scope_id={}", scope_id);
                         break;
                     }
                     ControlMsg::SyncCompleted => {

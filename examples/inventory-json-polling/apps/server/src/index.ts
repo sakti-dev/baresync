@@ -1,4 +1,4 @@
-import { SYNC_SCOPE } from "@examples/sync-contract/constants";
+import { SYNC_SCOPE } from "@sync-contract/constants";
 import { Hono } from "hono";
 import { createInventoryDatabase } from "./db/client";
 import type { InventoryScope } from "./db/v1/drizzle-helper/sync-repository";

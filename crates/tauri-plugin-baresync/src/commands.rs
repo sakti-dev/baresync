@@ -293,9 +293,13 @@ pub async fn sync_now_with_state(
     scope_id: String,
 ) -> Result<SyncNowResult, String> {
     let _guard = try_begin_sync(state)?;
-    let engine = make_engine(state, scope_id).await;
-    let result = engine.sync_now(1000).await.map_err(|e| e.to_string());
+    let engine = make_engine(state, scope_id.clone()).await;
+    let result = engine.sync_now(1000).await.map_err(|e| {
+        log::error!("[baresync] sync_now error: {}", e);
+        e.to_string()
+    });
     if let Ok(sync_result) = &result {
+        log::info!("[baresync] sync_now completed: mode={:?}", sync_result.mode);
         if sync_now_result_has_data_changed(sync_result) {
             state.event_sink.emit(PluginEvent::DataChanged);
         }
@@ -449,9 +453,16 @@ pub async fn start_polling_with_state(state: &PluginState, scope_id: String) -> 
     {
         let handle_guard = state.poll_task_handle.lock().await;
         if handle_guard.is_some() {
+            log::warn!("[baresync] start_polling: already running for scope_id={}", scope_id);
             return Ok(());
         }
     }
+
+    log::info!(
+        "[baresync] start_polling: scope_id={}, interval={}s",
+        scope_id,
+        state.poll_interval_secs
+    );
 
     let (tx, rx) = mpsc::channel(10);
     let db = state.db.clone();

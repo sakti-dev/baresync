@@ -215,6 +215,20 @@ The Tauri plugin builder integration SHALL document the required configuration a
 - **WHEN** a consumer registers the plugin
 - **THEN** the documented pattern SHALL NOT require private app modules, fixture app modules, Sakti-specific command handlers, or app-local wrappers for Baresync plugin commands
 
+### Requirement: Plugin setup logging
+
+The plugin SHALL log configuration and contract resolution at startup using the `log` crate.
+
+#### Scenario: Plugin logs setup info
+
+- **WHEN** the plugin is registered
+- **THEN** it SHALL log api_url, encoding, db path, and contract tables (upsert_order, delete_order) at info level
+
+#### Scenario: Polling logs errors instead of swallowing
+
+- **WHEN** a polling sync cycle fails
+- **THEN** the plugin SHALL log the error instead of silently discarding it
+
 ### Requirement: Plugin integration diagnostics
 The plugin integration SHALL provide documented or testable diagnostics for confirming registration and configuration.
 

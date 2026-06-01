@@ -93,6 +93,15 @@ impl SyncEngine {
         let changed_tables = self.resolve_changed_tables(&status_result);
         let local_dirty_count = local_state.local_dirty_count;
 
+        log::info!(
+            "[baresync] sync_now: scope_id={}, local_dirty={}, server_has_changes={}, changed_tables={:?}, needs_baseline={}",
+            self.config.scope_id,
+            local_dirty_count,
+            status_result.has_changes,
+            changed_tables,
+            local_state.needs_baseline_sync
+        );
+
         if local_state.needs_baseline_sync {
             return self
                 .run_full_resync(limit, Some(&changed_tables), Some(status_result))

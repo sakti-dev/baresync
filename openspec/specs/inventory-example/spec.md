@@ -234,13 +234,32 @@ The inventory example SHALL export `SYNC_SCOPE` from `packages/sync-contract/src
 #### Scenario: App imports SYNC_SCOPE
 
 - **WHEN** the inventory app needs a scope ID for sync operations
-- **THEN** it imports `SYNC_SCOPE` from `@examples/sync-contract/constants`
+- **THEN** it imports `SYNC_SCOPE` from `@sync-contract/constants`
 
 #### Scenario: constants.ts only contains SYNC_SCOPE
 
 - **WHEN** a contributor reads `packages/sync-contract/src/constants.ts`
 - **THEN** it exports only `SYNC_SCOPE`
 - **AND** it does not export `INVENTORY_SCOPE_ID` or `INVENTORY_PACKAGE_NAME`
+
+### Requirement: Inventory example uses tsconfig path aliases
+
+The inventory app and server SHALL use TypeScript `paths` aliases (`@sync-contract/*` → `src/*`, `@sync-contract/generated/*` → `generated/*`) instead of workspace package dependencies to resolve sync-contract imports.
+
+#### Scenario: App uses path aliases for sync-contract imports
+
+- **WHEN** the inventory app imports from sync-contract
+- **THEN** it SHALL use `@sync-contract/*` import paths resolved by tsconfig paths
+
+#### Scenario: Server uses path aliases for sync-contract imports
+
+- **WHEN** the inventory server imports from sync-contract
+- **THEN** it SHALL use `@sync-contract/*` import paths resolved by tsconfig paths
+
+#### Scenario: No workspace dependency on sync-contract
+
+- **WHEN** a contributor reads app or server package.json
+- **THEN** they SHALL NOT find a workspace dependency on sync-contract
 
 ### Requirement: Inventory server versioned route organization
 

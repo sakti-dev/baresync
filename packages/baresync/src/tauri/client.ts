@@ -2,7 +2,6 @@ import { type AnySQLiteTable, getTableConfig } from "drizzle-orm/sqlite-core";
 import { syncOutbox } from "../schema/local-schema.js";
 
 export interface SyncClientConfig {
-  apiUrl: string;
   commands?: SyncClientCommands;
   encoding: "json";
   invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;

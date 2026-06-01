@@ -1,5 +1,11 @@
 {
   "compilerOptions": {
+    "paths": {
+      "@sync-contract/generated/*": [
+        "../../packages/sync-contract/generated/*"
+      ],
+      "@sync-contract/*": ["../../packages/sync-contract/src/*"]
+    },
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",

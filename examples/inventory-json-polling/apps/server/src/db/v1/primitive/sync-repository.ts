@@ -2,7 +2,7 @@ import {
   items,
   locations,
   stockCounts,
-} from "@examples/sync-contract/generated/2026-05-31/api-synced-schema";
+} from "@sync-contract/generated/2026-05-31/api-synced-schema";
 import {
   buildPullTables,
   changedTableNames,
