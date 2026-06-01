@@ -2,11 +2,9 @@
   "title": "Getting Started",
   "pages": [
     "introduction",
-    "project-setup",
-    "create-sync-contract",
-    "register-tauri-plugin",
-    "set-up-local-database",
-    "write-local-changes",
+    "quick-start",
+    "understanding-your-project",
+    "local-database-and-writes",
     "add-server-routes",
     "run-sync",
     "troubleshooting-first-run"

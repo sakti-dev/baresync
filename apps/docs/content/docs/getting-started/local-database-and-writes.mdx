@@ -1,0 +1,202 @@
+---
+title: Local Database & Writes
+description: Set up the local Drizzle database proxy and write data through the sync outbox.
+---
+
+# Local Database & Writes
+
+Your React code talks to SQLite through a Drizzle ORM proxy. The proxy serializes queries and sends them to the Tauri plugin via `invoke`. You use standard Drizzle methods and the proxy handles the transport.
+
+This page covers database setup and how to write data that the sync engine tracks.
+
+## Database helper
+
+The scaffold creates `apps/app/src/lib/baresync-db.ts`:
+
+```ts
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { lists, todos } from "@sync-contract/local-synced-schema";
+import { syncCursors, syncOutbox } from "@sync-contract/local-schema";
+
+export const TABLE = {
+  lists,
+  todos,
+  syncCursors,
+  syncOutbox,
+};
+
+export function createAppDatabase(
+  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
+) {
+  return createTauriDrizzleDatabase({
+    invoke,
+    schema: TABLE,
+  });
+}
+```
+
+This creates a Drizzle `SQLiteProxyDatabase` that:
+
+1. Serializes your Drizzle query builder calls into SQL
+2. Sends the SQL to the Tauri plugin via `invoke("plugin:baresync|run_sql", { query })`
+3. Returns the rows as plain objects
+
+### The TABLE registry
+
+The `TABLE` object collects all table references — synced tables (`lists`, `todos`) and runtime tables (`syncCursors`, `syncOutbox`) — in one place. This avoids importing individual tables throughout your components:
+
+```ts
+import { db, TABLE } from "./lib/baresync-db";
+db.select().from(TABLE.lists);
+```
+
+When you add new synced tables to your contract, add them to both `TABLE` here and the `schema` in `drizzle.local.config.ts`.
+
+### Drizzle config for local migrations
+
+`apps/app/drizzle.local.config.ts` configures Drizzle Kit to generate migrations for the local database:
+
+```ts
+import type { Config } from "drizzle-kit";
+import {
+  syncCursors,
+  syncOutbox,
+} from "../../packages/sync-contract/src/local-schema";
+
+const schema = {
+  syncCursors,
+  syncOutbox,
+};
+
+export default {
+  dialect: "sqlite",
+  schema,
+  out: "./apps/app/src-tauri/migrations",
+  dbCredentials: {
+    url: "./apps/app/src-tauri/migrations/my-app.db",
+  },
+} satisfies Config;
+```
+
+Add your synced tables to both the database helper and this config so Drizzle Kit generates migrations for them.
+
+After changing schemas, regenerate migrations:
+
+```bash
+bun run migrate:local
+```
+
+## Write local changes
+
+Every local write that needs to sync must go through the sync client's `writeTransaction` and `writeLocalChange` helpers. These ensure the row mutation and the outbox entry are atomic — if the write succeeds, the sync engine will eventually push it to the server.
+
+### Insert a row
+
+```ts
+import { db, TABLE } from "./lib/db";
+import { SYNC_SCOPE } from "@sync-contract/constants";
+import { useSyncClient } from "./hooks/useBaresyncQuery";
+
+const client = useSyncClient();
+const listId = crypto.randomUUID();
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.lists,
+    rowId: listId,
+    operation: "insert",
+    write: (writeTx) =>
+      writeTx.insert(TABLE.lists).values({
+        id: listId,
+        scopeId: SYNC_SCOPE,
+        name: "Groceries",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+  });
+});
+```
+
+### Update a row
+
+```ts
+const client = useSyncClient();
+import { eq } from "drizzle-orm";
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.lists,
+    rowId: listId,
+    operation: "update",
+    write: (writeTx) =>
+      writeTx
+        .update(TABLE.lists)
+        .set({ name: "Groceries (updated)", updatedAt: new Date().toISOString() })
+        .where(eq(TABLE.lists.id, listId)),
+  });
+});
+```
+
+### Soft-delete a row
+
+Baresync uses soft deletes by default. A deleted row gets a `deletedAt` timestamp and `isSynced: false`. The sync engine pushes this as an update so the server can mark the row as deleted.
+
+```ts
+const client = useSyncClient();
+const timestamp = new Date().toISOString();
+
+await client.writeTransaction(db, async (tx) => {
+  await client.writeLocalChange(tx, {
+    table: TABLE.lists,
+    rowId: listId,
+    operation: "update",
+    write: (writeTx) =>
+      writeTx
+        .update(TABLE.lists)
+        .set({ deletedAt: timestamp, isSynced: false, updatedAt: timestamp })
+        .where(eq(TABLE.lists.id, listId)),
+  });
+});
+```
+
+### Bulk update pattern
+
+For updates that affect multiple rows, query the affected IDs first, then enqueue one outbox entry per row inside the same transaction:
+
+```ts
+const client = useSyncClient();
+await client.writeTransaction(db, async (tx) => {
+  const rows = await tx
+    .update(TABLE.todos)
+    .set({ deletedAt: timestamp, isSynced: false, updatedAt: timestamp })
+    .where(eq(TABLE.todos.listId, listId))
+    .returning({ id: TABLE.todos.id });
+
+  for (const row of rows) {
+    await client.enqueueChange(tx, {
+      table: TABLE.todos,
+      rowId: row.id,
+      operation: "update",
+    });
+  }
+});
+```
+
+SQLite supports `.returning()` on updates, so you can get the affected row IDs back in one statement instead of a separate select. `enqueueChange` records the outbox entry without performing the write itself — use it when the mutation is already done and you only need outbox tracking.
+
+## What happens under the hood
+
+`writeTransaction` opens a Drizzle transaction. Inside it, `writeLocalChange` performs two things atomically:
+
+1. Runs your `write` callback (the actual insert/update)
+2. Inserts a row into `sync_outbox` with the table name, row ID, and operation
+
+When the sync engine runs next, it reads pending outbox entries, batches them, and pushes them to your server.
+
+## Important
+
+- Always use `writeTransaction` + `writeLocalChange` for data that needs to sync. Direct Drizzle writes bypass the outbox and will not be pushed.
+- The `sync_outbox` table has a unique index on `(table_name, row_id) WHERE synced_at IS NULL`. Writing to the same row twice within a scope upserts the outbox entry rather than creating duplicates.
+
+Next: [Add Server Routes](/docs/getting-started/add-server-routes).

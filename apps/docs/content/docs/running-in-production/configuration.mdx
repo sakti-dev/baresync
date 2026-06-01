@@ -131,7 +131,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { createSyncClient } from "baresync/tauri";
 
 const client = createSyncClient({
-  apiUrl: "https://api.example.com",
   encoding: "json",
   scopeId: "merchant-123",
   invoke,
@@ -140,7 +139,6 @@ const client = createSyncClient({
 
 | Field | Required | Purpose |
 |---|---|---|
-| `apiUrl` | Yes | Server base URL. Must match the plugin's `api_base_url`. |
 | `encoding` | Yes | `"json"`. Must match the plugin and server. |
 | `scopeId` | Yes | The sync scope for this client. Determines which data is synced. |
 | `invoke` | No | Custom invoke function. Only useful for testing. |

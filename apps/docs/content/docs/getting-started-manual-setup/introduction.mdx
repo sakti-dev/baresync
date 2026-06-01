@@ -40,15 +40,7 @@ my-app/
 │   │       ├── Cargo.toml
 │   │       └── tauri.conf.json
 │   └── server/                   # Hono backend
-│       ├── src/
-│       │   ├── db/
-│       │   │   ├── client.ts
-│       │   │   └── v1/
-│       │   │       └── sync-repository.ts
-│       │   ├── v1/
-│       │   │   └── routes.ts
-│       │   └── index.ts
-│       ├── drizzle.config.ts
+│       ├── src/index.ts
 │       └── package.json
 └── packages/
     └── sync-contract/            # shared schemas and generated artifacts
@@ -60,13 +52,12 @@ my-app/
         │   └── api-schema.ts
         ├── sync.config.ts
         ├── generated/
-        │   └── <YYYY-MM-DD>/
-        │       ├── sync-contract.json
-        │       ├── sync-table-order.ts
-        │       └── sync-contract.manifest.json
+        │   ├── sync-contract.json
+        │   ├── sync-table-order.ts
+        │   └── sync-contract.manifest.json
         └── package.json
 ```
 
 The `packages/sync-contract` package is the key piece. It owns your table schemas and the generated sync contract, so both the Tauri app and the server import the same definitions.
 
-Ready? Go to [Quick Start](/docs/getting-started/quick-start).
+Ready? Go to [Project Setup](/docs/getting-started/project-setup).

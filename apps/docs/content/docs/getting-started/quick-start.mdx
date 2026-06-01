@@ -1,0 +1,97 @@
+---
+title: Quick Start
+description: Scaffold a new Baresync project and run it in six commands.
+---
+
+# Quick Start
+
+Run the scaffold, generate the sync contract, create database migrations, and start both the app and server.
+
+## 1. Scaffold the project
+
+```bash
+bunx create-baresync my-app
+```
+
+The scaffold prompts for:
+
+- **Project name** — used as the directory name and in generated config
+- **Server framework** — Hono (recommended) or Elysia
+
+It creates a monorepo with:
+
+```txt
+my-app/
+├── apps/
+│   ├── app/          # Tauri desktop app (React + Vite)
+│   └── server/       # Hono or Elysia backend
+└── packages/
+    └── sync-contract/  # shared schemas + generated contract
+```
+
+The scaffold patches `tsconfig.json` in both `apps/app` and `apps/server` with `paths` aliases so you can import from `@sync-contract/...` without a workspace dependency. It also patches `vite.config.ts` with `resolve: { tsconfigPaths: true }` (Vite 8 native).
+
+## 2. Install dependencies
+
+```bash
+cd my-app
+bun install
+```
+
+## 3. Generate the sync contract
+
+```bash
+bun run generate:sync
+```
+
+This reads `packages/sync-contract/sync.config.ts` and writes to `packages/sync-contract/generated/<YYYY-MM-DD>/`. The output includes:
+
+- `sync-contract.json` — the contract blob that the Tauri plugin loads at runtime
+- `sync-table-order.ts` — the `SYNC_UPSERT_ORDER` array for server push handlers
+- `sync-contract.manifest.json` — metadata
+
+## 4. Generate database migrations
+
+```bash
+bun run migrate:local    # local SQLite migrations (Tauri app)
+bun run migrate:server   # server database migrations
+```
+
+## 5. Start dev servers
+
+```bash
+bun run dev
+```
+
+This starts the Hono server on `http://127.0.0.1:3001` and `tauri dev` concurrently.
+
+## 6. Verify
+
+You should see:
+
+1. The Tauri window opens
+2. The plugin creates the local database and applies migrations
+3. Terminal shows `[baresync]` log messages confirming plugin setup
+
+To see detailed sync logs:
+
+```bash
+RUST_LOG=debug bun run dev
+```
+
+## What the scaffold generated
+
+The scaffold creates the key files you will customize later:
+
+| File | Purpose |
+|------|---------|
+| `packages/sync-contract/sync.config.ts` | Defines which tables sync and their scope columns |
+| `packages/sync-contract/src/constants.ts` | `SYNC_SCOPE` and table name constants |
+| `packages/sync-contract/src/local-synced-schema.ts` | Drizzle schema for the local synced tables |
+| `packages/sync-contract/src/api-synced-schema.ts` | Drizzle schema for the server synced tables |
+| `apps/app/src-tauri/src/lib.rs` | Tauri plugin config (`api_base_url`, `db_name`, `poll_interval_secs`) |
+| `apps/app/src/lib/baresync-db.ts` | Local database helper |
+| `apps/app/src/lib/baresync-sync-client.ts` | Sync client factory |
+| `apps/server/src/v1/routes.ts` | Server sync handlers (push, pull, status) |
+
+Next: [Understanding Your Project](/docs/getting-started/understanding-your-project).

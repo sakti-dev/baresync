@@ -1,0 +1,150 @@
+---
+title: Understanding Your Project
+description: How the sync contract, TSConfig aliases, and Tauri plugin config work together.
+---
+
+# Understanding Your Project
+
+The scaffold gives you a working project. This page explains what each piece does so you can customize it.
+
+## The sync contract
+
+`packages/sync-contract/` is the shared source of truth between your Tauri app and your server. It contains:
+
+### `sync.config.ts`
+
+Defines which tables participate in sync and their scope columns:
+
+```ts
+import { defineSyncConfig } from "baresync/generator";
+import * as apiSyncedSchema from "./src/api-synced-schema";
+import * as localSyncedSchema from "./src/local-synced-schema";
+
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  schemaSourceDir: `${__dirname}src`,
+  tables: {
+    lists: { scope: "scope_id" },
+    todos: { scope: "scope_id" },
+  },
+});
+```
+
+Each entry in `tables` maps a table name to its scope column. The generator uses this to produce the contract JSON and upsert order.
+
+### Schema files
+
+| File | Purpose |
+|------|---------|
+| `src/local-synced-schema.ts` | Drizzle schema for synced tables in the local SQLite database (includes `localSyncColumns()`) |
+| `src/api-synced-schema.ts` | Drizzle schema for synced tables on the server (includes `apiSyncColumns()`) |
+| `src/local-schema.ts` | Drizzle schema for local-only tables plus `syncOutbox` and `syncCursors` |
+| `src/api-schema.ts` | Drizzle schema for server-only tables |
+
+### `src/constants.ts`
+
+Shared constants used by both app and server:
+
+```ts
+export const SYNC_SCOPE = "default";
+export const LISTS_TABLE_NAME = "lists";
+export const TODOS_TABLE_NAME = "todos";
+```
+
+### Generated output
+
+Running `bun run generate:sync` writes to `packages/sync-contract/generated/<YYYY-MM-DD>/`:
+
+- `sync-contract.json` — the contract blob that the Tauri Rust plugin loads via `include_str!`
+- `sync-table-order.ts` — exports `SYNC_UPSERT_ORDER` for server push handlers
+- `sync-contract.manifest.json` — metadata
+
+## TSConfig path aliases
+
+Both `apps/app/tsconfig.json` and `apps/server/tsconfig.json` have `paths` aliases:
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@sync-contract/*": ["../../packages/sync-contract/src/*"],
+      "@sync-contract/generated/*": ["../../packages/sync-contract/generated/*"]
+    }
+  }
+}
+```
+
+This means:
+
+```ts
+import { SYNC_SCOPE } from "@sync-contract/constants";
+import { SYNC_UPSERT_ORDER } from "@sync-contract/generated/<YYYY-MM-DD>/sync-table-order";
+```
+
+resolve to the files in `packages/sync-contract/` without a workspace `package.json` dependency. TypeScript resolves the paths at compile time.
+
+### Vite resolution
+
+The app's `vite.config.ts` has:
+
+```ts
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
+  // ...
+});
+```
+
+This is Vite 8's built-in TSConfig path resolution (no plugin needed). The server runs through `bun` which reads `tsconfig.json` paths natively.
+
+## Tauri plugin config
+
+`apps/app/src-tauri/src/lib.rs` configures the Baresync plugin:
+
+```rust
+use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .init();
+    tauri::Builder::default()
+        .plugin(
+            BaresyncBuilder::new()
+                .api_base_url("http://127.0.0.1:3001")
+                .encoding("json")
+                .db_name("baresync.db")
+                .contract_json(include_str!(
+                    "../../../../packages/sync-contract/generated/<YYYY-MM-DD>/sync-contract.json"
+                ))
+                .migrations_path("migrations")
+                .poll_interval_secs(30)
+                .build(),
+        )
+        .run(tauri::generate_context!())
+        .expect("failed to run app");
+}
+```
+
+Key settings:
+
+| Setting | What it does |
+|---------|-------------|
+| `api_base_url` | Base URL for server sync routes (e.g. `http://127.0.0.1:3001`). The plugin appends `/api/v1/sync/...` paths automatically. |
+| `encoding` | `"json"` or `"msgpack"`. Must match server handler config. |
+| `db_name` | SQLite database filename in the Tauri app data directory. |
+| `contract_json` | Path to the generated contract JSON. Embedded at compile time via `include_str!`. |
+| `migrations_path` | Directory of `.sql` migration files relative to `src-tauri/`. |
+| `poll_interval_secs` | How often the sync engine runs automatically. |
+
+The `env_logger` initialization is required — without it, all `log::info!()` calls in the plugin are no-ops and sync failures are silent.
+
+## The sync flow
+
+1. **Local write** — your app calls `client.writeTransaction(db, ...)` which writes to the local database and records the change in the `sync_outbox` table
+2. **Push** — the sync engine reads dirty outbox entries and POSTs them to `POST /api/v1/sync/push`
+3. **Pull** — the sync engine fetches server changes since the last cursor via `POST /api/v1/sync/pull`
+4. **Events** — the plugin emits `baresync://data-changed` and `baresync://sync-status-changed` events to invalidate React Query caches
+
+Next: [Local Database & Writes](/docs/getting-started/local-database-and-writes).

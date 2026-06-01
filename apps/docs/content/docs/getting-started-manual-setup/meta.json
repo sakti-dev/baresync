@@ -1,0 +1,14 @@
+{
+  "title": "Getting Started (Manual Setup)",
+  "pages": [
+    "introduction",
+    "project-setup",
+    "create-sync-contract",
+    "register-tauri-plugin",
+    "set-up-local-database",
+    "write-local-changes",
+    "add-server-routes",
+    "run-sync",
+    "troubleshooting-first-run"
+  ]
+}

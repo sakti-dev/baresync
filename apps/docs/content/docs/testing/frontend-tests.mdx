@@ -37,7 +37,6 @@ it("loads local sync state", async () => {
   });
 
   const client = createSyncClient({
-    apiUrl: "https://api.example.test",
     encoding: "json",
     scopeId: "merchant-1",
     invoke,
@@ -60,7 +59,6 @@ Your component tests should assert app behavior, not Baresync internals. For exa
 it("requests sync after saving an item", async () => {
   const calls: Array<{ args?: Record<string, unknown>; cmd: string }> = [];
   const client = createSyncClient({
-    apiUrl: "https://api.example.test",
     encoding: "json",
     scopeId: "merchant-1",
     invoke: async (cmd, args) => {
@@ -85,7 +83,6 @@ Reject `invoke` to test error UI and retry behavior.
 ```ts
 it("surfaces sync failures", async () => {
   const client = createSyncClient({
-    apiUrl: "https://api.example.test",
     encoding: "json",
     scopeId: "merchant-1",
     invoke: async () => {

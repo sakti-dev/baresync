@@ -14,7 +14,6 @@ import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "merchant-1",
   invoke,
@@ -25,7 +24,6 @@ The `invoke` parameter is required in a Tauri app. If you're testing outside Tau
 
 ```ts
 const client = createSyncClient({
-  apiUrl: "http://localhost:3000",
   encoding: "json",
   scopeId: "test-scope",
   invoke: async (cmd, args) => {

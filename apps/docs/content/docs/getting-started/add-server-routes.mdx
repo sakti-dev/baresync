@@ -7,59 +7,46 @@ description: Create push, pull, and status handlers on your Hono server.
 
 Your server needs three routes that the Baresync sync engine calls:
 
-- `POST /sync/status` — returns whether there are changes since a cursor
-- `POST /sync/pull` — returns changed rows since a cursor
-- `POST /sync/push` — accepts local changes and writes them to the server database
+- `POST /api/v1/sync/status` — returns whether there are changes since a cursor
+- `POST /api/v1/sync/pull` — returns changed rows since a cursor
+- `POST /api/v1/sync/push` — accepts local changes and writes them to the server database
 
 Baresync provides handler factories that handle decoding, validation, limits, and ordering. You provide scope resolution and the actual database read/write logic.
 
 ## Set up the server database
 
-Create `apps/server/src/db/client.ts`:
+The scaffold creates `apps/server/src/db/client.ts`:
 
 ```ts
-import { Database } from "bun:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 
-const DEFAULT_DB_PATH = "./data/inventory-server.db";
+const dbPath = path.resolve(
+  process.cwd(),
+  process.env.MY_APP_SERVER_DB_PATH ?? "./data/my-app-server.db"
+);
 
-export async function createInventoryDatabase() {
-  const dbPath = path.resolve(
-    process.cwd(),
-    process.env.INVENTORY_SERVER_DB_PATH ?? DEFAULT_DB_PATH
-  );
-  await fs.mkdir(path.dirname(dbPath), { recursive: true });
+await fs.mkdir(path.dirname(dbPath), { recursive: true });
 
-  const sqlite = new Database(dbPath);
-  sqlite.run("PRAGMA journal_mode = WAL");
-  sqlite.run("PRAGMA foreign_keys = ON");
+const sqlite = new Database(dbPath);
+sqlite.pragma("journal_mode = WAL");
+sqlite.pragma("foreign_keys = ON");
 
-  const db = drizzle(sqlite);
-  migrate(db, {
-    migrationsFolder: path.resolve(process.cwd(), "drizzle"),
-  });
-
-  return { db, dbPath };
-}
+export const db = drizzle(sqlite);
 ```
 
-This uses Bun's built-in SQLite and Drizzle's migration runner.
+This uses `better-sqlite3` and exports a `db` instance directly. No factory function needed. The database path is configurable via environment variable.
 
 ## Create the sync repository
 
 The repository handles the actual read and write operations for each table. Baresync provides a `createDrizzleSyncRepository` helper that handles cursor pagination, table ordering, and change loading.
 
-Create `apps/server/src/db/sync-repository.ts`:
+The scaffold creates `apps/server/src/db/v1/sync-repository.ts`:
 
 ```ts
-import {
-  items,
-  locations,
-  stockCounts,
-} from "@repo/sync-contract/api-synced-schema";
+import { lists, todos } from "@sync-contract/generated/<YYYY-MM-DD>/api-synced-schema";
 import {
   createDrizzleSyncRepository,
   optionalString,
@@ -67,15 +54,15 @@ import {
 } from "baresync/server/drizzle";
 import { and, desc, eq, gt } from "drizzle-orm";
 
-export function createInventorySyncRepository(db) {
-  return createDrizzleSyncRepository({
+export function createAppSyncRepository(db) {
+  const repository = createDrizzleSyncRepository({
     tables: {
-      locations: {
+      lists: {
         buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
           createdAt: optionalString(row.createdAt) ?? updatedAt,
           deletedAt: optionalString(row.deletedAt),
-          id: requiredString(row.id, "locations.id"),
-          name: requiredString(row.name, "locations.name"),
+          id: requiredString(row.id, "lists.id"),
+          name: requiredString(row.name, "lists.name"),
           scopeId,
           syncUpdatedAt,
           updatedAt,
@@ -83,83 +70,40 @@ export function createInventorySyncRepository(db) {
         readLatestRow: async ({ scopeId }) => {
           const rows = await db
             .select()
-            .from(locations)
-            .where(eq(locations.scopeId, scopeId))
-            .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id))
+            .from(lists)
+            .where(eq(lists.scopeId, scopeId))
+            .orderBy(desc(lists.syncUpdatedAt), desc(lists.updatedAt), desc(lists.id))
             .limit(1);
           return rows[0] ?? null;
         },
         readRows: ({ cursorTimestamp, scopeId }) =>
           db
             .select()
-            .from(locations)
+            .from(lists)
             .where(
               cursorTimestamp > 0
-                ? and(eq(locations.scopeId, scopeId), gt(locations.syncUpdatedAt, cursorTimestamp))
-                : eq(locations.scopeId, scopeId)
+                ? and(eq(lists.scopeId, scopeId), gt(lists.syncUpdatedAt, cursorTimestamp))
+                : eq(lists.scopeId, scopeId)
             )
-            .orderBy(desc(locations.syncUpdatedAt), desc(locations.updatedAt), desc(locations.id)),
+            .orderBy(desc(lists.syncUpdatedAt), desc(lists.updatedAt), desc(lists.id)),
         softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db.update(locations).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(locations.id, id));
+          await db.update(lists).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(lists.id, id));
         },
         upsertRow: async (row) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(locations).values(row).onConflictDoUpdate({
-            target: locations.id,
+          await db.insert(lists).values(row).onConflictDoUpdate({
+            target: lists.id,
             set: setValues,
           });
         },
       },
-      items: {
+      todos: {
         buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
           createdAt: optionalString(row.createdAt) ?? updatedAt,
           deletedAt: optionalString(row.deletedAt),
-          id: requiredString(row.id, "items.id"),
-          locationId: requiredString(row.locationId, "items.locationId"),
-          name: requiredString(row.name, "items.name"),
-          scopeId,
-          sku: optionalString(row.sku),
-          syncUpdatedAt,
-          updatedAt,
-        }),
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
-            .select()
-            .from(items)
-            .where(eq(items.scopeId, scopeId))
-            .orderBy(desc(items.syncUpdatedAt), desc(items.updatedAt), desc(items.id))
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        readRows: ({ cursorTimestamp, scopeId }) =>
-          db
-            .select()
-            .from(items)
-            .where(
-              cursorTimestamp > 0
-                ? and(eq(items.scopeId, scopeId), gt(items.syncUpdatedAt, cursorTimestamp))
-                : eq(items.scopeId, scopeId)
-            )
-            .orderBy(desc(items.syncUpdatedAt), desc(items.updatedAt), desc(items.id)),
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db.update(items).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(items.id, id));
-        },
-        upsertRow: async (row) => {
-          const { id: _id, ...setValues } = row;
-          await db.insert(items).values(row).onConflictDoUpdate({
-            target: items.id,
-            set: setValues,
-          });
-        },
-      },
-      stockCounts: {
-        buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
-          countedQuantity: Number(row.countedQuantity ?? 0),
-          createdAt: optionalString(row.createdAt) ?? updatedAt,
-          deletedAt: optionalString(row.deletedAt),
-          id: requiredString(row.id, "stock_counts.id"),
-          itemId: requiredString(row.itemId, "stock_counts.itemId"),
-          recordedAt: requiredString(row.recordedAt, "stock_counts.recordedAt"),
+          id: requiredString(row.id, "todos.id"),
+          listId: requiredString(row.listId, "todos.listId"),
+          title: requiredString(row.title, "todos.title"),
           scopeId,
           syncUpdatedAt,
           updatedAt,
@@ -167,35 +111,42 @@ export function createInventorySyncRepository(db) {
         readLatestRow: async ({ scopeId }) => {
           const rows = await db
             .select()
-            .from(stockCounts)
-            .where(eq(stockCounts.scopeId, scopeId))
-            .orderBy(desc(stockCounts.syncUpdatedAt), desc(stockCounts.updatedAt), desc(stockCounts.id))
+            .from(todos)
+            .where(eq(todos.scopeId, scopeId))
+            .orderBy(desc(todos.syncUpdatedAt), desc(todos.updatedAt), desc(todos.id))
             .limit(1);
           return rows[0] ?? null;
         },
         readRows: ({ cursorTimestamp, scopeId }) =>
           db
             .select()
-            .from(stockCounts)
+            .from(todos)
             .where(
               cursorTimestamp > 0
-                ? and(eq(stockCounts.scopeId, scopeId), gt(stockCounts.syncUpdatedAt, cursorTimestamp))
-                : eq(stockCounts.scopeId, scopeId)
+                ? and(eq(todos.scopeId, scopeId), gt(todos.syncUpdatedAt, cursorTimestamp))
+                : eq(todos.scopeId, scopeId)
             )
-            .orderBy(desc(stockCounts.syncUpdatedAt), desc(stockCounts.updatedAt), desc(stockCounts.id)),
+            .orderBy(desc(todos.syncUpdatedAt), desc(todos.updatedAt), desc(todos.id)),
         softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db.update(stockCounts).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(stockCounts.id, id));
+          await db.update(todos).set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt }).where(eq(todos.id, id));
         },
         upsertRow: async (row) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(stockCounts).values(row).onConflictDoUpdate({
-            target: stockCounts.id,
+          await db.insert(todos).values(row).onConflictDoUpdate({
+            target: todos.id,
             set: setValues,
           });
         },
       },
     },
   });
+
+  return {
+    tableNames: repository.tableNames,
+    applyPushChanges: repository.applyPushChanges,
+    loadPullChanges: repository.loadPullChanges,
+    loadSyncStatus: repository.loadSyncStatus,
+  };
 }
 ```
 
@@ -207,27 +158,23 @@ Each table entry has:
 - `softDeleteRow` — marks a row as deleted
 - `upsertRow` — inserts or updates a row
 
-## Wire up the handlers
+## Wire up the routes
 
-Edit `apps/server/src/index.ts`:
+The scaffold creates a self-contained route module at `apps/server/src/v1/routes.ts`:
 
 ```ts
-import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-order";
+import { Hono } from "hono";
+import { SYNC_SCOPE } from "@sync-contract/constants";
 import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import { Hono } from "hono";
-import { createInventoryDatabase } from "./db/client";
-import { createInventorySyncRepository } from "./db/sync-repository";
-
-const app = new Hono();
-const { db } = await createInventoryDatabase();
-const repository = createInventorySyncRepository(db);
+import { db } from "../db/client";
+import { createAppSyncRepository } from "../db/v1/sync-repository";
 
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
-  if (scopeId !== "default") {
+  if (scopeId !== SYNC_SCOPE) {
     return {
       ok: false as const,
       status: 403,
@@ -241,10 +188,12 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
   };
 };
 
+const repository = createAppSyncRepository(db);
+
 const push = createSyncPushHandler({
   encoding: "json",
   resolveScope,
-  upsertOrder: SYNC_UPSERT_ORDER,
+  upsertOrder: repository.tableNames,
   applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
     repository.applyPushChanges({
       changes,
@@ -275,13 +224,31 @@ const status = createSyncStatusHandler({
     }),
 });
 
-app.post("/sync/push", (c) => push(c.req.raw, {}));
-app.post("/sync/pull", (c) => pull(c.req.raw, {}));
-app.post("/sync/status", (c) => status(c.req.raw, {}));
+const sync = new Hono();
+
+sync.post("/push", (c) => push(c.req.raw, {}));
+sync.post("/pull", (c) => pull(c.req.raw, {}));
+sync.post("/status", (c) => status(c.req.raw, {}));
+
+export default sync;
+```
+
+And mounts it in `apps/server/src/index.ts`:
+
+```ts
+import { Hono } from "hono";
+import sync from "./v1/routes";
+
+const app = new Hono();
+
+app.get("/health", (c) => c.json({ ok: true }));
+app.route("/api/v1/sync", sync);
 
 export default app;
 
-console.log("inventory server listening on http://127.0.0.1:3001");
+console.log(
+  `my-app server listening on http://127.0.0.1:${process.env.PORT ?? "3001"}`
+);
 ```
 
 ### What resolveScope does
@@ -307,6 +274,6 @@ cd apps/server
 bun run dev
 ```
 
-You should see `inventory server listening on http://127.0.0.1:3001`.
+You should see `my-app server listening on http://127.0.0.1:3001`.
 
 Next: [Run Sync](/docs/getting-started/run-sync).

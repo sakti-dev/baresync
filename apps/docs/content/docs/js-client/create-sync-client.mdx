@@ -17,7 +17,6 @@ import { createSyncClient } from "baresync/tauri";
 
 ```ts
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "outlet-1",
   invoke,
@@ -26,15 +25,10 @@ const client = createSyncClient({
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `apiUrl` | `string` | Yes | Your server's base URL (used by the Tauri plugin for HTTP requests) |
 | `encoding` | `"json"` | Yes | Wire encoding for sync payloads |
 | `scopeId` | `string` | Yes | The scope this client syncs under (must match a scope in your sync contract) |
 | `commands` | `SyncClientCommands` | No | Optional command-name overrides for legacy app-local wrappers |
 | `invoke` | `(cmd, args?) => Promise<unknown>` | No | Tauri IPC function. Defaults to a stub that throws outside Tauri runtime |
-
-### apiUrl
-
-The plugin uses this URL when making HTTP requests to your server. It is not used by the JS client directly.
 
 ### encoding
 
@@ -52,7 +46,6 @@ In a Tauri app, pass `invoke` from `@tauri-apps/api/core`:
 import { invoke } from "@tauri-apps/api/core";
 
 const client = createSyncClient({
-  apiUrl: "http://127.0.0.1:3001",
   encoding: "json",
   scopeId: "outlet-1",
   invoke,
@@ -112,7 +105,6 @@ const SyncClientContext = createContext<SyncClient | null>(null);
 export function SyncClientProvider({ children }: { children: ReactNode }) {
   const [client] = useState(() =>
     createSyncClient({
-      apiUrl: "http://127.0.0.1:3001",
       encoding: "json",
       scopeId: "outlet-1",
       invoke,

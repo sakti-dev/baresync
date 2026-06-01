@@ -16,7 +16,7 @@ The last piece connects your React app to the sync engine. You need:
 Create `apps/app/src/hooks/useBaresyncQuery.tsx`:
 
 ```ts
-import { SYNC_SCOPE } from "@sync-contract/constants";
+import { INVENTORY_SCOPE_ID } from "@repo/sync-contract/constants";
 import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -37,7 +37,7 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   const [client] = useState(() =>
     createSyncClient({
       encoding: "json",
-      scopeId: SYNC_SCOPE,
+      scopeId: INVENTORY_SCOPE_ID,
       invoke,
     })
   );
