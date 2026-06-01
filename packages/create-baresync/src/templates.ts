@@ -31,6 +31,11 @@ function replaceProjectName(content: string, options: ScaffoldOptions): string {
   return content.replaceAll("__PROJECT_NAME__", options.projectName);
 }
 
+function replaceContractDate(content: string): string {
+  const date = new Date().toISOString().slice(0, 10);
+  return content.replaceAll("__CONTRACT_DATE__", date);
+}
+
 function replacePackageManager(
   content: string,
   options: ScaffoldOptions
@@ -116,7 +121,7 @@ function projectReadme(options: ScaffoldOptions) {
   );
 }
 
-function appPackageJson(options: ScaffoldOptions) {
+export function appPackageJson(options: ScaffoldOptions) {
   return replaceProjectName(readTemplateAsset("app/package.json"), options);
 }
 
@@ -150,8 +155,12 @@ function appSyncClient() {
   return readTemplateAsset("app/sync-client.ts");
 }
 
-function serverPackageJson(options: ScaffoldOptions) {
+export function serverPackageJson(options: ScaffoldOptions) {
   return replaceProjectName(readTemplateAsset("server/package.json"), options);
+}
+
+export function prependDevScript(originalDevScript: string): string {
+  return `drizzle-kit migrate --config drizzle.config.ts && PORT=3001 ${originalDevScript}`;
 }
 
 function serverDrizzleConfig(options: ScaffoldOptions) {
@@ -161,31 +170,47 @@ function serverDrizzleConfig(options: ScaffoldOptions) {
   );
 }
 
-function serverSyncRouteModule(options: ScaffoldOptions) {
+function serverDbClient(options: ScaffoldOptions) {
+  return replaceProjectName(
+    readTemplateAsset("server/src-db/client.ts"),
+    options
+  );
+}
+
+function serverSyncRepository() {
+  return replaceContractDate(
+    readTemplateAsset("server/src-db/v1/sync-repository.ts")
+  );
+}
+
+function serverV1Routes(options: ScaffoldOptions) {
   if (options.serverFramework === "hono") {
-    return {
-      fileName: "sync-routes.ts",
-      content: readTemplateAsset("server/src/sync-routes.ts"),
-    };
+    return replaceProjectName(
+      readTemplateAsset("server/src/v1/routes-hono.ts"),
+      options
+    );
   }
-  return {
-    fileName: "sync-route.ts",
-    content: readTemplateAsset("server/src/sync-route.ts"),
-  };
+  return replaceProjectName(
+    readTemplateAsset("server/src/v1/routes-elysia.ts"),
+    options
+  );
 }
 
 function serverIndexPatch(options: ScaffoldOptions) {
   if (options.serverFramework === "hono") {
-    return readTemplateAsset("server/src/index-hono.ts");
+    return replaceProjectName(
+      readTemplateAsset("server/src/index-hono.ts"),
+      options
+    );
   }
-  return readTemplateAsset("server/src/index-elysia.ts");
+  return replaceProjectName(
+    readTemplateAsset("server/src/index-elysia.ts"),
+    options
+  );
 }
 
-function serverFallbackInstructions(options: ScaffoldOptions) {
-  return readTemplateAsset("server/fallback-instructions.md").replaceAll(
-    "__ROUTE_FILE__",
-    options.serverFramework === "hono" ? "sync-routes.ts" : "sync-route.ts"
-  );
+function serverFallbackInstructions(_options: ScaffoldOptions) {
+  return readTemplateAsset("server/fallback-instructions.md");
 }
 
 function appHelperFiles() {
@@ -214,8 +239,6 @@ function appDrizzleConfigFile(options: ScaffoldOptions) {
 export function buildRootScaffoldFiles(
   options: ScaffoldOptions
 ): ScaffoldFile[] {
-  const serverRoutes = serverSyncRouteModule(options);
-
   return [
     file("package.json", projectRootPackageJson(options)),
     file("README.md", projectReadme(options)),
@@ -245,7 +268,9 @@ export function buildRootScaffoldFiles(
     ...appHelperFiles(),
     file("apps/server/package.json", serverPackageJson(options)),
     file("apps/server/drizzle.config.ts", serverDrizzleConfig(options)),
-    file(`apps/server/src/${serverRoutes.fileName}`, serverRoutes.content),
+    file("apps/server/src/db/client.ts", serverDbClient(options)),
+    file("apps/server/src/db/v1/sync-repository.ts", serverSyncRepository()),
+    file("apps/server/src/v1/routes.ts", serverV1Routes(options)),
     file(
       "apps/server/src/sync-fallback-instructions.md",
       serverFallbackInstructions(options)

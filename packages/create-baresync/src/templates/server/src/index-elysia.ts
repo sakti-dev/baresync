@@ -1,21 +1,12 @@
 import { Elysia } from "elysia";
-import { createBaresyncRoutes } from "./sync-route";
+import { sync } from "./v1/routes-elysia";
 
-const app = new Elysia();
+const app = new Elysia()
+  .get("/health", () => ({ ok: true }))
+  .use(sync);
 
-app.use(
-  createBaresyncRoutes({
-    resolveScope: ({ scopeId }) => ({
-      ok: true,
-      scope: { scopeId },
-    }),
-    repository: {
-      applyPushChanges: async () => ({ ok: true }),
-      loadPullChanges: async () => ({ changedRows: [], deletedIds: [] }),
-      loadSyncStatus: async () => ({ changedTables: [], cursor: "" }),
-    },
-    upsertOrder: ["lists", "todos"],
-  })
+app.listen(Number(process.env.PORT ?? "3001"));
+
+console.log(
+  `__PROJECT_NAME__ server listening on http://127.0.0.1:${app.server!.port}`
 );
-
-export default app;

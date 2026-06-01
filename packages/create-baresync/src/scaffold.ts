@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { intro, log, outro } from "@clack/prompts";
+import { jsonrepair } from "jsonrepair";
 import color from "picocolors";
 import { detectPackageManager } from "./package-manager.js";
 import {
@@ -10,17 +11,20 @@ import {
   promptServerFramework,
 } from "./prompts.js";
 import {
+  appPackageJson,
   buildRootScaffoldFiles,
   buildUserFacingNextSteps,
   type PackageManager,
+  prependDevScript,
   type ScaffoldOptions,
+  serverPackageJson,
 } from "./templates.js";
 import { ensureEmptyTargetDir, writeScaffoldFiles } from "./write.js";
 
 async function runInteractive(
   command: string,
   args: string[],
-  cwd: string
+  cwd: string,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, {
@@ -43,7 +47,7 @@ async function runInteractive(
 function createCommandArgs(
   packageManager: PackageManager,
   initializer: string,
-  target: string
+  target: string,
 ): string[] {
   if (packageManager === "npm") {
     return ["create", `${initializer}@latest`, target, "--"];
@@ -53,7 +57,7 @@ function createCommandArgs(
 }
 
 function mergeJson(baseText: string, patchText: string): string {
-  const base = JSON.parse(baseText) as Record<string, unknown>;
+  const base = JSON.parse(jsonrepair(baseText)) as Record<string, unknown>;
   const patch = JSON.parse(patchText) as Record<string, unknown>;
 
   return `${JSON.stringify(deepMerge(base, patch), null, 2)}\n`;
@@ -61,7 +65,7 @@ function mergeJson(baseText: string, patchText: string): string {
 
 function deepMerge(
   base: Record<string, unknown>,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base };
 
@@ -76,7 +80,7 @@ function deepMerge(
     ) {
       result[key] = deepMerge(
         result[key] as Record<string, unknown>,
-        value as Record<string, unknown>
+        value as Record<string, unknown>,
       );
       continue;
     }
@@ -89,14 +93,37 @@ function deepMerge(
 
 async function patchPackageJson(
   filePath: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
 ): Promise<void> {
   const current = await fs.readFile(filePath, "utf8");
   await fs.writeFile(
     filePath,
     mergeJson(current, JSON.stringify(patch)),
-    "utf8"
+    "utf8",
   );
+}
+
+async function patchTsconfig(
+  filePath: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const current = await fs.readFile(filePath, "utf8");
+  await fs.writeFile(
+    filePath,
+    mergeJson(current, JSON.stringify(patch)),
+    "utf8",
+  );
+}
+
+const VITE_EXPORT_RE = /export default \w+\(\{/;
+
+async function patchViteConfig(filePath: string): Promise<void> {
+  let content = await fs.readFile(filePath, "utf8");
+  content = content.replace(
+    VITE_EXPORT_RE,
+    "$&\n  resolve: { tsconfigPaths: true },",
+  );
+  await fs.writeFile(filePath, content, "utf8");
 }
 
 function isRootTemplateFile(filePath: string): boolean {
@@ -107,39 +134,39 @@ function isRootTemplateFile(filePath: string): boolean {
 
 async function writeTemplateSubset(
   rootDir: string,
-  options: ScaffoldOptions
+  options: ScaffoldOptions,
 ): Promise<void> {
   const files = buildRootScaffoldFiles(options).filter((file) =>
-    isRootTemplateFile(file.path)
+    isRootTemplateFile(file.path),
   );
   await writeScaffoldFiles(rootDir, files);
 }
 
 async function patchAppFiles(
   projectDir: string,
-  _options: ScaffoldOptions,
-  files: ReturnType<typeof buildRootScaffoldFiles>
+  options: ScaffoldOptions,
+  files: ReturnType<typeof buildRootScaffoldFiles>,
 ): Promise<void> {
   const appCargoToml = files.find(
-    (file) => file.path === "apps/app/src-tauri/Cargo.toml"
+    (file) => file.path === "apps/app/src-tauri/Cargo.toml",
   );
   const appBuildRs = files.find(
-    (file) => file.path === "apps/app/src-tauri/build.rs"
+    (file) => file.path === "apps/app/src-tauri/build.rs",
   );
   const appLibRs = files.find(
-    (file) => file.path === "apps/app/src-tauri/src/lib.rs"
+    (file) => file.path === "apps/app/src-tauri/src/lib.rs",
   );
   const appTauriConf = files.find(
-    (file) => file.path === "apps/app/src-tauri/tauri.conf.json"
+    (file) => file.path === "apps/app/src-tauri/tauri.conf.json",
   );
   const appDrizzle = files.find(
-    (file) => file.path === "apps/app/drizzle.local.config.ts"
+    (file) => file.path === "apps/app/drizzle.local.config.ts",
   );
   const appDb = files.find(
-    (file) => file.path === "apps/app/src/lib/baresync-db.ts"
+    (file) => file.path === "apps/app/src/lib/baresync-db.ts",
   );
   const appSyncClient = files.find(
-    (file) => file.path === "apps/app/src/lib/baresync-sync-client.ts"
+    (file) => file.path === "apps/app/src/lib/baresync-sync-client.ts",
   );
 
   if (
@@ -156,46 +183,62 @@ async function patchAppFiles(
     throw new Error("Missing app scaffold files");
   }
 
-  await patchPackageJson(path.join(projectDir, "apps/app/package.json"), {
+  const appPackageJsonPath = path.join(projectDir, "apps/app/package.json");
+  const appPackageJsonContent = JSON.parse(
+    jsonrepair(await fs.readFile(appPackageJsonPath, "utf8")),
+  );
+
+  const appTemplatePackageJson = JSON.parse(appPackageJson(options)) as Record<
+    string,
+    unknown
+  >;
+
+  const appPatch = {
+    ...appTemplatePackageJson,
+    scripts: {
+      ...((appTemplatePackageJson.scripts as Record<string, unknown>) ?? {}),
+      ...((appPackageJsonContent.scripts as Record<string, unknown>) ?? {}),
+    },
     dependencies: {
-      baresync: "^0.1.1",
-      "drizzle-orm": "^0.45.2",
+      ...((appTemplatePackageJson.dependencies as Record<string, unknown>) ??
+        {}),
+      ...((appPackageJsonContent.dependencies as Record<string, unknown>) ??
+        {}),
     },
     devDependencies: {
-      "drizzle-kit": "0.31.4",
+      ...((appTemplatePackageJson.devDependencies as Record<string, unknown>) ??
+        {}),
+      ...((appPackageJsonContent.devDependencies as Record<string, unknown>) ??
+        {}),
     },
-    scripts: {
-      "db:generate:local":
-        "drizzle-kit generate --config drizzle.local.config.ts",
-      "tauri:build": "tauri build",
-      "tauri:dev": "tauri dev",
-    },
-  });
+  };
+
+  await patchPackageJson(appPackageJsonPath, appPatch);
 
   await fs.writeFile(
     path.join(projectDir, "apps/app/src-tauri/build.rs"),
     appBuildRs.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/app/src-tauri/Cargo.toml"),
     appCargoToml.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/app/src-tauri/src/lib.rs"),
     appLibRs.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/app/src-tauri/tauri.conf.json"),
     appTauriConf.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/app/drizzle.local.config.ts"),
     appDrizzle.content,
-    "utf8"
+    "utf8",
   );
   await fs.mkdir(path.join(projectDir, "apps/app/src/lib"), {
     recursive: true,
@@ -203,74 +246,137 @@ async function patchAppFiles(
   await fs.writeFile(
     path.join(projectDir, "apps/app/src/lib/baresync-db.ts"),
     appDb.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/app/src/lib/baresync-sync-client.ts"),
     appSyncClient.content,
-    "utf8"
+    "utf8",
   );
+
+  await patchTsconfig(path.join(projectDir, "apps/app/tsconfig.json"), {
+    compilerOptions: {
+      paths: {
+        "@sync-contract/generated/*": [
+          "../../packages/sync-contract/generated/*",
+        ],
+        "@sync-contract/*": ["../../packages/sync-contract/src/*"],
+      },
+    },
+  });
+
+  await patchViteConfig(path.join(projectDir, "apps/app/vite.config.ts"));
 }
 
 async function patchServerFiles(
   projectDir: string,
-  _options: ScaffoldOptions,
-  files: ReturnType<typeof buildRootScaffoldFiles>
+  options: ScaffoldOptions,
+  files: ReturnType<typeof buildRootScaffoldFiles>,
 ): Promise<void> {
   const serverDrizzle = files.find(
-    (file) => file.path === "apps/server/drizzle.config.ts"
+    (file) => file.path === "apps/server/drizzle.config.ts",
   );
   const serverIndex = files.find(
-    (file) => file.path === "apps/server/src/index.ts"
+    (file) => file.path === "apps/server/src/index.ts",
   );
-  const serverRoute = files.find((file) =>
-    file.path.includes("apps/server/src/sync-")
+  const serverDbClient = files.find(
+    (file) => file.path === "apps/server/src/db/client.ts",
+  );
+  const serverSyncRepo = files.find(
+    (file) => file.path === "apps/server/src/db/v1/sync-repository.ts",
+  );
+  const serverV1Route = files.find(
+    (file) => file.path === "apps/server/src/v1/routes.ts",
   );
   const serverFallback = files.find(
-    (file) => file.path === "apps/server/src/sync-fallback-instructions.md"
+    (file) => file.path === "apps/server/src/sync-fallback-instructions.md",
   );
 
-  if (!(serverDrizzle && serverIndex && serverRoute && serverFallback)) {
+  if (
+    !(
+      serverDrizzle &&
+      serverIndex &&
+      serverDbClient &&
+      serverSyncRepo &&
+      serverV1Route &&
+      serverFallback
+    )
+  ) {
     throw new Error("Missing server scaffold files");
   }
 
-  await patchPackageJson(path.join(projectDir, "apps/server/package.json"), {
-    dependencies: {
-      baresync: "^0.1.1",
-    },
-    devDependencies: {
-      "drizzle-kit": "0.31.4",
-    },
+  const honoPackageJsonPath = path.join(projectDir, "apps/server/package.json");
+  const honoPackageJson = JSON.parse(
+    jsonrepair(await fs.readFile(honoPackageJsonPath, "utf8")),
+  );
+  const originalDevScript = honoPackageJson.scripts?.dev;
+
+  const templatePackageJson = JSON.parse(serverPackageJson(options)) as Record<
+    string,
+    unknown
+  >;
+  const patch = {
+    ...(templatePackageJson as Record<string, unknown>),
     scripts: {
-      "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-      dev: "PORT=3001 bun --hot src/index.ts",
-      typecheck: "bun x tsc -p tsconfig.json --noEmit",
+      ...((templatePackageJson as Record<string, unknown>).scripts as Record<
+        string,
+        unknown
+      >),
+      ...(originalDevScript
+        ? { dev: prependDevScript(originalDevScript) }
+        : {}),
     },
-  });
+  };
+
+  await patchPackageJson(honoPackageJsonPath, patch);
 
   await fs.writeFile(
     path.join(projectDir, "apps/server/drizzle.config.ts"),
     serverDrizzle.content,
-    "utf8"
+    "utf8",
+  );
+  await fs.mkdir(path.join(projectDir, "apps/server/src/db/v1"), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    path.join(projectDir, "apps/server/src/db/client.ts"),
+    serverDbClient.content,
+    "utf8",
   );
   await fs.writeFile(
-    path.join(
-      projectDir,
-      `apps/server/src/${serverRoute.path.split("/").at(-1)}`
-    ),
-    serverRoute.content,
-    "utf8"
+    path.join(projectDir, "apps/server/src/db/v1/sync-repository.ts"),
+    serverSyncRepo.content,
+    "utf8",
+  );
+  await fs.mkdir(path.join(projectDir, "apps/server/src/v1"), {
+    recursive: true,
+  });
+  await fs.writeFile(
+    path.join(projectDir, serverV1Route.path),
+    serverV1Route.content,
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/server/src/index.ts"),
     serverIndex.content,
-    "utf8"
+    "utf8",
   );
   await fs.writeFile(
     path.join(projectDir, "apps/server/src/sync-fallback-instructions.md"),
     serverFallback.content,
-    "utf8"
+    "utf8",
   );
+
+  await patchTsconfig(path.join(projectDir, "apps/server/tsconfig.json"), {
+    compilerOptions: {
+      paths: {
+        "@sync-contract/generated/*": [
+          "../../packages/sync-contract/generated/*",
+        ],
+        "@sync-contract/*": ["../../packages/sync-contract/src/*"],
+      },
+    },
+  });
 }
 
 export async function scaffoldProject(): Promise<void> {
@@ -293,7 +399,7 @@ export async function scaffoldProject(): Promise<void> {
   await runInteractive(
     packageManager,
     createCommandArgs(packageManager, "tauri-app", "app"),
-    appTargetDir
+    appTargetDir,
   );
 
   const serverFramework = await promptServerFramework();
@@ -310,11 +416,20 @@ export async function scaffoldProject(): Promise<void> {
 
   const serverTargetDir = path.join(projectDir, "apps");
   const serverInitializer = serverFramework === "hono" ? "hono" : "elysia";
-  await runInteractive(
-    packageManager,
-    createCommandArgs(packageManager, serverInitializer, "server"),
-    serverTargetDir
-  );
+  try {
+    await runInteractive(
+      packageManager,
+      createCommandArgs(packageManager, serverInitializer, "server"),
+      serverTargetDir,
+    );
+  } catch {
+    log.warn(
+      "⚠️ Note: create-hono exited with an error (likely an install failure).",
+    );
+    log.warn(
+      "This is safe to ignore — you can just run install at the workspace root later.",
+    );
+  }
 
   await patchAppFiles(projectDir, options, allFiles);
   await patchServerFiles(projectDir, options, allFiles);
@@ -337,22 +452,22 @@ export async function scaffoldProject(): Promise<void> {
         },
       },
       null,
-      2
+      2,
     ),
-    "utf8"
+    "utf8",
   );
 
   await fs.writeFile(
     path.join(projectDir, "README.md"),
     `# ${projectName}\n\nGenerated with create-baresync.\n\n## Next steps\n\n${buildUserFacingNextSteps(
-      options
+      options,
     )}\n`,
-    "utf8"
+    "utf8",
   );
 
   outro(
-    `${color.green("Success!")} Monorepo scaffolded.\n\n${buildUserFacingNextSteps(
-      options
-    )}`
+    `${color.green("Success!")} Baresync monorepo starter is ready!\n\n${buildUserFacingNextSteps(
+      options,
+    )}`,
   );
 }

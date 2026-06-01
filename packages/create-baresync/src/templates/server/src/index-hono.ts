@@ -1,19 +1,13 @@
 import { Hono } from "hono";
-import { createBaresyncRoutes } from "./sync-routes";
+import sync from "./v1/routes";
 
 const app = new Hono();
 
-app.route("/api/v1/sync", createBaresyncRoutes({
-  resolveScope: ({ scopeId }) => ({
-    ok: true,
-    scope: { scopeId },
-  }),
-  repository: {
-    applyPushChanges: async () => ({ ok: true }),
-    loadPullChanges: async () => ({ changedRows: [], deletedIds: [] }),
-    loadSyncStatus: async () => ({ changedTables: [], cursor: "" }),
-  },
-  upsertOrder: ["lists", "todos"],
-}));
+app.get("/health", (c) => c.json({ ok: true }));
+app.route("/api/v1/sync", sync);
 
 export default app;
+
+console.log(
+  `__PROJECT_NAME__ server listening on http://127.0.0.1:${process.env.PORT ?? "3001"}`
+);
