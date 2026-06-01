@@ -22,10 +22,10 @@ flowchart TD
     Events --> Query["Query Library\nReact Query / Solid Query\nrefetches active queries"]
     Query --> UI["UI\nre-renders with fresh data"]
 
-    style Rust fill:#d5e8d4,stroke:#82b366,color:#0f172a
-    style Events fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
-    style Query fill:#fff2cc,stroke:#d6b656,color:#0f172a
-    style UI fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
+    style Rust fill:#f97316,stroke:#c2410c,color:#ffffff
+    style Events fill:#4f46e5,stroke:#3730a3,color:#ffffff
+    style Query fill:#0891b2,stroke:#0e7490,color:#ffffff
+    style UI fill:#059669,stroke:#047857,color:#ffffff
 ```
 
 You never poll the database from the UI. The Rust engine emits events when observable data changes, and your query library handles the rest.
