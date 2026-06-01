@@ -11,7 +11,7 @@ This page covers database setup and how to write data that the sync engine track
 
 ## Database helper
 
-The scaffold creates `apps/app/src/lib/baresync-db.ts`:
+The scaffold creates `apps/app/src/lib/db.ts`:
 
 ```ts
 import { createTauriDrizzleDatabase } from "baresync/db";
@@ -46,7 +46,7 @@ This creates a Drizzle `SQLiteProxyDatabase` that:
 The `TABLE` object collects all table references — synced tables (`lists`, `todos`) and runtime tables (`syncCursors`, `syncOutbox`) — in one place. This avoids importing individual tables throughout your components:
 
 ```ts
-import { db, TABLE } from "./lib/baresync-db";
+import { db, TABLE } from "./lib/db";
 db.select().from(TABLE.lists);
 ```
 

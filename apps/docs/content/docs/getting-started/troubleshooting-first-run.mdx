@@ -16,10 +16,10 @@ cargo check
 
 ## The server does not start
 
-Check that the server database directory exists and is writable:
+The scaffold creates `apps/server/data/` at scaffold time. If you cloned the example or moved the project, make sure the database directory exists and is writable. You can also override the path via the `<PROJECT_NAME>_SERVER_DB_PATH` environment variable:
 
 ```bash
-mkdir -p apps/server/data
+MY_APP_SERVER_DB_PATH=/tmp/my-app.db bun run dev
 ```
 
 If you are using Drizzle migrations on the server, make sure you have generated them:
@@ -60,7 +60,7 @@ pub fn run() {
 Run your app with `RUST_LOG=debug` to see HTTP requests and sync engine decisions:
 
 ```bash
-RUST_LOG=debug bun run tauri:dev
+RUST_LOG=debug bun run dev
 ```
 
 Common log messages to look for:
