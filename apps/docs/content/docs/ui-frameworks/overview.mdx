@@ -16,17 +16,16 @@ The integration pattern is the same for any framework:
 
 ## The event-driven loop
 
-```txt
-Rust sync engine
-  │ emits events on data / status change
-  ▼
-Tauri event listeners (JS)
-  │ invalidate query cache
-  ▼
-Query library (React Query / Solid Query)
-  │ refetches active queries
-  ▼
-UI re-renders with fresh data
+```mermaid
+flowchart TD
+    Rust["Rust Sync Engine\nemits data-changed /\nsync-status-changed"] --> Events["Tauri Event Listeners\ninvalidate query cache"]
+    Events --> Query["Query Library\nReact Query / Solid Query\nrefetches active queries"]
+    Query --> UI["UI\nre-renders with fresh data"]
+
+    style Rust fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style Events fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+    style Query fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style UI fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
 ```
 
 You never poll the database from the UI. The Rust engine emits events when observable data changes, and your query library handles the rest.
