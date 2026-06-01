@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildRootScaffoldFiles } from "../templates.js";
 
+const CONTRACT_PATH_RE =
+  /packages\/sync-contract\/generated\/\d{4}-\d{2}-\d{2}\/sync-contract\.json/;
+
 describe("server and tauri scaffold templates", () => {
-  it("generates a hono entrypoint that mounts baresync under /sync", () => {
+  it("generates a hono entrypoint that mounts the sync routes", () => {
     const files = buildRootScaffoldFiles({
       packageManager: "bun",
       projectName: "acme-inventory",
@@ -12,16 +15,21 @@ describe("server and tauri scaffold templates", () => {
     const serverIndex = files.find(
       (file) => file.path === "apps/server/src/index.ts"
     );
+    const routes = files.find(
+      (file) => file.path === "apps/server/src/v1/routes.ts"
+    );
     const fallback = files.find(
       (file) => file.path === "apps/server/src/sync-fallback-instructions.md"
     );
 
     expect(serverIndex?.content).toContain('app.route("/api/v1/sync"');
-    expect(serverIndex?.content).toContain("createBaresyncRoutes");
+    expect(serverIndex?.content).toContain('import sync from "./v1/routes"');
+    expect(routes?.content).toContain("createSyncPushHandler");
+    expect(routes?.content).toContain("createAppSyncRepository");
     expect(fallback?.content).toContain("Manual mount required");
   });
 
-  it("generates an elysia entrypoint that mounts baresync with app.use", () => {
+  it("generates an elysia entrypoint that uses the sync routes module", () => {
     const files = buildRootScaffoldFiles({
       packageManager: "bun",
       projectName: "acme-inventory",
@@ -31,13 +39,16 @@ describe("server and tauri scaffold templates", () => {
     const serverIndex = files.find(
       (file) => file.path === "apps/server/src/index.ts"
     );
-    const routeModule = files.find(
-      (file) => file.path === "apps/server/src/sync-route.ts"
+    const routes = files.find(
+      (file) => file.path === "apps/server/src/v1/routes.ts"
     );
 
-    expect(serverIndex?.content).toContain("app.use(");
-    expect(serverIndex?.content).toContain("createBaresyncRoutes");
-    expect(routeModule?.content).toContain("createBaresyncRoutes");
+    expect(serverIndex?.content).toContain(".use(sync)");
+    expect(serverIndex?.content).toContain(
+      'import { sync } from "./v1/routes"'
+    );
+    expect(routes?.content).toContain("createSyncPushHandler");
+    expect(routes?.content).toContain("createAppSyncRepository");
   });
 
   it("generates the tauri plugin builder setup and helper modules", () => {
@@ -51,7 +62,7 @@ describe("server and tauri scaffold templates", () => {
       (file) => file.path === "apps/app/src-tauri/src/lib.rs"
     );
     const dbHelper = files.find(
-      (file) => file.path === "apps/app/src/lib/baresync-db.ts"
+      (file) => file.path === "apps/app/src/lib/db.ts"
     );
     const syncClient = files.find(
       (file) => file.path === "apps/app/src/lib/baresync-sync-client.ts"
@@ -60,6 +71,7 @@ describe("server and tauri scaffold templates", () => {
     expect(libRs?.content).toContain("BaresyncBuilder::new()");
     expect(libRs?.content).toContain('migrations_path("migrations")');
     expect(libRs?.content).toContain("contract_json(include_str!");
+    expect(libRs?.content).toMatch(CONTRACT_PATH_RE);
     expect(dbHelper?.content).toContain("createTauriDrizzleDatabase");
     expect(syncClient?.content).toContain("createSyncClient");
   });

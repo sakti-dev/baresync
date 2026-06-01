@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { sync } from "./v1/routes-elysia";
+import { sync } from "./v1/routes";
 
 const app = new Elysia()
   .get("/health", () => ({ ok: true }))

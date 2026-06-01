@@ -144,7 +144,7 @@ function appTauriConf(options: ScaffoldOptions) {
 }
 
 function appLibRs() {
-  return readTemplateAsset("app/src/lib.rs");
+  return replaceContractDate(readTemplateAsset("app/src/lib.rs"));
 }
 
 function appDbHelper() {
@@ -215,7 +215,7 @@ function serverFallbackInstructions(_options: ScaffoldOptions) {
 
 function appHelperFiles() {
   return [
-    file("apps/app/src/lib/baresync-db.ts", appDbHelper()),
+    file("apps/app/src/lib/db.ts", appDbHelper()),
     file("apps/app/src/lib/baresync-sync-client.ts", appSyncClient()),
   ];
 }

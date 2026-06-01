@@ -162,9 +162,7 @@ async function patchAppFiles(
   const appDrizzle = files.find(
     (file) => file.path === "apps/app/drizzle.local.config.ts"
   );
-  const appDb = files.find(
-    (file) => file.path === "apps/app/src/lib/baresync-db.ts"
-  );
+  const appDb = files.find((file) => file.path === "apps/app/src/lib/db.ts");
   const appSyncClient = files.find(
     (file) => file.path === "apps/app/src/lib/baresync-sync-client.ts"
   );
@@ -244,7 +242,7 @@ async function patchAppFiles(
     recursive: true,
   });
   await fs.writeFile(
-    path.join(projectDir, "apps/app/src/lib/baresync-db.ts"),
+    path.join(projectDir, "apps/app/src/lib/db.ts"),
     appDb.content,
     "utf8"
   );
