@@ -113,7 +113,7 @@ pub fn run() {
         .plugin(
             BaresyncBuilder::new()
                 .api_base_url("http://127.0.0.1:3001")
-                .db_name("baresync.db")
+                .db_path("baresync.db")
                 .contract_json(include_str!(
                     "../../../../packages/sync-contract/generated/<YYYY-MM-DD>/sync-contract.json"
                 ))

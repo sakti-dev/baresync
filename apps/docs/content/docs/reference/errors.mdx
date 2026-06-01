@@ -16,7 +16,7 @@ pub enum SyncError {
     Network(String),
     Validation(String),
     Database(String),
-    Encoding(String),
+    JsonParse(String),
     Migration(String),
     Http { status: u16, body: String, kind: String },
     SingleRowTooLarge { table: String, id: String },
@@ -30,7 +30,7 @@ pub enum SyncError {
 | `Network(msg)` | HTTP request fails, timeout, DNS, connection refused | `msg` — error description |
 | `Validation(msg)` | Invalid input — bad cursor, missing scope, malformed envelope | `msg` — what's wrong |
 | `Database(msg)` | SQLite errors — constraint violations, locked, disk I/O | `msg` — SQLite error |
-| `Encoding(msg)` | JSON parse/serialize failures | `msg` — what failed |
+| `JsonParse(msg)` | JSON parse/serialize failures | `msg` — what failed |
 | `Migration(msg)` | Migration SQL fails to apply | `msg` — which migration and why |
 | `Http { status, body, kind }` | Server returned non-2xx | See HTTP classification below |
 | `SingleRowTooLarge { table, id }` | One row exceeds `max_push_bytes` | `table` and `id` of the row |

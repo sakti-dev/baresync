@@ -9,53 +9,45 @@ Baresync is designed to handle production data volumes out of the box. This page
 
 ## How push chunking works
 
-When your users have many pending changes, the engine doesn't send them all at once. It splits them into chunks:
+When your users have many pending changes, the engine doesn't send them all at once. It uses two-level chunking:
 
-1. Read all pending outbox entries, grouped by table
-2. For each group, build a push payload
-3. If the payload exceeds `max_push_bytes` or `max_push_rows`, split it
-4. Send each chunk to the server
-5. If a chunk gets `413 Payload Too Large`:
-   - If it has more than 1 row: split in half, retry both halves
-   - If it's a single row: fail with `SingleRowTooLarge`
-6. Repeat until all chunks are sent or a single-row chunk fails
+**Level 1 — Target chunk size (`target_push_bytes`, default 256 KB):**
+The engine packs pending rows into chunks targeting this size. This is the initial grouping that determines how many HTTP requests are needed.
+
+**Level 2 — Hard ceiling (`max_push_bytes`, default 2 MB):**
+If a chunk's encoded size exceeds this limit before sending, the engine splits it in half without sending. This is a safety net — the 256 KB target should keep chunks well below this ceiling.
 
 ```
-1000 pending rows
-  → Chunk 1: 500 rows (~200 KB) ✓
-  → Chunk 2: 500 rows (~200 KB) ✓
+1000 pending rows (~400 bytes each)
+  → Target: 256 KB ≈ 655 rows per chunk
+  → Chunk 1: 655 rows (~262 KB) ✓ (under 2 MB ceiling)
+  → Chunk 2: 345 rows (~138 KB) ✓
 
-2000 pending rows with a 256 KB limit
-  → Chunk 1: 450 rows (~255 KB) ✓
-  → Chunk 2: 450 rows (~253 KB) ✓
-  → Chunk 3: 450 rows (~251 KB) ✓
-  → Chunk 4: 450 rows (~252 KB) ✓
-  → Chunk 5: 200 rows (~120 KB) ✓
+Single oversized row (3 MB)
+  → Exceeds 2 MB ceiling
+  → Split-retry: row stays in its own chunk
+  → Server returns 413 → SingleRowTooLarge error
 ```
 
-### Tuning chunk size
+**Server-side 413 split-retry:**
+If the server rejects a chunk with `413 Payload Too Large`, the engine splits the chunk in half and retries both halves. This handles cases where the server's limit is lower than the client's ceiling. If a single row is rejected, the push fails with `SingleRowTooLarge`.
 
-The client's `max_push_bytes` controls the target chunk size:
+### Why 256 KB is the right default
 
-```rust
-use tauri_plugin_baresync::builder::Builder as BaresyncBuilder;
+The 256 KB target is safe for every serverless platform:
 
-BaresyncBuilder::new()
-    .max_push_bytes(131_072)  // 128 KB — more chunks, smaller payloads
-    .max_push_rows(500)       // cap rows per chunk
-```
-
-| Setting | Effect | When to use |
+| Platform | HTTP body limit | 256 KB fits? |
 |---|---|---|
-| Small chunks (64–128 KB) | More HTTP requests, each one is faster | Slow or unreliable network (mobile) |
-| Default (256 KB) | Balance between request count and size | Most apps |
-| Large chunks (512 KB–1 MB) | Fewer requests, each one is larger | Fast, reliable network; large data volumes |
+| Vercel Functions | 4.5 MB | Yes (18x margin) |
+| Netlify Functions | 6 MB | Yes (24x margin) |
+| AWS Lambda | 6 MB sync | Yes (24x margin) |
+| Cloudflare Workers | 100 MB | Yes (400x margin) |
 
-The server's max push body size must be larger than the client's `max_push_bytes`. Baresync's defaults use a 256 KB client target and a 2 MB server limit, which gives the client enough room to split chunks before the server rejects them. If you customize both sides, keep at least a 4:1 server-to-client ratio.
+The defaults work everywhere. You don't need to configure chunk sizes on the client — the engine adapts via 413 split-retry if the server has stricter limits.
 
 ### Row-level limit
 
-Even if the payload is small, too many rows in one request can be slow. `max_push_rows` caps the number of rows per chunk regardless of byte size. The default is 2000, which is fine for most apps. Lower it to 500 if your rows are large or your server is slow.
+`max_push_rows` (default 2000) caps the number of rows per chunk regardless of byte size. This prevents slow requests when rows are small but numerous. The default is fine for most apps.
 
 ## Polling frequency
 
@@ -171,7 +163,6 @@ Run this on a server-side cron job or after every N requests.
 
 Before going to production:
 
-- [ ] Client `max_push_bytes` is below the server max body size; 4:1 or more is a good buffer
 - [ ] Polling interval matches product needs; 30 seconds is a good default, and very short intervals are limited to development or active foreground workflows
 - [ ] `poll_on_background` is `false` on mobile
 - [ ] Synced outbox purge is scheduled (daily or weekly)

@@ -139,11 +139,9 @@ Common causes:
 ### "Server receives unexpected sync payloads"
 
 - The plugin is still using the default JSON transport
-- The generated Rust transport was not imported
-- `.transport(...)` was omitted from the plugin builder
 - The server route is still wired to a JSON handler
 
-Check the generated transport import, the plugin builder, the route handlers, and the `Content-Type` header first.
+Check the route handlers and the `Content-Type` header first.
 
 ### "Protobuf decode failed after a schema change"
 
@@ -157,7 +155,7 @@ Check:
 
 ### "Sync works but is slow"
 
-See [Performance](./performance) for tuning `max_push_bytes`, `max_push_rows`, and polling interval.
+See [Performance](./performance) for tuning polling interval and understanding the default chunking behavior.
 
 ### "App crashes on startup after migration"
 

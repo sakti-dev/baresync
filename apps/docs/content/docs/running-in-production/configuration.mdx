@@ -31,15 +31,14 @@ BaresyncBuilder::new()
 | Method | Type | Default | Purpose |
 |---|---|---|---|
 | `.api_base_url(url)` | `String` | `""` (required) | Your sync server's base URL. All sync endpoints are relative to this. |
-| `.db_path(path)` | `String` | `"baresync.db"` | Path to the SQLite database file. Relative paths use the process working directory; absolute app-owned paths are safer in production. |
+| `.db_path(path)` | `String` | `"baresync.db"` | Database file path. Relative paths resolve under the app data directory; absolute paths are used as-is. |
+| `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
+| `.contract_json(json)` | `String` | `None` | Alternative to `contract_tables` — pass the generated contract JSON string directly. |
+| `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_path()`, not both. |
+| `.migrations_path(path)` | `PathBuf` | `None` | Path to `.sql` migration files. Relative paths resolve from Tauri resources. |
+| `.encryption_key_provider(p)` | `impl EncryptionKeyProvider` | `None` | Custom encryption key provider for encrypted SQLite databases. |
 | `.poll_interval_secs(secs)` | `u64` | `30` | How often the polling loop checks for changes after your app calls `startPolling()`. Do not call `startPolling()` if your app is manual-sync only. |
 | `.poll_on_background(bool)` | `bool` | `false` | Whether to keep polling when the window is unfocused. `false` saves battery on mobile. |
-| `.max_push_bytes(bytes)` | `usize` | `262144` (256 KB) | Target push chunk size. The engine splits large pushes into chunks near this size. |
-| `.max_push_rows(rows)` | `usize` | `2000` | Maximum rows per push chunk. Works with `max_push_bytes` — whichever limit is hit first. |
-| `.migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations. Use this or `.migrations_path()`, not both. |
-| `.migrations_path(path)` | `String` | `""` | Path to `.sql` migration files. Relative paths resolve from Tauri resources. |
-| `.contract_tables(tables)` | `SyncContractTables` | empty | Table ordering metadata from your generated artifacts. |
-| `.transport(transport)` | `impl SyncHttpTransport` | `JsonHttpTransport` | Custom transport. Optional for JSON apps and tests. |
 
 ## Server configuration
 
@@ -79,7 +78,7 @@ validatePushEnvelope(decoded, {
 | `maxBytes` | 2 MB | Maximum push body size. Rejects with `413` if exceeded. |
 | `maxRows` | 2000 | Maximum total rows in a push. Rejects with `413` if exceeded. |
 
-The client's `max_push_bytes` should be smaller than the server's `maxBytes`. The defaults are intentionally conservative: 256 KB client target and 2 MB server max.
+The defaults are intentionally conservative: 256 KB client target and 2 MB server max. The client adapts via 413 split-retry if the server has stricter limits.
 
 ## Environment-specific settings
 
@@ -103,8 +102,6 @@ BaresyncBuilder::new()
     .migrations_path("migrations")
     .poll_interval_secs(30)
     .poll_on_background(false)  // save battery on mobile
-    .max_push_bytes(262_144)
-    .max_push_rows(2000)
 ```
 
 ### Testing
@@ -114,10 +111,9 @@ BaresyncBuilder::new()
     .api_base_url("http://localhost:3001")
     .db_path(":memory:")
     .poll_interval_secs(30) // only used if your test calls startPolling()
-    .transport(mock_transport)  // record calls for assertions
 ```
 
-Use a real transport here instead of a mock if you want to exercise the live sync path.
+For testing sync behavior, use the core engine directly with a custom transport if needed.
 
 ## JS client configuration
 
@@ -140,8 +136,4 @@ const client = createSyncClient({
 
 ## Common mistakes
 
-**DB path without a predictable app directory** — `db_path("baresync.db")` is relative to the process working directory. For production, resolve an app-owned data path explicitly, especially on mobile.
-
 **Polling too fast** — `poll_interval_secs(1)` creates unnecessary load. 30 seconds is a good default. If you need faster updates, consider a push notification that calls `syncNow()` instead.
-
-**Client target larger than server max** — if `max_push_bytes` on the client exceeds `maxBytes` on the server, every push gets rejected with 413. The engine will keep retrying and splitting, but it's wasteful. Keep the client target well below the server limit.

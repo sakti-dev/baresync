@@ -130,8 +130,7 @@ pub fn run() {
         .api_base_url(fixture_api_url())
         .db_path(fixture_db_path())
         .contract_tables(fixture_contract_tables())
-        .migrations(fixture_migrations())
-        .transport(baresync_core::http::default_transport());
+        .migrations(fixture_migrations());
 
     #[cfg(feature = "sqlcipher")]
     let plugin_builder = plugin_builder.encryption_key_provider(FixtureEncryptionKeyProvider);

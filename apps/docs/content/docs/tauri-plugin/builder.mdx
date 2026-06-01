@@ -20,7 +20,7 @@ tauri::Builder::default()
     .plugin(
         BaresyncBuilder::new()
             .api_base_url("http://127.0.0.1:3001")
-            .db_name("baresync.db")
+            .db_path("baresync.db")
             .contract_json(include_str!("../../../../packages/sync-contract/generated/sync-contract.json"))
             .migrations_path("migrations")
             .poll_interval_secs(30)
@@ -35,17 +35,14 @@ tauri::Builder::default()
 | Method | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `api_base_url` | `impl Into<String>` | Yes | `""` | Your server's base URL |
-| `db_path` | `impl Into<String>` | No | `None` | Explicit path to the local SQLite file |
-| `db_name` | `impl Into<String>` | No | `None` | Database file name resolved under the Tauri app data directory |
+| `db_path` | `impl Into<String>` | No | `None` | Database file path. Relative paths resolve under the app data directory; absolute paths are used as-is |
 | `contract_tables` | `SyncContractTables` | No | empty | Upsert order, delete order, local-only columns |
 | `contract_json` | `impl Into<String>` | No | `None` | Generated `sync-contract.json` metadata |
 | `migrations` | `Vec<EmbeddedMigration>` | Yes | empty | Embedded SQL migrations |
 | `migrations_path` | `impl Into<PathBuf>` | No | `None` | Path to `.sql` migrations bundled with the app or resolved absolutely |
+| `encryption_key_provider` | `impl EncryptionKeyProvider` | No | `None` | Custom encryption key provider for encrypted SQLite databases |
 | `poll_interval_secs` | `u64` | No | `30` | Seconds between polling cycles |
 | `poll_on_background` | `bool` | No | `false` | Whether to poll when the window is unfocused |
-| `max_push_bytes` | `usize` | No | `262144` | Maximum push payload size in bytes |
-| `max_push_rows` | `usize` | No | `2000` | Maximum rows per push request |
-| `transport` | `Arc<dyn SyncHttpTransport>` | No | `default_transport()` | Custom HTTP transport; optional for JSON apps and tests |
 
 ### api_base_url
 
@@ -53,7 +50,23 @@ The plugin uses this URL when making HTTP requests to your server. It is combine
 
 ### db_path
 
-The SQLite file path. Use an environment variable to override for testing:
+Database file path. Relative paths resolve under the app data directory; absolute paths are used as-is.
+
+```rust
+// Resolves to app data dir: ~/.local/share/com.app/baresync.db
+BaresyncBuilder::new()
+    .db_path("baresync.db")
+
+// Resolves to app data dir: ~/.local/share/com.app/databases/mydb.db
+BaresyncBuilder::new()
+    .db_path("databases/mydb.db")
+
+// Absolute path (for tests)
+BaresyncBuilder::new()
+    .db_path("/tmp/test.db")
+```
+
+Use an environment variable to override for testing:
 
 ```rust
 fn db_path() -> String {
@@ -89,17 +102,6 @@ fn contract_tables() -> SyncContractTables {
 ```
 
 These values come from your generated `sync-contract.json` or are supplied manually for tests and advanced integrations.
-
-### db_name
-
-Use `db_name` when you want the plugin to resolve the SQLite file under Tauri's app data directory:
-
-```rust
-BaresyncBuilder::new()
-    .db_name("baresync.db")
-```
-
-This is the recommended default for production apps. Use `db_path` only when you need a deterministic path for tests or custom deployment environments.
 
 ### contract_json
 
@@ -143,7 +145,7 @@ On mobile, the plugin relies on app lifecycle and focus events exposed by Tauri.
 
 The builder's `setup` closure runs during Tauri initialization:
 
-1. Resolves `db_path` or `db_name` and connects to SQLite (creates the file if missing, sets WAL mode, foreign keys on)
+1. Resolves `db_path` and connects to SQLite (creates the file if missing, sets WAL mode, foreign keys on)
 2. Runs `migrations_path` migrations in strict mode, if configured
 3. Runs embedded migrations in strict mode, if no migration path is configured
 4. Stores `PluginState` in Tauri's managed state

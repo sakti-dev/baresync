@@ -33,14 +33,12 @@ Builder::new()
 |---|---|---|---|
 | `new()` | - | - | Create a new builder |
 | `api_base_url(url)` | `impl Into<String>` | `""` | Server base URL |
-| `db_path(path)` | `impl Into<String>` | `"baresync.db"` | SQLite database file path |
+| `db_path(path)` | `impl Into<String>` | `"baresync.db"` | Database file path. Relative paths resolve under app data dir; absolute paths used as-is |
 | `encryption_key_provider(provider)` | `impl EncryptionKeyProvider` | - | App-owned raw 32-byte key provider used during setup |
-| `max_push_bytes(n)` | `usize` | `262144` (256 KB) | Maximum push payload size |
-| `max_push_rows(n)` | `usize` | `2000` | Maximum rows per push batch |
 | `migrations(migs)` | `Vec<EmbeddedMigration>` | `[]` | Embedded SQL migrations |
 | `migrations_path(path)` | `impl Into<PathBuf>` | - | Path to `.sql` migration files. Relative paths resolve from Tauri resources |
 | `contract_tables(t)` | `SyncContractTables` | - | Table ordering and column config |
-| `transport(t)` | `Arc<dyn SyncHttpTransport>` | `JsonHttpTransport` | Custom HTTP transport |
+| `contract_json(json)` | `impl Into<String>` | `None` | Generated contract JSON string |
 | `poll_interval_secs(n)` | `u64` | `30` | Seconds between automatic syncs |
 | `poll_on_background(b)` | `bool` | `false` | Continue polling when app is backgrounded |
 | `build()` | `TauriPlugin<R>` | - | Build the plugin |

@@ -209,7 +209,8 @@ The Tauri plugin builder integration SHALL document the required configuration a
 
 #### Scenario: Required builder inputs documented
 - **WHEN** a consumer reads plugin registration guidance
-- **THEN** it SHALL describe API base URL, max push bytes, max push rows, DB path or DB name, generated contract metadata, and migration source as explicit integration inputs
+- **THEN** it SHALL describe API base URL, DB path, generated contract metadata, and migration source as explicit integration inputs
+- **AND** it SHALL NOT describe max push bytes, max push rows, transport, or db name as builder inputs — the sync engine uses safe defaults (256KB target, 2MB ceiling, 2000 rows) that work across all platforms, and JSON is the only supported encoding
 
 #### Scenario: Builder config avoids hidden app coupling
 - **WHEN** a consumer registers the plugin

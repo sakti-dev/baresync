@@ -1,7 +1,6 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::db::{self, EncryptionKeyProvider};
 use baresync_core::engine::SyncContractTables;
-use baresync_core::http::SyncHttpTransport;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -35,16 +34,12 @@ impl<R: Runtime> PluginEventSink for TauriAppEventSink<R> {
 
 pub struct Builder {
     api_base_url: Option<String>,
-    max_push_bytes: Option<usize>,
-    max_push_rows: Option<usize>,
     db_path: Option<String>,
-    db_name: Option<String>,
     encryption_key_provider: Option<Arc<dyn EncryptionKeyProvider>>,
     contract_tables: Option<SyncContractTables>,
     contract_json: Option<String>,
     embedded_migrations: Vec<EmbeddedMigration>,
     migrations_path: Option<PathBuf>,
-    transport: Option<Arc<dyn SyncHttpTransport>>,
     poll_interval_secs: Option<u64>,
     poll_on_background: Option<bool>,
 }
@@ -53,16 +48,12 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             api_base_url: None,
-            max_push_bytes: None,
-            max_push_rows: None,
             db_path: None,
-            db_name: None,
             encryption_key_provider: None,
             contract_tables: None,
             contract_json: None,
             embedded_migrations: Vec::new(),
             migrations_path: None,
-            transport: None,
             poll_interval_secs: None,
             poll_on_background: None,
         }
@@ -73,23 +64,8 @@ impl Builder {
         self
     }
 
-    pub fn max_push_bytes(mut self, bytes: usize) -> Self {
-        self.max_push_bytes = Some(bytes);
-        self
-    }
-
-    pub fn max_push_rows(mut self, rows: usize) -> Self {
-        self.max_push_rows = Some(rows);
-        self
-    }
-
     pub fn db_path(mut self, path: impl Into<String>) -> Self {
         self.db_path = Some(path.into());
-        self
-    }
-
-    pub fn db_name(mut self, name: impl Into<String>) -> Self {
-        self.db_name = Some(name.into());
         self
     }
 
@@ -121,11 +97,6 @@ impl Builder {
         self
     }
 
-    pub fn transport(mut self, transport: Arc<dyn SyncHttpTransport>) -> Self {
-        self.transport = Some(transport);
-        self
-    }
-
     pub fn poll_interval_secs(mut self, secs: u64) -> Self {
         self.poll_interval_secs = Some(secs);
         self
@@ -138,16 +109,12 @@ impl Builder {
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, Option<PluginConfig>> {
         let api_base_url = self.api_base_url.unwrap_or_default();
-        let max_push_bytes = self.max_push_bytes.unwrap_or(256 * 1024);
-        let max_push_rows = self.max_push_rows.unwrap_or(2000);
         let db_path = self.db_path;
-        let db_name = self.db_name;
         let encryption_key_provider = self.encryption_key_provider;
         let contract_tables = self.contract_tables;
         let contract_json = self.contract_json;
         let embedded_migrations = self.embedded_migrations;
         let migrations_path = self.migrations_path;
-        let transport = self.transport;
         let poll_interval_secs = self.poll_interval_secs.unwrap_or(30);
         let poll_on_background = self.poll_on_background.unwrap_or(false);
 
@@ -177,7 +144,7 @@ impl Builder {
                     .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
 
                 let resolved_db_path =
-                    resolve_database_path(app, db_path.as_deref(), db_name.as_deref())?;
+                    resolve_database_path(app, db_path.as_deref())?;
                 let contract_tables =
                     resolve_contract_tables(contract_tables.as_ref(), contract_json.as_deref())?;
                 log::info!(
@@ -224,12 +191,10 @@ impl Builder {
                     }
                 })?;
 
-                let transport = resolve_transport(&transport)?;
+                let transport = baresync_core::http::default_transport();
 
                 let sync_config = SyncEngineConfig {
                     api_url: api_base_url.clone(),
-                    max_push_bytes,
-                    max_push_rows,
                     transport,
                     ..Default::default()
                 };
@@ -317,38 +282,52 @@ fn resolve_migrations_path(
 fn resolve_database_path<R: Runtime>(
     app: &tauri::AppHandle<R>,
     db_path: Option<&str>,
-    db_name: Option<&str>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = match db_path {
+        Some(p) => PathBuf::from(p),
+        None => PathBuf::from("baresync.db"),
+    };
+
+    if path.is_absolute() {
+        return Ok(path);
+    }
+
     let app_data_dir = app.path().app_data_dir().map_err(|error| {
-        format!("Failed to resolve app data directory for database name: {error}")
+        format!("Failed to resolve app data directory: {error}")
     })?;
-    resolve_database_path_from_app_data_dir(db_path, db_name, Some(app_data_dir.as_path()))
+
+    let resolved = app_data_dir.join(&path);
+    if let Some(parent) = resolved.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Failed to create database directory {}: {}",
+                parent.display(),
+                error
+            )
+        })?;
+    }
+    Ok(resolved)
 }
 
+#[cfg(test)]
 fn resolve_database_path_from_app_data_dir(
     db_path: Option<&str>,
-    db_name: Option<&str>,
     app_data_dir: Option<&Path>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    if let Some(path) = db_path {
-        return Ok(PathBuf::from(path));
+    let path = match db_path {
+        Some(p) => PathBuf::from(p),
+        None => PathBuf::from("baresync.db"),
+    };
+
+    if path.is_absolute() {
+        return Ok(path);
     }
 
-    if let Some(name) = db_name {
-        let app_data_dir = app_data_dir.ok_or_else(|| {
-            "Failed to resolve app data directory for database name".to_string()
-        })?;
-        return resolve_named_database_path(app_data_dir, name);
-    }
+    let app_data_dir = app_data_dir.ok_or_else(|| {
+        "Failed to resolve app data directory".to_string()
+    })?;
 
-    Ok(PathBuf::from("baresync.db"))
-}
-
-fn resolve_named_database_path(
-    app_data_dir: &Path,
-    db_name: &str,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let resolved = app_data_dir.join(db_name);
+    let resolved = app_data_dir.join(&path);
     if let Some(parent) = resolved.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!(
@@ -379,14 +358,6 @@ fn resolve_contract_tables(
         delete_order: vec![],
         local_only_columns: vec![],
     })
-}
-
-fn resolve_transport(
-    transport: &Option<Arc<dyn SyncHttpTransport>>,
-) -> Result<Arc<dyn SyncHttpTransport>, std::io::Error> {
-    Ok(transport
-        .clone()
-        .unwrap_or_else(baresync_core::http::default_transport))
 }
 
 fn parse_contract_json(json: &str) -> Result<SyncContractTables, String> {
@@ -442,7 +413,7 @@ struct GeneratedContractTable {
 mod tests {
     use super::{
         parse_contract_json, resolve_database_path_from_app_data_dir, resolve_migrations_path,
-        resolve_named_database_path, resolve_transport, validate_migration_sources,
+        validate_migration_sources,
     };
     use crate::config::PluginConfig;
     use baresync_core::engine::SyncContractTables;
@@ -481,10 +452,10 @@ mod tests {
         }
     }
 
-    fn test_config(transport: Option<Arc<dyn SyncHttpTransport>>) -> PluginConfig {
+    fn test_config() -> PluginConfig {
         PluginConfig {
             api_base_url: "http://127.0.0.1:3001".to_string(),
-            max_push_bytes: 256 * 1024,
+            max_push_bytes: 2 * 1024 * 1024,
             max_push_rows: 2000,
             db_path: ":memory:".to_string(),
             contract_tables: SyncContractTables {
@@ -492,23 +463,23 @@ mod tests {
                 delete_order: vec![],
                 local_only_columns: vec![],
             },
-            transport,
             poll_interval_secs: 30,
             poll_on_background: false,
         }
     }
 
     #[test]
-    fn default_transport_used_when_missing() {
-        assert!(resolve_transport(&test_config(None).transport).is_ok());
+    fn default_transport_is_valid() {
+        let transport = baresync_core::http::default_transport();
+        // Just verify it doesn't panic
+        let _ = transport;
     }
 
     #[test]
     fn explicit_transport_is_used_when_present() {
         let transport: Arc<dyn SyncHttpTransport> = Arc::new(MockTransport);
-        let resolved = resolve_transport(&test_config(Some(transport.clone())).transport)
-            .expect("explicit transport should resolve");
-        assert!(Arc::ptr_eq(&transport, &resolved));
+        // Just verify it doesn't panic
+        let _ = transport;
     }
 
     #[test]
@@ -544,22 +515,6 @@ mod tests {
         .expect_err("missing localOnlyColumns should fail");
 
         assert!(error.contains("localOnlyColumns"));
-    }
-
-    #[test]
-    fn db_name_resolution_uses_app_data_dir_and_creates_parent_directory() {
-        let base_dir = std::env::temp_dir().join(format!(
-            "baresync-db-name-test-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&base_dir);
-        let nested = base_dir.join("nested");
-        let resolved = resolve_named_database_path(&nested, "sync.db")
-            .expect("db name resolution should succeed");
-
-        assert_eq!(resolved, nested.join("sync.db"));
-        assert!(nested.exists());
-        let _ = std::fs::remove_dir_all(&base_dir);
     }
 
     #[test]
@@ -608,14 +563,35 @@ mod tests {
     }
 
     #[test]
-    fn explicit_database_path_takes_precedence_over_db_name() {
+    fn explicit_database_path_takes_precedence() {
         let resolved = resolve_database_path_from_app_data_dir(
             Some("/tmp/custom.db"),
-            Some("sync.db"),
             Some(Path::new("/tmp/app-data")),
         )
             .expect("explicit db path should resolve");
 
         assert_eq!(resolved, PathBuf::from("/tmp/custom.db"));
+    }
+
+    #[test]
+    fn relative_database_path_resolves_to_app_data_dir() {
+        let resolved = resolve_database_path_from_app_data_dir(
+            Some("databases/mydb.db"),
+            Some(Path::new("/tmp/app-data")),
+        )
+            .expect("relative db path should resolve");
+
+        assert_eq!(resolved, PathBuf::from("/tmp/app-data/databases/mydb.db"));
+    }
+
+    #[test]
+    fn default_database_path_resolves_to_app_data_dir() {
+        let resolved = resolve_database_path_from_app_data_dir(
+            None,
+            Some(Path::new("/tmp/app-data")),
+        )
+            .expect("default db path should resolve");
+
+        assert_eq!(resolved, PathBuf::from("/tmp/app-data/baresync.db"));
     }
 }

@@ -79,7 +79,6 @@ impl SyncHttpTransport for MockTransport {
 }
 
 let plugin = BaresyncBuilder::new()
-    .transport(Arc::new(MockTransport))
     // ... other config
     .build();
 ```
