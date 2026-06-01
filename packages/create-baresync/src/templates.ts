@@ -159,8 +159,8 @@ export function serverPackageJson(options: ScaffoldOptions) {
   return replaceProjectName(readTemplateAsset("server/package.json"), options);
 }
 
-export function prependDevScript(originalDevScript: string): string {
-  return `drizzle-kit migrate --config drizzle.config.ts && PORT=3001 ${originalDevScript}`;
+export function prependPort(originalDevScript: string): string {
+  return `PORT=3001 ${originalDevScript}`;
 }
 
 function serverDrizzleConfig(options: ScaffoldOptions) {

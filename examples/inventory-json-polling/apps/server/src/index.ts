@@ -1,11 +1,10 @@
 import { SYNC_SCOPE } from "@sync-contract/constants";
 import { Hono } from "hono";
-import { createInventoryDatabase } from "./db/client";
+import { db } from "./db/client";
 import type { InventoryScope } from "./db/v1/drizzle-helper/sync-repository";
 import { createV1Routes } from "./v1/routes";
 
 const app = new Hono();
-const { db, dbPath } = await createInventoryDatabase();
 
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== SYNC_SCOPE) {
@@ -35,4 +34,4 @@ export default app;
 console.log(
   `inventory server listening on http://127.0.0.1:${process.env.PORT ?? "3001"}`
 );
-console.log(`inventory database seeded at ${dbPath}`);
+console.log("inventory database initialized");

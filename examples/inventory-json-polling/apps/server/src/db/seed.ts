@@ -5,7 +5,7 @@ import {
   stockCounts,
 } from "@sync-contract/api-synced-schema";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import { createInventoryDatabase } from "./client";
+import { db } from "./client";
 
 const SEED_TIME = "2026-05-20T00:00:00.000Z";
 const SEED_SYNC_UPDATED_AT = Date.parse(SEED_TIME);
@@ -79,7 +79,6 @@ export function getSeedCursor() {
 
 // `bun run src/db/seed.ts` uses this path through `predev`.
 export async function seedInventoryDatabaseForDev(): Promise<void> {
-  const { db } = await createInventoryDatabase();
   await db.delete(syncBatchRequests);
   await seedInventoryDatabase(db);
 }
