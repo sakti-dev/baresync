@@ -9,12 +9,6 @@ The polling loop runs the sync engine on a fixed interval. It lives in a spawned
 
 ## Lifecycle
 
-```
-startPolling() → loop runs every N seconds → sync_fn() → emit events
-                    ↑                                  |
-                    └── notify_one() on run_sql ───────┘
-```
-
 1. `startPolling(scope_id)` spawns a Tokio task that runs the polling loop
 2. Every `poll_interval_secs` seconds, the loop calls `sync_fn(scope_id)`
 3. `sync_fn` creates a `SyncEngine` and calls `sync_now`
@@ -70,28 +64,23 @@ const status = await invoke("plugin:baresync|get_polling_status");
 | `paused` | `true` if the loop is skipping ticks |
 | `last_sync_at` | ISO timestamp of the last completed sync |
 
-## Polling state diagram
+## State diagram
 
-```
-                    startPolling()
-                         │
-                         ▼
-              ┌────── Running ──────┐
-              │                      │
-         pausePolling()        timer / notify
-              │                      │
-              ▼                      ▼
-         ┌── Paused ──┐      sync_fn() running
-         │             │            │
-    resumePolling()    │            ▼
-         │             │      Check outcome
-         ▼             │      Emit events
-    Back to Running    │      Reset timer
-                        │
-                  stopPolling()
-                        │
-                        ▼
-                    Stopped
+```mermaid
+flowchart LR
+    Start["startPolling()"] --> Run["Running\npolling loop active"]
+
+    Run -->|timer or notify_one| Sync["Syncing\nsync_fn()"]
+    Sync -->|cycle complete| Run
+    Run -->|pausePolling| Pause["Paused\nskipping ticks"]
+    Pause -->|resumePolling| Run
+    Run -->|stopPolling| Stopped["Stopped\nlast_sync_at reset"]
+    Stopped -->|startPolling| Run
+
+    style Run fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style Sync fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+    style Pause fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style Stopped fill:#f8cecc,stroke:#b85450,color:#0f172a
 ```
 
 Next: [Events](/docs/tauri-plugin/events).

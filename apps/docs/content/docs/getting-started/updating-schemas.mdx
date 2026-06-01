@@ -1,0 +1,187 @@
+---
+title: Updating Schemas
+description: How to add or change synced tables after the initial scaffold.
+---
+
+# Updating Schemas
+
+This page covers the full flow for changing synced table schemas after you've scaffolded your project. It applies when you add a new table, add/remove a column, or change a column type.
+
+## Synced vs local-only / server-only tables
+
+Not every table goes through the sync contract. The sync generator only processes tables listed in the `tables` map of `sync.config.ts`.
+
+- **Synced tables** — defined in both `api-synced-schema.ts` and `local-synced-schema.ts`, listed in `sync.config.ts`. These require the full flow below (regenerate contract, update imports, update migrations).
+- **Local-only tables** — defined in `local-schema.ts` (e.g. `syncOutbox`, `syncCursors`). Add the table to `local-schema.ts`, add it to the `TABLE` registry in `db.ts`, add it to `drizzle.local.config.ts`, then regenerate local migrations. No contract regeneration needed.
+- **Server-only tables** — defined in `api-schema.ts` (e.g. `syncBatchRequests`). Add the table to `api-schema.ts`, add it to `drizzle.config.ts` on the server, then regenerate server migrations. No contract regeneration needed.
+
+The rest of this page is about **synced tables**.
+
+## The two schema files
+
+Your sync contract has two parallel schema files that define the same tables from each side of the sync boundary:
+
+| File | Side | Sync columns | Used by |
+|------|------|-------------|---------|
+| `packages/sync-contract/src/api-synced-schema.ts` | Server | `apiSyncColumns()` — `syncUpdatedAt` (integer), `deletedAt`, `createdAt`, `updatedAt` | Server sync repository |
+| `packages/sync-contract/src/local-synced-schema.ts` | Client | `localSyncColumns()` — `isSynced` (boolean), `deletedAt`, `createdAt`, `updatedAt` | Tauri app |
+
+They must define the same table names and business columns, but differ in their sync metadata columns. The server tracks sync state with an integer `syncUpdatedAt` cursor. The client tracks it with a boolean `isSynced` flag.
+
+For example, a `lists` table appears in both files:
+
+```ts
+// api-synced-schema.ts (server side)
+export const lists = sqliteTable("lists", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  name: text("name").notNull(),
+  ...apiSyncColumns(),  // syncUpdatedAt, deletedAt, createdAt, updatedAt
+});
+
+// local-synced-schema.ts (client side)
+export const lists = sqliteTable("lists", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  name: text("name").notNull(),
+  ...localSyncColumns(),  // isSynced, deletedAt, createdAt, updatedAt
+});
+```
+
+Both schemas must use the same table names and have matching columns for anything that syncs. The sync metadata columns differ by design (`apiSyncColumns()` vs `localSyncColumns()`). You can also have one-side-only columns — for example a `draftNote` column that only exists on the client, or an `auditVersion` column that only exists on the server. Declare these in `sync.config.ts` as `localOnlyColumns` or `serverOnlyColumns` and the generator will handle them correctly.
+
+## What the generator produces
+
+When you run `bun run generate:sync`, the generator reads both source schemas and writes to `packages/sync-contract/generated/<YYYY-MM-DD>/`:
+
+| File | Purpose |
+|------|---------|
+| `sync-contract.json` | Machine-readable contract loaded by the Tauri plugin at compile time |
+| `sync-contract.manifest.json` | Metadata with field numbering for the wire protocol |
+| `sync-table-order.ts` | `SYNC_UPSERT_ORDER` and `SYNC_DELETE_ORDER` arrays (derived from foreign key graph) |
+| `api-synced-schema.ts` | Frozen copy of the source `api-synced-schema.ts` |
+| `local-synced-schema.ts` | Frozen copy of the source `local-synced-schema.ts` |
+
+The generated schemas are frozen snapshots. Editing the source files after generation does not change the generated copies — you must regenerate to pick up changes.
+
+## Full update flow
+
+### 1. Edit source schemas
+
+Add or change tables in `packages/sync-contract/src/api-synced-schema.ts` and `packages/sync-contract/src/local-synced-schema.ts`.
+
+Most columns should exist in both files, but you can have columns that only matter on one side. For example, the client might have a `draftNote` column that stays local, or the server might have an `auditVersion` column that clients don't need. Declare these in `sync.config.ts` as `localOnlyColumns` or `serverOnlyColumns` (see step 2).
+
+The contract JSON records the union of all columns, and tags one-side-only columns so the sync engine ignores them during push/pull.
+
+### 2. Update `sync.config.ts`
+
+If you added a new table, add it to the `tables` map in `packages/sync-contract/sync.config.ts`:
+
+```ts
+export const syncGeneratorConfig = defineSyncConfig({
+  apiSyncedSchema,
+  localSyncedSchema,
+  outputDir: "./generated",
+  schemaSourceDir: `${__dirname}src`,
+  tables: {
+    lists: { scopeColumn: "scope_id" },
+    todos: { scopeColumn: "scope_id" },
+    notes: { scopeColumn: "scope_id" },  // new table
+  },
+});
+```
+
+Each table entry can also declare one-side-only columns:
+
+```ts
+tables: {
+  lists: {
+    scopeColumn: "scope_id",
+    localOnlyColumns: ["draftNote"],      // client-only column, not synced
+    serverOnlyColumns: ["auditVersion"],  // server-only column, not synced
+  },
+},
+```
+
+The generator validates that every column in your Drizzle table definitions is accounted for — either present on both sides, or declared as `localOnlyColumns` / `serverOnlyColumns`. If you add a column to only one schema file and forget to declare it, generation will fail with an error telling you which column is unexpected.
+
+### 3. Regenerate the sync contract
+
+```bash
+bun run generate:sync
+```
+
+This creates a new dated directory (e.g. `generated/2026-06-02/`) with the updated contract and schema snapshots.
+
+### 4. Update imports that reference the generated schema
+
+The server imports from the snapshotted generated schemas. When the date changes, these imports must be updated:
+
+```ts
+// Before (old date directory)
+import { lists, todos } from "@sync-contract/generated/2026-06-01/api-synced-schema";
+
+// After (new date directory)
+import { lists, todos, notes } from "@sync-contract/generated/2026-06-02/api-synced-schema";
+```
+
+Files that typically need updating:
+
+- `apps/server/src/db/v1/sync-repository.ts` — imports tables for query builders
+- `apps/app/src-tauri/src/lib.rs` — the `include_str!` path to `sync-contract.json`
+
+```rust
+// lib.rs — update the date in the path
+.contract_json(include_str!(
+    "../../../../packages/sync-contract/generated/2026-06-02/sync-contract.json"
+))
+```
+
+The Tauri app itself imports from the source schemas (`@sync-contract/local-synced-schema`), not the generated ones, so those imports do not change.
+
+### 5. Update the TABLE registry
+
+Add new tables to the `TABLE` object in `apps/app/src/lib/db.ts`:
+
+```ts
+import { lists, todos, notes } from "@sync-contract/local-synced-schema";
+import { syncCursors, syncOutbox } from "@sync-contract/local-schema";
+
+export const TABLE = {
+  lists,
+  todos,
+  notes,  // new table
+  syncCursors,
+  syncOutbox,
+};
+```
+
+### 6. Regenerate migrations
+
+```bash
+bun run migrate:local    # local SQLite migrations (Tauri app)
+bun run migrate:server   # server database migrations
+```
+
+### 7. Update the server sync repository
+
+If you added a new table, add a corresponding entry in `apps/server/src/db/v1/sync-repository.ts` with `buildRow`, `readLatestRow`, `readRows`, `softDeleteRow`, and `upsertRow` functions. See [Server Routes](/docs/getting-started/server-routes) for the full pattern.
+
+## Quick reference
+
+```bash
+# Full update after schema changes:
+bun run generate:sync                              # 1. regenerate contract
+# Update lib.rs include_str! path                  # 2. point plugin to new contract
+# Update server imports to new generated date      # 3. server uses snapshotted schema
+# Add new tables to TABLE in db.ts                 # 4. app TABLE registry
+# Add new tables to sync-repository.ts             # 5. server sync handlers
+bun run migrate:local && bun run migrate:server    # 6. regenerate migrations
+```
+
+## Why the generated schemas are frozen
+
+The date-stamped snapshot ensures the server and the Tauri plugin use a versioned, immutable contract. If you edit source schemas without regenerating, the server keeps working against the old contract — it won't accidentally pick up uncommitted schema changes. The plugin embeds the contract JSON at compile time via `include_str!`, so it also uses the versioned snapshot.
+
+Next: [Run Sync](/docs/getting-started/run-sync).

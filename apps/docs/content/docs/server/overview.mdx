@@ -50,12 +50,50 @@ If you use Drizzle ORM on the server, `createDrizzleSyncRepository` from `baresy
 
 ## Architecture
 
-```txt
-Tauri plugin  ──── HTTP POST ────  Your server
-  sync_now()                       /sync/status  →  resolveScope + loadSyncStatus
-  push()                           /sync/push    →  resolveScope + idempotency + applyPushChanges
-  pull()                           /sync/pull    →  resolveScope + loadPullChanges
+```mermaid
+flowchart LR
+    Plugin["Tauri Plugin\nsync_now / push / pull"]
+    Status["POST /sync/status"]
+    Push["POST /sync/push"]
+    Pull["POST /sync/pull"]
+
+    Plugin -- "HTTP POST" --> Status
+    Plugin -- "HTTP POST" --> Push
+    Plugin -- "HTTP POST" --> Pull
+
+    Status --> StatusH["Status Handler"]
+    Pull --> PullH["Pull Handler"]
+    Push --> PushH["Push Handler"]
+
+    PushH --> Guard["Idempotency Guard"]
+    Guard --> Scope["resolveScope\nprovided by you"]
+
+    StatusH --> Scope
+    PullH --> Scope
+
+    Scope --> Callbacks["loadSyncStatus\nloadPullChanges\napplyPushChanges\nprovided by you"]
+
+    Callbacks -.->|"optional"| Helper["Drizzle Repository Helper\nprovided by Baresync"]
+    Helper -.-> DB["Your Database"]
+
+    style Plugin fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
+    style Guard fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style Scope fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style Callbacks fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style StatusH fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style PullH fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style PushH fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style Helper fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style DB fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
 ```
+
+Each handler factory wraps one endpoint and calls your callbacks:
+
+| Route | Factory | Calls your |
+|---|---|---|
+| `POST /sync/status` | `createSyncStatusHandler` | `resolveScope` + `loadSyncStatus` |
+| `POST /sync/push` | `createSyncPushHandler` | `resolveScope` + idempotency guard + `applyPushChanges` |
+| `POST /sync/pull` | `createSyncPullHandler` | `resolveScope` + `loadPullChanges` |
 
 ## Next steps
 

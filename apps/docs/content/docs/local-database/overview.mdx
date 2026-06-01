@@ -9,17 +9,44 @@ Every Baresync Tauri app has a local SQLite database that stores your synced tab
 
 ## Architecture
 
-```txt
-JS (Drizzle ORM)                          Rust (SQLite)
-───────────────                           ────────────
-createTauriDrizzleDatabase()
-  │
-  ├─ db.select() ──► invoke("plugin:baresync|run_sql") ──► DbClient.query()
-  ├─ db.insert() ──► invoke("plugin:baresync|run_sql") ──► DbClient.execute()
-  └─ db.batch()  ──► invoke("plugin:baresync|run_sql_batch") ──► worker-owned transaction
-```
+```mermaid
+flowchart LR
+    subgraph JS["JavaScript (Frontend)"]
+        DB["createTauriDrizzleDatabase()"]
+        Q["db.select()\ndb.insert()\ndb.delete()\ndb.update()"]
+        Batch["db.batch()"]
+    end
 
-The database lives on the Rust side. The JS side uses Drizzle ORM with a proxy driver that serializes SQL statements, sends them over Tauri IPC, and receives JSON results back.
+    DB --> Q
+    DB --> Batch
+
+    subgraph IPC["Tauri IPC"]
+        RunSQL["invoke('run_sql')"]
+        BatchSQL["invoke('run_sql_batch')"]
+    end
+
+    Q -->|"serialized SQL"| RunSQL
+    Batch -->|"serialized SQL"| BatchSQL
+
+    subgraph Rust["Rust (SQLite)"]
+        Query["DbClient.query()"]
+        Exec["DbClient.execute()"]
+        Tx["worker-owned transaction"]
+    end
+
+    RunSQL -->|"single statement"| Query
+    RunSQL -->|"single statement"| Exec
+    BatchSQL --> Tx
+
+    style DB fill:#eef4ff,stroke:#6c8ebf,color:#0f172a
+    style Q fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style Batch fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style RunSQL fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+    style BatchSQL fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+    style Query fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style Exec fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style Tx fill:#d5e8d4,stroke:#82b366,color:#0f172a
+```
 
 ## What's in the database
 

@@ -11,10 +11,34 @@ The schemas live in a shared sync contract package so the app and server always 
 
 ## The pairing
 
-| Side | Schema | Sync columns | Purpose |
-|---|---|---|---|
-| Local | `local-synced-schema.ts` | `localSyncColumns()` | Adds `isSynced` for dirty tracking |
-| API | `api-synced-schema.ts` | `apiSyncColumns()` | Adds `syncUpdatedAt` for cursor timestamps |
+```mermaid
+flowchart TB
+    subgraph Local["local-synced-schema.ts — You write"]
+        L1["domain columns\ntext('id'), timestamp,..."]
+        L2["deletedAt, createdAt, updatedAt"]
+        L3["localSyncColumns()\n▶ adds: isSynced"]
+    end
+
+    subgraph API["api-synced-schema.ts — You write"]
+        A1["domain columns\ntext('id'), timestamp,..."]
+        A2["deletedAt, createdAt, updatedAt"]
+        A3["apiSyncColumns()\n▶ adds: syncUpdatedAt"]
+    end
+
+    Local --> G["Generator\nread, validate,\ncompute FK order"]
+    API --> G
+
+    G --> C1["local-synced-schema.ts\n(unchanged — your local DB)"]
+    G --> C2["api-synced-schema.ts\n(unchanged — your server DB)"]
+    G --> C3["contract artifacts\nconstants, types,\nfield lists, FK chains"]
+
+    style Local fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style API fill:#fff2cc,stroke:#d6b656,color:#0f172a
+    style G fill:#f3e8ff,stroke:#a78bfa,color:#0f172a
+    style C1 fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style C2 fill:#d5e8d4,stroke:#82b366,color:#0f172a
+    style C3 fill:#d5e8d4,stroke:#82b366,color:#0f172a
+```
 
 Both sides share the same domain columns and the `deletedAt` column.
 
@@ -27,15 +51,6 @@ Both sides share the same domain columns and the `deletedAt` column.
 - Either `isSynced` (local) or `syncUpdatedAt` (API)
 
 ## The schemas you write
-
-```txt
-packages/sync-contract/src/
-├── constants.ts              # scope ID, package name
-├── local-synced-schema.ts    # synced tables with localSyncColumns()
-├── api-synced-schema.ts      # synced tables with apiSyncColumns()
-├── local-schema.ts           # sync_outbox + sync_cursors tables
-└── api-schema.ts             # sync_batch_requests table
-```
 
 The generator reads both synced schemas, validates them, computes table ordering from foreign keys, and outputs contract artifacts.
 

@@ -80,11 +80,7 @@ export default {
 
 Add your synced tables to both the database helper and this config so Drizzle Kit generates migrations for them.
 
-After changing schemas, regenerate migrations:
-
-```bash
-bun run migrate:local
-```
+After changing schemas, you need to regenerate the sync contract (which snapshots your schemas into a dated directory) before regenerating migrations. See [Updating Schemas](/docs/getting-started/updating-schemas) for the full flow.
 
 ## Write local changes
 
