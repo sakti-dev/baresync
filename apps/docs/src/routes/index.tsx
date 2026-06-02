@@ -225,7 +225,7 @@ const Feature = ({
     <div
       className={cn(
         "group/feature relative flex flex-col border-fd-border border-b py-10",
-        "lg:border-r",
+        "lg:border-r"
       )}
     >
       {isTopRow ? (
@@ -328,9 +328,11 @@ function QuickStart() {
           <h2 className="mb-4 flex items-center justify-center gap-2 font-semibold text-2xl text-fd-foreground sm:text-3xl">
             Start building with{" "}
             <img
-              src="/baresync-logo-full-web.svg"
               alt="Baresync"
               className="inline h-7 sm:h-8"
+              height={28}
+              src="/baresync-logo-full-web.svg"
+              width={120}
             />
           </h2>
           <p className="mb-2 text-balance text-fd-muted-foreground">
