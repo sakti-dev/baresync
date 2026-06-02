@@ -1,5 +1,17 @@
 # Baresync
 
+<p align="center">
+  <a href="https://baresync.hieka.id/">
+    <img src="./apps/docs/public/baresync-logo-full-web.svg" alt="Baresync" width="320" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/baresync"><img src="https://img.shields.io/npm/v/baresync" alt="npm version" /></a>
+  <a href="https://crates.io/crates/baresync-core"><img src="https://img.shields.io/crates/v/baresync-core" alt="crates.io version" /></a>
+  <a href="https://crates.io/crates/tauri-plugin-baresync"><img src="https://img.shields.io/crates/v/tauri-plugin-baresync" alt="crates.io version" /></a>
+</p>
+
 SQLite-first sync infrastructure for Tauri apps.
 
 Baresync is an opinionated sync stack for applications that keep working data in local SQLite and reconcile it with an app-owned backend. It combines Drizzle schema helpers, a generated sync contract, a Rust sync engine, a Tauri plugin, and server helpers for push, pull, and status routes.
