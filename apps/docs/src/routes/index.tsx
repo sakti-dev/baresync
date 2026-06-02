@@ -15,7 +15,7 @@ function Home() {
   return (
     <HomeLayout {...baseOptions()}>
       <main className="flex flex-1 flex-col overflow-hidden">
-        <div className="mx-auto w-full max-w-screen-xl border-fd-border border-x">
+        <div className="mx-auto w-full max-w-7xl border-fd-border border-x">
           <HeroSection />
           <FeatureGrid />
           <HowSyncWorks />

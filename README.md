@@ -24,12 +24,12 @@ Baresync turns that plumbing into a reusable contract and runtime while leaving 
 ## What It Provides
 
 - Drizzle SQLite helpers for declaring synced tables and row-state columns.
-- Contract diagnostics for primary keys, row state, scope columns, foreign keys, table order, and encoding support.
-- Generated artifacts including `sync-contract.json`, `sync-table-order.ts`, manifests, and optional protobuf workspace files.
+- Contract diagnostics for primary keys, row state, scope columns, foreign keys, table order, and conflict strategies.
+- Generated artifacts including `sync-contract.json`, `sync-table-order.ts`, and manifests.
 - A Rust core engine for status, push, pull, full sync, full resync, outbox cleanup, and garbage collection.
 - A Tauri plugin that owns SQLite, migrations, Drizzle proxy commands, and sync commands.
-- Server utilities for JSON/protobuf decoding, response encoding, payload limits, idempotency, cursor helpers, and handler factories.
-- Fixture app and smoke automation for desktop and Android verification.
+- Server utilities for decoding, payload limits, idempotency, cursor helpers, and handler factories.
+- A Drizzle repository helper for building server-side push/pull/status handlers.
 
 ## Current Scope
 
@@ -40,7 +40,7 @@ Baresync is intentionally narrow for v1:
 - Drizzle SQLite schemas.
 - Consumer-owned backend routes.
 - Generated sync contracts.
-- JSON as the baseline transport, with protobuf support where generated adapters are wired.
+- JSON transport.
 
 It is not a hosted sync service, generic ORM, generic SQLite plugin, or database-agnostic replication engine.
 
@@ -49,7 +49,7 @@ It is not a hosted sync service, generic ORM, generic SQLite plugin, or database
 ```mermaid
 flowchart TD
   schema["Drizzle SQLite schema"]
-  contract["defineSyncConfig / defineProtobufSyncConfig"]
+  contract["defineSyncConfig"]
   generator["Generator diagnostics and artifacts"]
   app["Tauri app<br/>Drizzle proxy + sync client"]
   plugin["tauri-plugin-baresync"]
@@ -67,57 +67,44 @@ flowchart TD
 
 The app defines synced Drizzle tables, generates a contract, registers the Tauri plugin with contract metadata, queries SQLite through the plugin, and calls sync commands for a concrete `scopeId`.
 
-The backend remains app-owned. Baresync helps with request/response structure, idempotency, ordering, limits, and encoding, but your server still decides which sync scope a request can use and how rows are persisted.
+The backend remains app-owned. Baresync helps with request/response structure, idempotency, ordering, and limits, but your server still decides which sync scope a request can use and how rows are persisted.
 
 ## Repository Layout
 
-| Path                           | Purpose                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `packages/baresync`            | TypeScript package: schema helpers, generator, DB proxy, server helpers, Tauri client |
-| `crates/baresync-core`         | Rust sync engine and SQLite runtime                                                   |
-| `crates/tauri-plugin-baresync` | Tauri plugin wrapper and command surface                                              |
-| `tests/fixture-app`            | Public fixture Tauri app used for desktop and Android smoke flows                     |
-| `tests/e2e`                    | Fixture backend, generated protobuf workspace, desktop and Android automation         |
-| `apps/docs`                    | Waku + Fumadocs documentation site                                                    |
-| `docs`                         | Planning notes, runbooks, and implementation knowledge                                |
-| `openspec`                     | Archived and active spec-driven change artifacts                                      |
+| Path                           | Purpose                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `packages/baresync`            | TypeScript package: schema helpers, generator, DB proxy, server helpers |
+| `crates/baresync-core`         | Rust sync engine and SQLite runtime                                     |
+| `crates/tauri-plugin-baresync` | Tauri plugin wrapper and command surface                                |
+| `tests/fixture-app`            | Fixture Tauri app used for desktop and Android smoke flows              |
+| `tests/e2e`                    | Fixture backend, desktop and Android automation                         |
+| `apps/docs`                    | Waku + Fumadocs documentation site                                      |
+| `docs`                         | Planning notes, runbooks, and implementation knowledge                  |
+| `openspec`                     | Archived and active spec-driven change artifacts                        |
 
 ## Quick Start
 
 Start new projects with `create-baresync`:
 
 ```bash
-bun create baresync
+bunx create-baresync my-app
 ```
 
-The generated starter uses the public `baresync` npm package plus the `tauri-plugin-baresync` Rust crate.
-
-For a richer fullstack reference, see [`examples/inventory-json-polling`](./examples/inventory-json-polling). It remains the canonical fullstack example in this repository.
+The scaffold prompts for project name and server framework (Hono recommended), then creates a monorepo:
 
 ```txt
-inventory/
-  package.json
-  apps/
-    app/            # initialized with `bun create tauri-app`
-      src/
-      src-tauri/
-    server/         # initialized with `bun create hono@latest`
-      src/
-  packages/
-    sync-contract/
-      package.json
-      src/local-synced-schema.ts
-      src/api-synced-schema.ts
-      sync.config.ts
-      generated/
+my-app/
+├── apps/
+│   ├── app/          # Tauri desktop app (React + Vite)
+│   └── server/       # Hono backend
+└── packages/
+    └── sync-contract/  # shared schemas + generated contract
 ```
-
-The shared contract package is where Drizzle tables, Baresync metadata, and generated artifacts live. The Tauri app consumes the local schema for SQLite access and plugin configuration. The Hono server consumes the API schema for persistence plus generated table order for request handling.
 
 Define local synced tables in the shared contract package:
 
-```ts title="examples/inventory-json-polling/packages/sync-contract/src/local-synced-schema.ts"
-// examples/inventory-json-polling/packages/sync-contract/src/local-synced-schema.ts
+```ts title="packages/sync-contract/src/local-synced-schema.ts"
+// packages/sync-contract/src/local-synced-schema.ts
 import { localSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -132,8 +119,8 @@ export const categories = sqliteTable("categories", {
 
 Define the API-side synced table shape separately:
 
-```ts title="examples/inventory-json-polling/packages/sync-contract/src/api-synced-schema.ts"
-// examples/inventory-json-polling/packages/sync-contract/src/api-synced-schema.ts
+```ts title="packages/sync-contract/src/api-synced-schema.ts"
+// packages/sync-contract/src/api-synced-schema.ts
 import { apiSyncColumns } from "baresync/schema";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -148,9 +135,9 @@ export const categories = sqliteTable("categories", {
 
 Create the generator config from both synced schema views:
 
-```ts title="examples/inventory-json-polling/packages/sync-contract/sync.config.ts"
-// examples/inventory-json-polling/packages/sync-contract/sync.config.ts
-import { defineProtobufSyncConfig, defineSyncConfig } from "baresync/generator";
+```ts title="packages/sync-contract/sync.config.ts"
+// packages/sync-contract/sync.config.ts
+import { defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
@@ -160,39 +147,21 @@ export const syncGeneratorConfig = defineSyncConfig({
   outputDir: "./generated",
   packageName: "example.sync.v1",
   tables: {
-    categories: { scope: "workspace_id" },
-  },
-});
-
-export const protobufSyncGeneratorConfig = defineProtobufSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
-  outputDir: "./generated/protobuf",
-  outputs: {
-    proto: "./generated/protobuf/sync.proto",
-    runtimeSourceTs: "./generated/protobuf/runtime.ts",
-    runtimeTs: "./generated/protobuf/runtime.generated.ts",
-    rustSyncMappers: "../../apps/app/src-tauri/src/protobuf_generated.rs",
-    syncTs: "./generated/protobuf/sync.generated.ts",
-  },
-  packageName: "example.sync.v1",
-  tables: {
-    categories: { scope: "workspace_id" },
+    categories: { scopeColumn: "workspace_id" },
   },
 });
 ```
 
 Expose the schema and generated artifacts from the shared package:
 
-```json title="examples/inventory-json-polling/packages/sync-contract/package.json"
+```json title="packages/sync-contract/package.json"
 {
-  "//": "examples/inventory-json-polling/packages/sync-contract/package.json",
   "name": "@example/inventory-sync-contract",
   "private": true,
   "type": "module",
   "exports": {
-    "./api-synced-schema": "./src/api-synced-schema.ts",
     "./local-synced-schema": "./src/local-synced-schema.ts",
+    "./api-synced-schema": "./src/api-synced-schema.ts",
     "./generated/sync-table-order": "./generated/sync-table-order.ts",
     "./generated/sync-contract": "./generated/sync-contract.json",
     "./generated/manifest": "./generated/sync-contract.manifest.json"
@@ -203,28 +172,32 @@ Expose the schema and generated artifacts from the shared package:
 Run diagnostics and generation from the contract package directory. The CLI discovers `sync.config.ts` automatically when you are in the right folder.
 
 ```bash
-cd examples/inventory-json-polling/packages/sync-contract
+cd packages/sync-contract
 bunx baresync doctor
 bunx baresync generate
 ```
 
-If you need protobuf workspace files, export `protobufSyncGeneratorConfig` from the same `sync.config.ts`.
+Set up the Drizzle proxy for local SQLite access:
 
-```ts title="examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts"
-// examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts
-import { generateProtobufWorkspaceArtifacts } from "baresync/generator";
-import { protobufSyncGeneratorConfig } from "./sync.config";
+```ts title="apps/app/src/lib/db.ts"
+// apps/app/src/lib/db.ts
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import {
+  items,
+  locations,
+} from "@example/inventory-sync-contract/local-synced-schema";
+import {
+  syncOutbox,
+  syncCursors,
+} from "@example/inventory-sync-contract/local-synced-schema";
 
-generateProtobufWorkspaceArtifacts(protobufSyncGeneratorConfig);
+const TABLE = { items, locations, syncOutbox, syncCursors };
+
+export const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
 ```
 
-Run it when the sync schema changes:
-
-```bash
-bun ./examples/inventory-json-polling/packages/sync-contract/generate-protobuf.ts
-```
-
-Use the Tauri client from the app created with `bun create tauri-app`:
+Use the Tauri sync client:
 
 ```ts title="apps/app/src/sync.ts"
 // apps/app/src/sync.ts
@@ -232,8 +205,6 @@ import { createSyncClient } from "baresync/tauri";
 import { invoke } from "@tauri-apps/api/core";
 
 const sync = createSyncClient({
-  apiUrl: "https://api.example.com",
-  encoding: "json",
   scopeId: "default",
   invoke,
 });
@@ -241,99 +212,126 @@ const sync = createSyncClient({
 await sync.syncNow();
 ```
 
-Wire routes in the server created with `bun create elysia`:
+Wire routes in the server created with `bun create hono`:
 
-```ts title="apps/server/src/sync-routes.ts"
-// apps/server/src/sync-routes.ts
-import { Elysia } from "elysia";
+```ts title="apps/server/src/v1/routes.ts"
+// apps/server/src/v1/routes.ts
+import { Hono } from "hono";
 import {
   createSyncPullHandler,
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import { SYNC_UPSERT_ORDER } from "@example/inventory-sync-contract/generated/sync-table-order";
-import { serverDb } from "./server-db";
+import {
+  createDrizzleSyncRepository,
+  optionalString,
+  requiredString,
+} from "baresync/server/drizzle";
+import { db } from "../db/client";
 
-async function resolveScope({
-  context,
-  scopeId,
-}: {
-  context: {
-    session: Session;
-  };
-  scopeId: string;
-}) {
-  const scope = await resolveUserSyncScope(context.session, scopeId);
-  if (!scope) {
+const resolveScope = ({ scopeId }: { scopeId: string }) => {
+  if (scopeId !== "default") {
     return {
       ok: false as const,
       status: 403,
-      body: { error: "forbidden" },
+      body: { error: "single_scope_only" },
     };
   }
+  return { ok: true as const, scope: { scopeId } };
+};
 
-  return { ok: true as const, scope };
-}
-
-export const push = createSyncPushHandler({
-  encoding: "json",
-  idempotency: { db: serverDb },
-  upsertOrder: SYNC_UPSERT_ORDER,
-  resolveScope,
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) => {
-    return pushTablesWithAppOwnedOperations({
-      changes,
-      scope,
-      syncUpdatedAt,
-    });
+const repository = createDrizzleSyncRepository({
+  tables: {
+    locations: {
+      buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
+        id: requiredString(row.id, "locations.id"),
+        name: requiredString(row.name, "locations.name"),
+        scopeId,
+        syncUpdatedAt,
+        updatedAt,
+      }),
+      readLatestRow: async ({ scopeId }) => {
+        /* query by scopeId */
+      },
+      readRows: ({ cursorTimestamp, scopeId }) => {
+        /* query changed rows */
+      },
+      softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
+        /* soft delete */
+      },
+      upsertRow: async (row) => {
+        /* insert or update */
+      },
+    },
   },
 });
 
-export const pull = createSyncPullHandler({
-  encoding: "json",
+const push = createSyncPushHandler({
+  resolveScope,
+  upsertOrder: repository.tableNames,
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+    repository.applyPushChanges({
+      changes,
+      scopeId: scope.scopeId,
+      syncUpdatedAt,
+    }),
+});
+
+const pull = createSyncPullHandler({
   limit: 1000,
   resolveScope,
-  loadPullChanges: async ({ cursor, limit, scope, tables }) => {
-    return loadChangedRows({
-      cursor,
-      limit,
-      scope,
-      tables,
-    });
-  },
+  loadPullChanges: async ({ cursor, scope, tables }) =>
+    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
 });
 
-export const status = createSyncStatusHandler({
-  encoding: "json",
+const status = createSyncStatusHandler({
   resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) => {
-    return loadSyncStatus({
-      cursor,
-      scope,
-    });
-  },
+  loadSyncStatus: async ({ cursor, scope }) =>
+    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
 });
 
-export const syncRoutes = new Elysia({ prefix: "/sync" })
-  .derive(async ({ headers }) => {
-    return {
-      session: await readSession(headers),
-    };
-  })
-  .post("/push", ({ request, session }) => {
-    return push(request, { session });
-  })
-  .post("/pull", ({ request, session }) => {
-    return pull(request, { session });
-  })
-  .post("/status", ({ request, session }) => {
-    return status(request, { session });
-  });
+const sync = new Hono();
+sync.post("/push", (c) => push(c.req.raw, {}));
+sync.post("/pull", (c) => pull(c.req.raw, {}));
+sync.post("/status", (c) => status(c.req.raw, {}));
+
+export default sync;
 ```
 
-The backend still owns authorization and persistence. Baresync decodes envelopes, validates push limits, orders table changes, wraps idempotent push handling, and encodes responses. The idempotency guard expects the `sync_batch_requests` table from `syncServerSchema` to exist in the server database.
+The backend still owns authorization and persistence. Baresync decodes envelopes, validates push limits, orders table changes, and wraps idempotent push handling. The `resolveScope` function is where you check authorization — the handler factories call it on every request.
 
 Read the documentation site in `apps/docs` for the fuller integration path.
+
+## Concepts
+
+### Local-first
+
+Your app reads from and writes to a local SQLite database. No network request is needed to display data or create a record.
+
+### Outbox pattern
+
+Every local write that needs to sync goes through `writeLocalChange`. This performs the mutation and an outbox entry atomically. If the network is down, the entry waits. When connectivity returns, the sync engine pushes pending changes.
+
+### Sync modes
+
+The engine picks one of five modes on each `sync_now` call:
+
+- **NoOp** — Nothing to sync.
+- **PushOnly** — Local writes pending, no server changes.
+- **PullOnly** — No local writes, server has changes.
+- **FullSync** — Both sides have changes. Pull first, then push.
+- **FullResync** — First sync or explicit refresh. Pulls all data, then pushes outbox.
+
+### Paired schemas
+
+Each synced table has two Drizzle schemas:
+
+- **Local** — uses `localSyncColumns()` which adds `deletedAt`, `isSynced`, `createdAt`, `updatedAt`
+- **API** — uses `apiSyncColumns()` which adds `deletedAt`, `syncUpdatedAt`, `createdAt`, `updatedAt`
+
+### Scope
+
+Every synced row belongs to a scope (tenant, workspace, etc.). The server's `resolveScope` function checks that the requesting user has access to the requested scope.
 
 ## Development
 
@@ -384,11 +382,4 @@ Additional verification lives in the fixture and E2E workspaces. Before changing
 - Keep sync contracts generated and reviewable.
 - Keep server access control and persistence app-owned.
 - Prefer deterministic host tests before desktop or Android smoke tests.
-- Treat JSON and protobuf as encodings of the same contract.
 - Do not hide durable generation behind build magic.
-
-## Status
-
-Baresync is in active extraction and hardening. The core runtime, plugin wrapper, fixture app, protobuf generation path, and documentation site exist in this repo, but publishing metadata, release automation, and public API stability are still pending.
-
-Do not treat the current workspace package names as final release guarantees.

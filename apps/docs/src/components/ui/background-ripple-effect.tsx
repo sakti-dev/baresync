@@ -24,7 +24,7 @@ export const BackgroundRippleEffect = ({
       ref={ref}
       style={{ height: rows * cellSize }}
     >
-      <div className="pointer-events-none absolute inset-0 z-[2] h-full w-full overflow-hidden" />
+      <div className="pointer-events-none absolute inset-0 z-2 h-full w-full overflow-hidden" />
       <DivGrid
         borderColor="oklch(0.83 0.18 120 / 0.2)"
         cellSize={cellSize}
@@ -104,7 +104,7 @@ const DivGrid = ({
   };
 
   return (
-    <div className={cn("relative z-[3]", className)} style={gridStyle}>
+    <div className={cn("relative z-3", className)} style={gridStyle}>
       {cells.map((idx) => {
         const rowIdx = Math.floor(idx / cols);
         const colIdx = idx % cols;
