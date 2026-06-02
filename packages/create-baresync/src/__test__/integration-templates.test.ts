@@ -25,7 +25,7 @@ describe("server and tauri scaffold templates", () => {
     expect(serverIndex?.content).toContain('app.route("/api/v1/sync"');
     expect(serverIndex?.content).toContain('import sync from "./v1/routes"');
     expect(routes?.content).toContain("createSyncPushHandler");
-    expect(routes?.content).toContain("createAppSyncRepository");
+    expect(routes?.content).toContain("repository");
     expect(fallback?.content).toContain("Manual mount required");
   });
 
@@ -48,7 +48,7 @@ describe("server and tauri scaffold templates", () => {
       'import { sync } from "./v1/routes"'
     );
     expect(routes?.content).toContain("createSyncPushHandler");
-    expect(routes?.content).toContain("createAppSyncRepository");
+    expect(routes?.content).toContain("repository");
   });
 
   it("generates the tauri plugin builder setup and helper modules", () => {

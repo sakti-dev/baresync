@@ -6,6 +6,7 @@ import {
   useRipple,
 } from "@/components/ui/background-ripple-effect";
 import { PmCommandBlock } from "@/components/mdx/pm-command-block";
+import { SyncSlider } from "@/components/sync-slider";
 import { baseOptions } from "@/lib/layout.shared";
 
 export const Route = createFileRoute("/")({
@@ -18,8 +19,8 @@ function Home() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-7xl border-fd-border border-x">
           <HeroSection />
+          <SyncSlider />
           <FeatureGrid />
-          <HowSyncWorks />
           <WhatYouControl />
           <QuickStart />
           <Footer />
@@ -108,7 +109,7 @@ function HeroSection() {
           </p>
 
           <div className="mx-auto max-w-md">
-            <PmCommandBlock />
+            <PmCommandBlock className="rounded-none" />
           </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
@@ -181,7 +182,7 @@ function FeatureGrid() {
           </p>
         </div>
       </div>
-      <div className="grid sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
+      <div className="grid border-fd-border border-b sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
         {features.map((f) => (
           <div className="border-fd-border border-b p-6" key={f.title}>
             <h3 className="mb-2 font-semibold text-fd-foreground">{f.title}</h3>
@@ -195,136 +196,10 @@ function FeatureGrid() {
   );
 }
 
-function HowSyncWorks() {
-  return (
-    <section>
-      <div className="border-fd-border border-y">
-        <div className="mx-auto max-w-4xl px-6 py-6 text-center">
-          <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
-            How sync works
-          </h2>
-          <p className="mb-0 text-fd-muted-foreground leading-relaxed">
-            Every write goes through the outbox. The sync engine pushes pending
-            changes to your server and pulls back server state. Server-wins
-            reconciliation means your server is always the source of truth.
-          </p>
-        </div>
-      </div>
-
-      <div className="px-6 py-6">
-        <div className="mx-auto max-w-4xl space-y-8">
-          <SyncStep
-            code={`import { localSyncColumns } from "baresync/schema";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-
-export const todos = sqliteTable("todos", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
-  title: text("title").notNull(),
-  completed: integer("completed").notNull().default(0),
-  ...localSyncColumns(),
-});`}
-            description="Two Drizzle tables describe the same data from each side of the sync boundary. Local uses localSyncColumns() for a boolean dirty flag. API uses apiSyncColumns() for cursor timestamps."
-            number={1}
-            title="Define paired schemas"
-          />
-
-          <SyncStep
-            code={`$ bunx baresync doctor   # validate schemas
-$ bunx baresync generate # write contract artifacts
-
-# Generated:
-#   sync-contract.json
-#   sync-table-order.ts
-#   sync-contract.manifest.json`}
-            description="Run the CLI to produce a machine-readable contract, table ordering, and manifest. The contract is a frozen, date-stamped snapshot compiled into the Rust binary."
-            isShell
-            number={2}
-            title="Generate the sync contract"
-          />
-
-          <SyncStep
-            code={`BaresyncBuilder::new()
-    .api_base_url("https://api.yourapp.com")
-    .db_path("app.db")
-    .contract_json(include_str!("../generated/sync-contract.json"))
-    .migrations_path("migrations")
-    .poll_interval_secs(30)
-    .build()`}
-            description="The Tauri plugin owns SQLite, migrations, and the sync engine. It runs on a polling interval and emits events when data changes."
-            number={3}
-            title="Register the plugin"
-          />
-
-          <SyncStep
-            code={`import { createSyncPushHandler } from "baresync/server";
-
-const push = createSyncPushHandler({
-  encoding: "json",
-  upsertOrder: SYNC_UPSERT_ORDER,
-  resolveScope: async ({ scopeId, session }) => {
-    return verifyAccess(session, scopeId);
-  },
-  applyPushChanges: async ({ changes, scope }) => {
-    return applyToDatabase(changes, scope);
-  },
-});`}
-            description="Baresync decodes requests, validates limits, orders table writes, and handles idempotency. You write auth, scope resolution, and persistence."
-            number={4}
-            title="Add three server routes"
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SyncStep({
-  number,
-  title,
-  description,
-  code,
-  isShell,
-}: {
-  number: number;
-  title: string;
-  description: string;
-  code: string;
-  isShell?: boolean;
-}) {
-  return (
-    <div className="group relative">
-      <div className="flex gap-5">
-        <div className="flex flex-col items-center">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-fd-primary/30 bg-fd-primary/10 font-mono text-fd-primary text-xs">
-            {number}
-          </div>
-          {number < 4 && <div className="mt-2 w-px flex-1 bg-fd-primary/15" />}
-        </div>
-        <div className="flex-1 pb-2">
-          <h3 className="mb-1.5 font-semibold text-fd-foreground text-lg">
-            {title}
-          </h3>
-          <p className="mb-4 text-fd-muted-foreground text-sm leading-relaxed">
-            {description}
-          </p>
-          <pre className="overflow-x-auto rounded-lg border border-fd-border bg-fd-background p-4 text-sm leading-relaxed">
-            <code
-              className={`font-mono ${isShell ? "text-fd-muted-foreground" : "text-fd-foreground"}`}
-            >
-              {code}
-            </code>
-          </pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function WhatYouControl() {
   return (
     <section>
-      <div className="border-fd-border border-y">
+      <div className="border-fd-border border-b">
         <div className="mx-auto max-w-4xl px-6 py-6 text-center">
           <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
             What you control
@@ -338,7 +213,7 @@ function WhatYouControl() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
+      <div className="grid border-fd-border border-b sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
         <div className="border-fd-border border-b p-6">
           <h3 className="mb-3 font-semibold text-fd-primary">Your code</h3>
           <ul className="space-y-3 text-fd-muted-foreground text-sm">

@@ -5,8 +5,7 @@ import {
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import { db } from "../db/client";
-import { createAppSyncRepository } from "../db/v1/sync-repository";
+import { repository } from "../db/v1/sync-repository";
 
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== SYNC_SCOPE) {
@@ -22,8 +21,6 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
     scope: { scopeId },
   };
 };
-
-const repository = createAppSyncRepository(db);
 
 const push = createSyncPushHandler({
   resolveScope,

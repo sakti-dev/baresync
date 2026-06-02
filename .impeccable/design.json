@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-02T00:00:00Z",
+  "title": "Design System: Baresync",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Lime",
+        "canonical": "oklch(0.83 0.18 120)",
+        "hex": "#6bc725",
+        "tonalRamp": [
+          "#2d5510",
+          "#3d8a0e",
+          "#4fa518",
+          "#6bc725",
+          "#8ad64e",
+          "#a8e27a",
+          "#c5eeaa",
+          "#e2f7d6"
+        ]
+      },
+      "primary-deep": {
+        "role": "primary-deep",
+        "displayName": "Lime Deep",
+        "canonical": "oklch(0.55 0.16 120)",
+        "hex": "#3d8a0e"
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Surface Base",
+        "canonical": "oklch(0.13 0.008 250)",
+        "hex": "#212224"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Surface Card",
+        "canonical": "oklch(0.16 0.008 250)",
+        "hex": "#292a2d"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Surface Muted",
+        "canonical": "oklch(0.18 0.008 250)",
+        "hex": "#2e3033"
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Foreground",
+        "canonical": "oklch(0.93 0.005 240)",
+        "hex": "#edecef"
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Muted Foreground",
+        "canonical": "oklch(0.62 0.01 240)",
+        "hex": "#9d9ea1"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "canonical": "oklch(0.22 0.008 250)",
+        "hex": "#393b3e"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headlines only."
+      },
+      "body": { "displayName": "Body", "purpose": "Prose text, descriptions." },
+      "mono": { "displayName": "Mono", "purpose": "Code blocks, inline code." },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Navigation, tabs, small UI text."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-out-quart",
+        "value": "cubic-bezier(0.25, 1, 0.5, 1)",
+        "purpose": "Default easing for state transitions."
+      },
+      {
+        "name": "link-underline",
+        "value": "150ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Link underline-color transition."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main CTA. Lime background on dark surface.",
+      "html": "<button class=\"ds-btn-primary\">Get started</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; background: oklch(0.83 0.18 120); color: oklch(0.13 0.008 250); padding: 10px 24px; border-radius: 8px; font-family: Inter, system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; border: none; cursor: pointer; transition: background 200ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-btn-primary:hover { background: oklch(0.75 0.16 120); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(0.83 0.18 120 / 0.4); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Outline variant. Border-based, no fill.",
+      "html": "<button class=\"ds-btn-secondary\">View on GitHub</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; background: transparent; color: oklch(0.93 0.005 240); padding: 10px 24px; border-radius: 8px; font-family: Inter, system-ui, sans-serif; font-size: 0.875rem; font-weight: 500; border: 1px solid oklch(0.22 0.008 250); cursor: pointer; transition: background 200ms, color 200ms; } .ds-btn-secondary:hover { background: oklch(0.22 0.008 250); } .ds-btn-secondary:focus-visible { outline: 2px solid oklch(0.83 0.18 120 / 0.4); outline-offset: 2px; }"
+    },
+    {
+      "name": "Code Block",
+      "kind": "card",
+      "refersTo": "code-block",
+      "description": "Pre-formatted code with card background and border.",
+      "html": "<pre class=\"ds-code-block\"><code>const sync = createSyncClient();</code></pre>",
+      "css": ".ds-code-block { background: oklch(0.16 0.008 250); border: 1px solid oklch(0.22 0.008 250); border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.875rem; line-height: 1.5; color: oklch(0.93 0.005 240); }"
+    },
+    {
+      "name": "Inline Code",
+      "kind": "custom",
+      "refersTo": "inline-code",
+      "description": "Inline code spans within prose.",
+      "html": "<code class=\"ds-inline-code\">baresync</code>",
+      "css": ".ds-inline-code { padding: 2px 6px; font-size: 0.875em; background: oklch(0.18 0.008 250); border-radius: 4px; font-family: 'JetBrains Mono', monospace; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Terminal",
+    "overview": "A dark, cool-toned surface that reads like a well-configured terminal: calm authority, no visual noise, every element earning its place. The palette is anchored by cool blue-tinted neutrals (hue 250) and a single lime accent that appears sparingly, like a cursor blinking on a dark screen. This is infrastructure documentation, not a SaaS landing. The system explicitly rejects cream backgrounds, warm sand tones, gradient text, and the AI-generated marketing aesthetic.",
+    "keyCharacteristics": [
+      "Dark-first with high-contrast cool neutrals",
+      "Lime accent used surgically, never decoratively",
+      "Flat depth model: borders and tonal shifts, not shadows",
+      "Inter + JetBrains Mono pairing: functional and readable",
+      "Border-based separation, not cards or elevation"
+    ],
+    "rules": [
+      {
+        "name": "The Lime Restraint Rule",
+        "body": "The primary lime accent appears on no more than 10% of any given viewport. Its power comes from scarcity.",
+        "section": "colors"
+      },
+      {
+        "name": "The Cool Neutral Rule",
+        "body": "All surface and text colors use cool-tinted neutrals (hue 240-250). Never tint toward warm or beige.",
+        "section": "colors"
+      },
+      {
+        "name": "The Single Family Rule",
+        "body": "Inter handles all non-code text. No display serifs, no decorative fonts.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "No element has a drop shadow at rest. Depth comes from border + background contrast.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use lime sparingly. It is the only saturated color.",
+      "Do use cool-tinted neutrals for all surfaces and text.",
+      "Do separate elements with borders and tonal shifts, not shadows.",
+      "Do maintain 4.5:1 contrast for body text.",
+      "Do use Inter for all non-code text and JetBrains Mono for code."
+    ],
+    "donts": [
+      "Don't use cream, sand, beige, or warm-tinted backgrounds.",
+      "Don't use gradient text (background-clip: text).",
+      "Don't use glassmorphism, backdrop blurs, or decorative frosted glass.",
+      "Don't add drop shadows to cards, buttons, or containers at rest.",
+      "Don't use the hero-metric template.",
+      "Don't use identical card grids repeated across sections.",
+      "Don't use marketing buzzwords in copy.",
+      "Don't use numbered section eyebrows unless the content is genuinely a sequence."
+    ]
+  }
+}
