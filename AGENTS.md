@@ -21,6 +21,20 @@ Before changing or verifying desktop, Android, Tauri, fixture app, fixture backe
 
 That runbook is the source of truth for fixture app boundaries, required Nix tooling, backend ownership, run isolation, async UI waits, outbox/clean-state assertions, common failure modes, and the verification commands expected before claiming E2E work is complete.
 
+## Version Bumping and Tags
+
+This is a monorepo with independently versioned packages. When bumping a package version, remind the user to create a package-prefixed git tag before publishing.
+
+Tag format: `<package>@<version>`
+
+Packages and their tag prefixes:
+- `packages/baresync` → `baresync@x.y.z`
+- `packages/create-baresync` → `create-baresync@x.y.z`
+- `crates/baresync-core` → `baresync-core@x.y.z`
+- `crates/tauri-plugin-baresync` → `tauri-plugin-baresync@x.y.z`
+
+Example: after bumping `packages/baresync` to `0.3.0`, create and push `git tag baresync@0.3.0`.
+
 ## Review Focus
 
 Biome/Ultracite handle formatting. Human review should focus on business correctness, naming, architecture, edge cases, UX/accessibility/performance, and useful documentation.
