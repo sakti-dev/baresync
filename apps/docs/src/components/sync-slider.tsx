@@ -253,7 +253,7 @@ export function SyncSlider() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
-  const sectionRef = useRef<HTMLElement>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
 
   // Intersection Observer to detect if component is in viewport
   useEffect(() => {
@@ -266,7 +266,7 @@ export function SyncSlider() {
       ([entry]) => {
         setIsInView(entry.isIntersecting);
       },
-      { threshold: 0.1 }
+      { threshold: 0.6 }
     );
 
     observer.observe(section);
@@ -322,7 +322,7 @@ export function SyncSlider() {
   };
 
   return (
-    <section ref={sectionRef}>
+    <section>
       <div className="border-fd-border border-b">
         <div className="mx-auto max-w-4xl px-6 py-14 text-center">
           <h2
@@ -341,7 +341,10 @@ export function SyncSlider() {
 
       <SyncVisualization />
 
-      <div className="grid grid-cols-1 border-fd-border border-b md:grid-cols-5 md:divide-x md:divide-fd-border">
+      <div
+        className="grid grid-cols-1 border-fd-border border-b md:grid-cols-5 md:divide-x md:divide-fd-border"
+        ref={sectionRef}
+      >
         {/* Left: Tabs */}
         <div className="flex flex-col md:col-span-2">
           {STEPS.map((step, index) => {
@@ -350,15 +353,19 @@ export function SyncSlider() {
             return (
               <button
                 className={`group/tab relative select-text border-fd-border border-b py-4 pr-6 text-left transition-colors duration-200 ${
-                  isActive ? "flex-1 bg-fd-muted" : "hover:bg-fd-muted/50"
+                  isActive ? "flex-1" : "hover:bg-fd-muted/50"
                 } ${isLast ? "border-b-0" : ""}`}
                 key={step.id}
                 onClick={() => handleTabClick(index)}
                 type="button"
               >
+                {isActive && (
+                  <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-fd-muted/60 to-transparent" />
+                )}
+
                 {/* Progress bar */}
                 {isActive && (
-                  <div className="absolute bottom-0 left-0 h-[2px] w-full overflow-hidden">
+                  <div className="absolute bottom-0 left-0 z-20 h-[2px] w-full overflow-hidden">
                     <div className="h-full bg-fd-border" />
                     <motion.div
                       className="absolute bottom-0 left-0 h-full origin-left bg-fd-primary"
@@ -368,7 +375,7 @@ export function SyncSlider() {
                 )}
 
                 <h3
-                  className={`relative pl-7 font-semibold transition-colors duration-200 ${
+                  className={`relative z-10 pl-7 font-semibold transition-colors duration-200 ${
                     isActive
                       ? "text-fd-foreground"
                       : "text-fd-muted-foreground group-hover/tab:text-fd-foreground"
@@ -389,7 +396,7 @@ export function SyncSlider() {
                   {isActive && (
                     <motion.div
                       animate={{ height: "auto", opacity: 1 }}
-                      className="overflow-hidden pl-7"
+                      className="relative z-10 overflow-hidden pl-7"
                       exit={{ height: 0, opacity: 0 }}
                       initial={{ height: 0, opacity: 0 }}
                       key="description"
