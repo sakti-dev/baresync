@@ -4,7 +4,7 @@
   </a>
   <br />
   <br />
-  <a href="https://www.npmjs.com/package/baresync"><img src="https://img.shields.io/npm/v/baresync" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/baresync"><img src="https://img.shields.io/npm/v/baresync?color=CB3837" alt="npm version" /></a>
   <a href="https://crates.io/crates/baresync-core"><img src="https://img.shields.io/crates/v/baresync-core" alt="crates.io" /></a>
   <a href="https://crates.io/crates/tauri-plugin-baresync"><img src="https://img.shields.io/crates/v/tauri-plugin-baresync" alt="crates.io" /></a>
   <a href="https://github.com/sakti-dev/baresync/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
