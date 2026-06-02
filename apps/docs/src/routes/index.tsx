@@ -1,6 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { HomeLayout } from "fumadocs-ui/layouts/home";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {
+  BackgroundRippleEffect,
+  useRipple,
+} from "@/components/ui/background-ripple-effect";
 import { baseOptions } from "@/lib/layout.shared";
 
 export const Route = createFileRoute("/")({
@@ -33,71 +37,132 @@ const PM_COMMANDS: Record<Pm, string> = {
   yarn: "yarn create baresync my-app",
 };
 
+const CELL_SIZE = 56;
+const COLS = 30;
+const ROWS = 10;
+
 function HeroSection() {
   const [pm, setPm] = useState<Pm>("bun");
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const { clickedCell, hoveredCell, rippleKey, setHoveredCell, triggerRipple } =
+    useRipple();
+
+  const getCellFromEvent = (e: React.MouseEvent<HTMLDivElement>) => {
+    const section = sectionRef.current;
+    if (!section) {
+      return null;
+    }
+    const rect = section.getBoundingClientRect();
+    const gridWidth = COLS * CELL_SIZE;
+    const offsetX = (rect.width - gridWidth) / 2;
+    const x = e.clientX - rect.left - offsetX;
+    const y = e.clientY - rect.top;
+    const col = Math.floor(x / CELL_SIZE);
+    const row = Math.floor(y / CELL_SIZE);
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
+      return null;
+    }
+    return { row, col };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const cell = getCellFromEvent(e);
+    setHoveredCell(cell);
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredCell(null);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const cell = getCellFromEvent(e);
+    if (cell) {
+      triggerRipple(cell.row, cell.col);
+    }
+  };
 
   return (
-    <section className="border-fd-border border-b px-6 py-24 sm:py-32 lg:py-40">
-      <div className="mx-auto max-w-4xl text-center">
-        <h1
-          className="mb-6 text-balance font-bold text-4xl text-fd-foreground tracking-tight sm:text-5xl lg:text-6xl"
-          style={{ letterSpacing: "-0.02em" }}
-        >
-          SQLite sync for Tauri apps.{" "}
-          <span className="text-fd-muted-foreground">You own the backend.</span>
-        </h1>
-        <p className="mx-auto mb-10 max-w-xl text-base text-fd-muted-foreground leading-relaxed">
-          Define Drizzle schemas. Generate a sync contract. Register the plugin.
-          Add three server routes. Your local database stays in sync — Baresync
-          handles the rest.
-        </p>
+    // biome-ignore lint/a11y/noStaticElementInteractions: decorative ripple container
+    <div
+      className="relative overflow-hidden border-fd-border border-b"
+      onClick={handleClick}
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
+      ref={sectionRef}
+      role="presentation"
+    >
+      <BackgroundRippleEffect
+        cellSize={CELL_SIZE}
+        clickedCell={clickedCell}
+        cols={COLS}
+        hoveredCell={hoveredCell}
+        key={rippleKey}
+        rows={ROWS}
+      />
+      <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+        <div className="mx-auto max-w-4xl text-center">
+          <h1
+            className="mb-6 text-balance font-bold text-4xl text-fd-foreground tracking-tight sm:text-5xl lg:text-6xl"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            SQLite sync for Tauri apps.{" "}
+            <span className="text-fd-muted-foreground">
+              You own the backend.
+            </span>
+          </h1>
+          <p className="mx-auto mb-10 max-w-xl text-base text-fd-muted-foreground leading-relaxed">
+            Define Drizzle schemas. Generate a sync contract. Register the
+            plugin. Add three server routes. Your local database stays in sync —
+            Baresync handles the rest.
+          </p>
 
-        <div className="mx-auto max-w-md">
-          <div className="overflow-hidden rounded-xl border border-fd-border bg-fd-background">
-            <div className="flex border-fd-border border-b">
-              {PM_TABS.map((t) => (
-                <button
-                  className={`px-4 py-2 font-mono text-xs transition-colors ${
-                    pm === t
-                      ? "border-fd-primary border-b-2 text-fd-foreground"
-                      : "text-fd-muted-foreground hover:text-fd-foreground"
-                  }`}
-                  key={t}
-                  onClick={() => setPm(t)}
-                  type="button"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-between px-4 py-3">
-              <code className="font-mono text-fd-foreground text-sm">
-                {PM_COMMANDS[pm]}
-              </code>
-              <CopyButton text={PM_COMMANDS[pm]} />
+          <div className="mx-auto max-w-md">
+            <div className="overflow-hidden rounded-xl border border-fd-border bg-fd-background">
+              <div className="flex border-fd-border border-b">
+                {PM_TABS.map((t) => (
+                  <button
+                    className={`px-4 py-2 font-mono text-xs transition-colors ${
+                      pm === t
+                        ? "border-fd-primary border-b-2 text-fd-foreground"
+                        : "text-fd-muted-foreground hover:text-fd-foreground"
+                    }`}
+                    key={t}
+                    onClick={() => setPm(t)}
+                    type="button"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <code className="font-mono text-fd-foreground text-sm">
+                  {PM_COMMANDS[pm]}
+                </code>
+                <CopyButton text={PM_COMMANDS[pm]} />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-          <Link
-            className="inline-flex items-center rounded-lg bg-fd-primary px-5 py-2.5 font-semibold text-fd-primary-foreground text-sm transition-colors hover:bg-fd-primary/90"
-            params={{ _splat: "getting-started/quick-start" }}
-            to="/docs/$"
-          >
-            Get started
-          </Link>
-          <a
-            className="inline-flex items-center rounded-lg border border-fd-border px-5 py-2.5 font-medium text-fd-foreground text-sm transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
-            href="https://github.com/eekrain/baresync"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            View on GitHub
-          </a>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
+            <Link
+              className="inline-flex items-center rounded-lg bg-fd-primary px-5 py-2.5 font-semibold text-fd-primary-foreground text-sm transition-colors hover:bg-fd-primary/90"
+              params={{ _splat: "getting-started/quick-start" }}
+              to="/docs/$"
+            >
+              Get started
+            </Link>
+            <a
+              className="inline-flex items-center rounded-lg border border-fd-border px-5 py-2.5 font-medium text-fd-foreground text-sm transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
+              href="https://github.com/eekrain/baresync"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              View on GitHub
+            </a>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
