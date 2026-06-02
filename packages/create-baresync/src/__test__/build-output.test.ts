@@ -5,6 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const pkgRoot = path.resolve(import.meta.dirname, "..", "..");
 const distDir = path.join(pkgRoot, "dist");
 
+const response = await fetch("https://registry.npmjs.org/baresync/latest");
+const baresyncPkg = await response.json();
+const baresyncVersion = baresyncPkg.version as string;
+
 let didBuild = false;
 
 beforeAll(async () => {
@@ -74,5 +78,32 @@ describe("build output", () => {
       "drizzle-config.ts"
     );
     expect(fs.existsSync(drizzle)).toBe(true);
+  });
+
+  it("replaces __BARESYNC_VERSION__ in app package.json", () => {
+    const content = fs.readFileSync(
+      path.join(distDir, "templates", "app", "package.json"),
+      "utf8"
+    );
+    expect(content).not.toContain("__BARESYNC_VERSION__");
+    expect(content).toContain(`"baresync": "^${baresyncVersion}"`);
+  });
+
+  it("replaces __BARESYNC_VERSION__ in server package.json", () => {
+    const content = fs.readFileSync(
+      path.join(distDir, "templates", "server", "package.json"),
+      "utf8"
+    );
+    expect(content).not.toContain("__BARESYNC_VERSION__");
+    expect(content).toContain(`"baresync": "^${baresyncVersion}"`);
+  });
+
+  it("replaces __BARESYNC_VERSION__ in sync-contract package.json", () => {
+    const content = fs.readFileSync(
+      path.join(distDir, "templates", "sync-contract", "package.json"),
+      "utf8"
+    );
+    expect(content).not.toContain("__BARESYNC_VERSION__");
+    expect(content).toContain(`"baresync": "^${baresyncVersion}"`);
   });
 });

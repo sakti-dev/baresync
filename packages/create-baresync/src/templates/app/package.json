@@ -8,7 +8,7 @@
     "tauri:dev": "tauri dev"
   },
   "dependencies": {
-    "baresync": "^0.2.0",
+    "baresync": "^__BARESYNC_VERSION__",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

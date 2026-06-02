@@ -22,9 +22,28 @@ async function main() {
     entryNaming: "[name].js",
   });
 
-  await fs.cp(path.join("src", "templates"), path.join("dist", "templates"), {
-    recursive: true,
-  });
+  const templatesSrc = path.join("src", "templates");
+  const templatesDst = path.join("dist", "templates");
+
+  await fs.cp(templatesSrc, templatesDst, { recursive: true });
+
+  const response = await fetch("https://registry.npmjs.org/baresync/latest");
+  const baresyncPkg = await response.json();
+  const baresyncVersion: string = baresyncPkg.version;
+
+  const pkgFiles = [
+    path.join(templatesDst, "app", "package.json"),
+    path.join(templatesDst, "server", "package.json"),
+    path.join(templatesDst, "sync-contract", "package.json"),
+  ];
+
+  for (const file of pkgFiles) {
+    const content = await fs.readFile(file, "utf8");
+    await fs.writeFile(
+      file,
+      content.replaceAll("__BARESYNC_VERSION__", baresyncVersion)
+    );
+  }
 }
 
 main().catch((error: unknown) => {

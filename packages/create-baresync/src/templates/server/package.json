@@ -9,7 +9,7 @@
     "typecheck": "bun x tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "baresync": "^0.2.0"
+    "baresync": "^__BARESYNC_VERSION__"
   },
   "devDependencies": {
     "drizzle-kit": "0.31.4"
