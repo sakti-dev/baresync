@@ -65,14 +65,13 @@ describe("buildRootScaffoldFiles", () => {
 });
 
 describe("buildUserFacingNextSteps", () => {
-  it("prints commands for install, generation, and dev", () => {
+  it("prints commands for generation and dev", () => {
     const text = buildUserFacingNextSteps({
       packageManager: "npm",
       projectName: "acme-inventory",
       serverFramework: "hono",
     });
 
-    expect(text).toContain("npm install");
     expect(text).toContain("npm run generate:sync");
     expect(text).toContain("npm run migrate:local");
     expect(text).toContain("npm run migrate:server");

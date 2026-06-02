@@ -225,7 +225,7 @@ const Feature = ({
     <div
       className={cn(
         "group/feature relative flex flex-col border-fd-border border-b py-10",
-        "lg:border-r"
+        "lg:border-r",
       )}
     >
       {isTopRow ? (
@@ -254,7 +254,7 @@ function WhatYouControl() {
     "Auth and session validation in resolveScope",
     "Which rows to persist and how to apply them",
     "Your Drizzle schemas, server database, and migrations",
-    "React UI with the sync client provider and Drizzle queries",
+    "Integrate UI with the sync client and Drizzle queries",
   ];
 
   const baresyncItems = [
@@ -325,20 +325,27 @@ function QuickStart() {
     <AuroraBackground className="border-fd-border border-b">
       <section className="relative z-10 px-6 py-14">
         <div className="mx-auto max-w-4xl text-center">
-          <h2 className="mb-4 font-semibold text-2xl text-fd-foreground sm:text-3xl">
-            Get started in seven commands
+          <h2 className="mb-4 flex items-center justify-center gap-2 font-semibold text-2xl text-fd-foreground sm:text-3xl">
+            Start building with{" "}
+            <img
+              src="/baresync-logo-full-web.svg"
+              alt="Baresync"
+              className="inline h-7 sm:h-8"
+            />
           </h2>
-          <p className="mb-8 text-balance text-fd-muted-foreground">
+          <p className="mb-2 text-balance text-fd-muted-foreground">
             The scaffold creates a monorepo with a Tauri app, a Hono server, and
             a shared sync contract package.
+          </p>
+          <p className="mb-8 text-balance text-fd-muted-foreground">
+            It also includes a framework-agnostic sync client — wire it into
+            your frontend to start syncing.
           </p>
           <pre className="mx-auto max-w-md overflow-x-auto rounded-lg border border-fd-border bg-fd-card p-5 text-left text-sm">
             <code className="font-mono text-fd-foreground">
               <span className="text-fd-muted-foreground">$</span> bun create
               baresync@latest{"\n"}
               <span className="text-fd-muted-foreground">$</span> cd my-app
-              {"\n"}
-              <span className="text-fd-muted-foreground">$</span> bun install
               {"\n"}
               <span className="text-fd-muted-foreground">$</span> bun run
               generate:sync{"\n"}

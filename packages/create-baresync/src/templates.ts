@@ -282,10 +282,9 @@ export function buildRootScaffoldFiles(
 export function buildUserFacingNextSteps(options: ScaffoldOptions): string {
   return [
     `1. cd ${options.projectName}`,
-    `2. ${options.packageManager} install`,
-    `3. ${options.packageManager} run generate:sync`,
-    `4. ${options.packageManager} run migrate:local`,
-    `5. ${options.packageManager} run migrate:server`,
-    `6. ${options.packageManager} run dev`,
+    `2. ${options.packageManager} run generate:sync`,
+    `3. ${options.packageManager} run migrate:local`,
+    `4. ${options.packageManager} run migrate:server`,
+    `5. ${options.packageManager} run dev`,
   ].join("\n");
 }

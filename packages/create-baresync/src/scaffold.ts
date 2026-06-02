@@ -395,11 +395,15 @@ export async function scaffoldProject(): Promise<void> {
   log.info(`Detected package manager: ${packageManager}`);
 
   const appTargetDir = path.join(projectDir, "apps");
-  await runInteractive(
-    packageManager,
-    createCommandArgs(packageManager, "tauri-app", "app"),
-    appTargetDir
-  );
+  try {
+    await runInteractive(
+      packageManager,
+      createCommandArgs(packageManager, "tauri-app", "app"),
+      appTargetDir
+    );
+  } catch {
+    // Install may fail; we handle it at the workspace root later.
+  }
 
   const serverFramework = await promptServerFramework();
 
@@ -422,12 +426,7 @@ export async function scaffoldProject(): Promise<void> {
       serverTargetDir
     );
   } catch {
-    log.warn(
-      "⚠️ Note: create-hono exited with an error (likely an install failure)."
-    );
-    log.warn(
-      "This is safe to ignore — you can just run install at the workspace root later."
-    );
+    // Install may fail; we handle it at the workspace root later.
   }
 
   await patchAppFiles(projectDir, options, allFiles);
@@ -463,6 +462,9 @@ export async function scaffoldProject(): Promise<void> {
     )}\n`,
     "utf8"
   );
+
+  log.info("Installing dependencies...");
+  await runInteractive(packageManager, ["install"], projectDir);
 
   outro(
     `${color.green("Success!")} Baresync monorepo starter is ready!\n\n${buildUserFacingNextSteps(

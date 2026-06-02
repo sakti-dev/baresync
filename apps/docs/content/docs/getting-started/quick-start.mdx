@@ -29,14 +29,7 @@ my-app/
 
 The scaffold patches `tsconfig.json` in both `apps/app` and `apps/server` with `paths` aliases so you can import from `@sync-contract/...` without a workspace dependency. It also patches `vite.config.ts` with `resolve: { tsconfigPaths: true }` (Vite 8 native).
 
-## 2. Install dependencies
-
-```bash
-cd my-app
-bun install
-```
-
-## 3. Generate the sync contract
+## 2. Generate the sync contract
 
 ```bash
 bun run generate:sync
