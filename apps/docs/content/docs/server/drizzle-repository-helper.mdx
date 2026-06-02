@@ -159,20 +159,20 @@ const push = createSyncPushHandler({
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
   idempotency: { db },
-  applyPushChanges: ({ changes, scope, syncUpdatedAt }) =>
+  applyPushChanges: ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) =>
     repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
 });
 
 const pull = createSyncPullHandler({
   limit: 1000,
   resolveScope,
-  loadPullChanges: ({ cursor, scope, tables }) =>
+  loadPullChanges: ({ cursor, scope, tables, scopeId, limit, context, request }) =>
     repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
 });
 
 const status = createSyncStatusHandler({
   resolveScope,
-  loadSyncStatus: ({ cursor, scope }) =>
+  loadSyncStatus: ({ cursor, scope, scopeId, context, request }) =>
     repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
 });
 ```

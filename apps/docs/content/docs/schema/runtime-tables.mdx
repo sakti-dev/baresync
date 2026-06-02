@@ -14,15 +14,15 @@ Tracks pending local changes that need to be pushed to the server.
 | Column | Type | Purpose |
 |---|---|---|
 | `id` | `text` PK | UUID |
-| `tableName` | `text` | Which table the change belongs to |
-| `rowId` | `text` | Which row changed |
+| `table_name` | `text` | Which table the change belongs to |
+| `row_id` | `text` | Which row changed |
 | `operation` | `text` | `"insert"`, `"update"`, or `"delete"` |
 | `payload` | `text` (nullable) | Optional JSON payload |
-| `scopeId` | `text` | Scope the change belongs to |
-| `changedAt` | `text` | ISO timestamp of the change |
-| `syncedAt` | `text` (nullable) | When the change was synced (null = pending) |
+| `scope_id` | `text` | Scope the change belongs to |
+| `changed_at` | `text` | ISO timestamp of the change |
+| `synced_at` | `text` (nullable) | When the change was synced (null = pending) |
 
-The table has a unique index on `(tableName, rowId) WHERE syncedAt IS NULL`. This means only one pending outbox entry per row. If you update the same row twice before sync, the outbox entry is upserted rather than duplicated.
+The table has a unique partial index on `(table_name, row_id) WHERE synced_at IS NULL`. This means only one pending outbox entry per row. Writing to the same row while a pending entry exists causes a constraint violation.
 
 This table lives in the **local app database** only.
 
@@ -33,11 +33,11 @@ Stores the last cursor timestamp per scope so the client can do incremental pull
 | Column | Type | Purpose |
 |---|---|---|
 | `id` | `integer` PK (auto) | Row ID |
-| `scopeId` | `text` | Scope identifier |
-| `lastCursor` | `text` | Last server watermark |
-| `updatedAt` | `text` | When the cursor was last updated |
+| `scope_id` | `text` | Scope identifier |
+| `last_cursor` | `text` | Last server watermark |
+| `updated_at` | `text` | When the cursor was last updated |
 
-After a successful pull, the sync engine updates `lastCursor` to the highest `syncUpdatedAt` value from the pulled rows.
+After a successful pull, the sync engine updates `last_cursor` to the highest `sync_updated_at` value from the pulled rows.
 
 This table lives in the **local app database** only.
 
@@ -48,15 +48,15 @@ Stores idempotency records for push requests on the server.
 | Column | Type | Purpose |
 |---|---|---|
 | `id` | `integer` PK (auto) | Row ID |
-| `clientId` | `text` | Client identifier |
-| `idempotencyKey` | `text` | Unique key per push batch |
-| `requestHash` | `text` | Hash of the request body |
+| `client_id` | `text` | Client identifier |
+| `idempotency_key` | `text` | Unique key per push batch |
+| `request_hash` | `text` | Hash of the request body |
 | `status` | `text` | `"pending"`, `"completed"`, or `"failed"` |
-| `responseBody` | `text` (nullable) | Cached response for replay |
-| `createdAt` | `integer` | Unix timestamp |
-| `completedAt` | `integer` (nullable) | When processing finished |
+| `response_body` | `text` (nullable) | Cached response for replay |
+| `created_at` | `integer` | Unix timestamp |
+| `completed_at` | `integer` (nullable) | When processing finished |
 
-The table has a unique index on `(clientId, idempotencyKey)`. If a client retries a push with the same idempotency key, the server returns the cached response instead of processing it again.
+The table has a unique index on `(client_id, idempotency_key)`. If a client retries a push with the same idempotency key, the server returns the cached response instead of processing it again.
 
 This table lives in the **server database** only.
 

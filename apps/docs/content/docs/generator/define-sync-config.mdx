@@ -14,14 +14,12 @@ Create `packages/sync-contract/sync.config.ts`:
 ```ts
 import { defineSyncConfig } from "baresync/generator";
 import * as apiSyncedSchema from "./src/api-synced-schema";
-import { INVENTORY_PACKAGE_NAME } from "./src/constants";
 import * as localSyncedSchema from "./src/local-synced-schema";
 
 export const syncGeneratorConfig = defineSyncConfig({
   apiSyncedSchema,
   localSyncedSchema,
   outputDir: "./generated",
-  packageName: INVENTORY_PACKAGE_NAME,
   tables: {
     locations: { scopeColumn: "scope_id" },
     items: { scopeColumn: "scope_id" },
@@ -37,9 +35,9 @@ export const syncGeneratorConfig = defineSyncConfig({
 | `localSyncedSchema` | `* as schema` | Namespace import of your local synced tables |
 | `apiSyncedSchema` | `* as schema` | Namespace import of your API synced tables |
 | `outputDir` | `string` | Where to write generated files |
-| `packageName` | `string` | Dot-separated name for the contract (e.g., `"inventory.sync.v1"`) |
 | `tables` | `Record<string, TableOptions>` | Map of export names to sync options |
-| `limits` | `{ maxPushBytes?, maxPushRows? }` | Override default push limits |
+| `limits` | `{ maxPushBytes?, maxPushRows? }` | Optional. Override default push limits |
+| `schemaSourceDir` | `string` | Optional. Override schema source directory for diagnostics |
 
 ## Table options
 

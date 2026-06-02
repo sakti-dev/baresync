@@ -86,7 +86,7 @@ Make sure the `.sql` files are in `apps/app/src-tauri/migrations/` and that `bui
 
 ## Multiple outbox entries for the same row
 
-The `sync_outbox` table has a unique index on `(table_name, row_id)` where `synced_at IS NULL`. Calling `writeLocalChange` for the same row twice within one scope will upsert the outbox entry rather than create duplicates. If you see duplicates, check that your migration created the index correctly.
+The `sync_outbox` table has a unique partial index on `(table_name, row_id)` where `synced_at IS NULL`. Calling `writeLocalChange` for the same row twice within one scope while a pending entry exists will cause a constraint violation. If you see unexpected constraint errors, check that your migration created the index correctly.
 
 ## Where to get more help
 

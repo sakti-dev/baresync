@@ -102,7 +102,7 @@ Both `writeLocalChange` and `enqueueChange` insert into `sync_outbox`:
 | `changed_at` | ISO timestamp when the entry was created |
 | `synced_at` | `null` until the sync engine processes it |
 
-The table has a unique index on `(table_name, row_id)` where `synced_at IS NULL`, so only one pending outbox entry exists per row at a time.
+The table has a unique partial index on `(table_name, row_id)` where `synced_at IS NULL`, so only one pending outbox entry exists per row at a time. Writing to the same row while a pending entry exists causes a constraint violation.
 
 ## Common mistakes
 

@@ -33,7 +33,7 @@ Consumer apps that still have local wrappers can keep them temporarily and point
 
 `run_sql_batch` runs all statements in a single transaction. If any fails, the entire batch rolls back.
 
-Both commands emit `baresync://data-changed` when `rows_affected > 0` and notify the polling loop to consider an early sync.
+Both commands emit `baresync://data-changed` when `rows_affected > 0`. `run_sql` triggers an early sync only outside of transactions (uses transaction-depth tracking). `run_sql_batch` always triggers an early sync on success regardless of `rows_affected`.
 
 ### Migrations
 
@@ -54,7 +54,7 @@ Migrations run automatically during plugin setup. You only need `run_migrations`
 | `sync_full_resync` | `"plugin:baresync|sync_full_resync"` | `SyncNowResult` |
 | `get_sync_local_state` | `"plugin:baresync|get_sync_local_state"` | `LocalSyncState` |
 
-All sync commands take `scope_id: String`. See [Sync Commands](/docs/js-client/sync-commands) for the JS-side usage.
+All sync commands take `scope_id: String`, except `purge_synced_outbox` which takes `older_than: String` (it operates across all scopes). See [Sync Commands](/docs/js-client/sync-commands) for the JS-side usage.
 
 ### Maintenance
 

@@ -28,7 +28,7 @@ const push = createSyncPushHandler({
   resolveScope,
   upsertOrder: SYNC_UPSERT_ORDER,
   idempotency: { db: yourDrizzleDb },
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) => {
+  applyPushChanges: async ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) => {
     // ...
   },
 });

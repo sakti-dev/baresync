@@ -15,7 +15,7 @@ import { createSyncPullHandler } from "baresync/server";
 const pull = createSyncPullHandler({
   limit: 1000,
   resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables }) =>
+  loadPullChanges: async ({ cursor, scope, tables, scopeId, limit, context, request }) =>
     repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
 });
 ```

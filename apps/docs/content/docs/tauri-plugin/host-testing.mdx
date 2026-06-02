@@ -72,9 +72,14 @@ struct MockTransport;
 
 #[async_trait::async_trait]
 impl SyncHttpTransport for MockTransport {
-    async fn post_json(&self, url: &str, body: &[u8]) -> Result<Vec<u8>, String> {
-        // Return a canned sync response
-        Ok(r#"{"rows":[],"cursor":"sync:test"}"#.as_bytes().to_vec())
+    async fn send_push_request(&self, api_url: String, envelope: serde_json::Value) -> SyncTransportFuture {
+        // Return a canned push response
+    }
+    async fn send_status_request(&self, api_url: String, body: Vec<u8>) -> SyncTransportFuture {
+        // Return a canned status response
+    }
+    async fn send_pull_request(&self, api_url: String, body: Vec<u8>) -> SyncTransportFuture {
+        // Return a canned pull response
     }
 }
 

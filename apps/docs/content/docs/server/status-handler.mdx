@@ -14,7 +14,7 @@ import { createSyncStatusHandler } from "baresync/server";
 
 const status = createSyncStatusHandler({
   resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) =>
+  loadSyncStatus: async ({ cursor, scope, scopeId, context, request }) =>
     repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
 });
 ```

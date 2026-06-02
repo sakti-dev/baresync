@@ -16,13 +16,11 @@ The full sync contract. Contains:
 - Local-only and server-only column lists
 - Upsert and delete order
 - Push limits (`maxPushBytes`, `maxPushRows`)
-- Package name
 
 ```json
 {
-  "version": 1,
+  "version": "2026-06-03",
   "generatorVersion": "0.1.0",
-  "packageName": "inventory.sync.v1",
   "upsertOrder": ["locations", "items", "stock_counts"],
   "deleteOrder": ["stock_counts", "items", "locations"],
   "tables": {

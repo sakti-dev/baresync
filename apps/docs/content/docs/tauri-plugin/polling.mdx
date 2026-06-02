@@ -17,7 +17,7 @@ The polling loop runs the sync engine on a fixed interval. It lives in a spawned
 
 ### Early sync on write
 
-When `plugin:baresync|run_sql` or `plugin:baresync|run_sql_batch` detects `rows_affected > 0`, it calls `notify_one()` on the polling loop's `Notify`. This wakes the loop immediately (if it is not paused or already syncing), so local writes are pushed sooner than the next tick.
+When `plugin:baresync|run_sql` detects `rows_affected > 0` (outside of a transaction), it calls `notify_one()` on the polling loop's `Notify`. `plugin:baresync|run_sql_batch` always calls `notify_one()` on success regardless of `rows_affected`. This wakes the loop immediately (if it is not paused or already syncing), so local writes are pushed sooner than the next tick.
 
 ## Concurrency guard
 
