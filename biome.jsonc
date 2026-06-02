@@ -13,7 +13,8 @@
       "!!**/dist",
       "!!docs/external",
       "!!apps/docs/src/routeTree.gen.ts",
-      "!!packages/create-baresync/src/templates"
+      "!!packages/create-baresync/src/templates",
+      "!!**/permissions/schemas/schema.json"
     ],
     "maxSize": 2097152
   },
