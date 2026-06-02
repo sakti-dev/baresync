@@ -1,5 +1,9 @@
 import { redirect } from "@tanstack/react-router";
-import { createMiddleware, createStart } from "@tanstack/react-start";
+import {
+  createCsrfMiddleware,
+  createMiddleware,
+  createStart,
+} from "@tanstack/react-start";
 import { isMarkdownPreferred } from "fumadocs-core/negotiation";
 import { docsRoute } from "@/lib/shared";
 import { slugsToMarkdownPath } from "./lib/source";
@@ -24,6 +28,10 @@ const llmMiddleware = createMiddleware().server(({ next, request }) => {
   return next();
 });
 
+const csrfMiddleware = createCsrfMiddleware({
+  filter: (ctx) => ctx.handlerType === "serverFn",
+});
+
 export const startInstance = createStart(() => ({
-  requestMiddleware: [llmMiddleware],
+  requestMiddleware: [csrfMiddleware, llmMiddleware],
 }));
