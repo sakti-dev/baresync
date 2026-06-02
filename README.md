@@ -157,23 +157,6 @@ export const syncGeneratorConfig = defineSyncConfig({
 });
 ```
 
-Expose the schema and generated artifacts from the shared package:
-
-```json title="packages/sync-contract/package.json"
-{
-  "name": "@example/inventory-sync-contract",
-  "private": true,
-  "type": "module",
-  "exports": {
-    "./local-synced-schema": "./src/local-synced-schema.ts",
-    "./api-synced-schema": "./src/api-synced-schema.ts",
-    "./generated/sync-table-order": "./generated/sync-table-order.ts",
-    "./generated/sync-contract": "./generated/sync-contract.json",
-    "./generated/manifest": "./generated/sync-contract.manifest.json"
-  }
-}
-```
-
 Run diagnostics and generation from the contract package directory. The CLI discovers `sync.config.ts` automatically when you are in the right folder.
 
 ```bash
