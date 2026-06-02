@@ -23,7 +23,7 @@ console.log(state.local_dirty_count); // number of unsynced changes
 | `0` | All local changes have been pushed and confirmed. |
 | `> 0` | There are pending changes in the outbox waiting to be pushed. |
 
-A non-zero dirty count is **normal** between sync cycles. If it stays non-zero for minutes after a sync, something is wrong (see [Troubleshooting](./troubleshooting)).
+A non-zero dirty count is **normal** between sync cycles. If it stays non-zero for minutes after a sync, something is wrong (see [Troubleshooting](/docs/running-in-production/troubleshooting)).
 
 ### Last server watermark
 
@@ -51,7 +51,7 @@ console.log(state.needs_baseline_sync); // true = needs full pull
 | `true` | No cursor exists. The next sync will pull all data from scratch. |
 | `false` | Cursor exists. Incremental sync will only pull changes since the cursor. |
 
-This is `true` on first launch and after a [full reset](./resetting-local-db). If it's `true` after you've already synced, the cursor wasn't saved — check DB write permissions.
+This is `true` on first launch and after a [full reset](/docs/running-in-production/resetting-local-db). If it's `true` after you've already synced, the cursor wasn't saved — check DB write permissions.
 
 ## Polling status
 
@@ -213,4 +213,4 @@ polling running:   true
 last_sync_at:      recent    ← sync cycles are completing
 ```
 
-Pull works but push doesn't. Check server logs for push rejection (409, 413, or 500). See [Troubleshooting](./troubleshooting).
+Pull works but push doesn't. Check server logs for push rejection (409, 413, or 500). See [Troubleshooting](/docs/running-in-production/troubleshooting).
