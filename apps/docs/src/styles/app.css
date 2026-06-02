@@ -206,6 +206,11 @@ code:not(pre code):not(:where(.not-prose *)) {
   outline-color: oklch(0.55 0.16 120 / 0.4);
 }
 
+/* Search dialog input: no outline ring */
+[role="dialog"] input {
+  outline: none !important;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * {

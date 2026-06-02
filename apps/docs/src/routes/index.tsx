@@ -112,8 +112,8 @@ function HeroSection() {
           </h1>
           <p className="mx-auto mb-10 max-w-xl text-base text-fd-muted-foreground leading-relaxed">
             Define Drizzle schemas. Generate a sync contract. Register the
-            plugin. Add three server routes. Your local database stays in sync —
-            Baresync handles the rest.
+            plugin. Add three server routes. Your local database stays in sync,
+            and Baresync handles the rest.
           </p>
 
           <div className="mx-auto max-w-md">
@@ -153,7 +153,7 @@ function HeroSection() {
             </Link>
             <a
               className="inline-flex items-center rounded-lg border border-fd-border px-5 py-2.5 font-medium text-fd-foreground text-sm transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
-              href="https://github.com/eekrain/baresync"
+              href="https://github.com/sakti-dev/baresync"
               rel="noopener noreferrer"
               target="_blank"
             >
@@ -215,43 +215,31 @@ function CopyButton({ text }: { text: string }) {
 function FeatureGrid() {
   const features = [
     {
-      tag: "Reliability",
-      tagColor: "emerald",
       title: "Outbox pattern",
       description:
         "Every write queues a sync change atomically. No lost writes, no dual-writes, no eventual consistency surprises.",
     },
     {
-      tag: "Consistency",
-      tagColor: "amber",
       title: "Server-wins reconciliation",
       description:
         "Your server is always the source of truth. Conflicts resolve predictably. The client converges to server state.",
     },
     {
-      tag: "Performance",
-      tagColor: "sky",
       title: "Incremental pull",
       description:
         "Cursor-based sync. Only fetch rows that changed since the last pull. No full-table scans on reconnect.",
     },
     {
-      tag: "Reliability",
-      tagColor: "emerald",
       title: "Idempotent by default",
       description:
         "Retries don't create duplicates. Safe to push the same batch again. Network interruptions are non-events.",
     },
     {
-      tag: "Performance",
-      tagColor: "sky",
       title: "Automatic chunking",
       description:
         "Large payloads split into server-safe batches. You write normally. Baresync handles the boundaries.",
     },
     {
-      tag: "Architecture",
-      tagColor: "violet",
       title: "App-owned backend",
       description:
         "No hosted service. No vendor lock-in. Your server, your auth, your persistence. Baresync is infrastructure, not a platform.",
@@ -260,32 +248,21 @@ function FeatureGrid() {
 
   return (
     <section>
-      <div className="border-fd-border border-y">
+      <div className="border-fd-border border-b">
         <div className="mx-auto max-w-4xl px-6 py-6 text-center">
           <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
             What Baresync gives you
           </h2>
           <p className="mb-0 text-fd-muted-foreground leading-relaxed">
-            Six things you get out of the box. No configuration, no boilerplate,
-            no third-party services.
+            What you get out of the box. No configuration, no boilerplate, no
+            third-party services.
           </p>
         </div>
       </div>
       <div className="grid sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
         {features.map((f) => (
           <div className="border-fd-border border-b p-6" key={f.title}>
-            <span
-              className="mb-3 inline-block rounded-md px-2 py-0.5 font-mono text-xs"
-              style={{
-                backgroundColor: TAG_COLORS[f.tagColor].bg,
-                color: TAG_COLORS[f.tagColor].text,
-              }}
-            >
-              {f.tag}
-            </span>
-            <h3 className="mb-2 font-semibold text-fd-foreground text-sm">
-              {f.title}
-            </h3>
+            <h3 className="mb-2 font-semibold text-fd-foreground">{f.title}</h3>
             <p className="text-fd-muted-foreground text-sm leading-relaxed">
               {f.description}
             </p>
@@ -295,13 +272,6 @@ function FeatureGrid() {
     </section>
   );
 }
-
-const TAG_COLORS: Record<string, { bg: string; text: string }> = {
-  emerald: { bg: "rgba(16,185,129,0.15)", text: "rgb(52,211,153)" },
-  amber: { bg: "rgba(245,158,11,0.15)", text: "rgb(251,191,36)" },
-  sky: { bg: "rgba(14,165,233,0.15)", text: "rgb(56,189,248)" },
-  violet: { bg: "rgba(139,92,246,0.15)", text: "rgb(167,139,250)" },
-};
 
 function HowSyncWorks() {
   return (
@@ -448,15 +418,7 @@ function WhatYouControl() {
 
       <div className="grid sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
         <div className="border-fd-border border-b p-6">
-          <span
-            className="mb-3 inline-block rounded-md px-2 py-0.5 font-mono text-xs"
-            style={{
-              backgroundColor: "rgba(16,185,129,0.15)",
-              color: "rgb(52,211,153)",
-            }}
-          >
-            Your code
-          </span>
+          <h3 className="mb-3 font-semibold text-fd-primary">Your code</h3>
           <ul className="space-y-3 text-fd-muted-foreground text-sm">
             <li className="flex items-start gap-2">
               <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
@@ -484,15 +446,7 @@ function WhatYouControl() {
           </ul>
         </div>
         <div className="border-fd-border border-b p-6">
-          <span
-            className="mb-3 inline-block rounded-md px-2 py-0.5 font-mono text-xs"
-            style={{
-              backgroundColor: "rgba(100,116,139,0.15)",
-              color: "rgb(148,163,184)",
-            }}
-          >
-            Baresync
-          </span>
+          <h3 className="mb-3 font-semibold text-fd-foreground">Baresync</h3>
           <ul className="space-y-3 text-fd-muted-foreground text-sm">
             <li className="flex items-start gap-2">
               <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
@@ -579,13 +533,13 @@ function QuickStart() {
 
 function Footer() {
   return (
-    <footer className="px-6 py-12">
+    <footer className="border-fd-border border-t px-6 py-12">
       <div className="mx-auto max-w-4xl text-center">
-        <p className="text-fd-muted-foreground text-sm">
+        <p className="mb-6 text-fd-muted-foreground text-sm">
           Baresync is open source.{" "}
           <a
             className="text-fd-primary underline underline-offset-2 transition-colors hover:text-fd-primary/80"
-            href="https://github.com/eekrain/baresync"
+            href="https://github.com/sakti-dev/baresync"
             rel="noopener noreferrer"
             target="_blank"
           >
@@ -593,6 +547,28 @@ function Footer() {
           </a>
           .
         </p>
+        <nav className="flex items-center justify-center gap-6 text-fd-muted-foreground text-sm">
+          <a
+            className="transition-colors hover:text-fd-foreground"
+            href="/docs/getting-started/quick-start"
+          >
+            Docs
+          </a>
+          <a
+            className="transition-colors hover:text-fd-foreground"
+            href="https://github.com/sakti-dev/baresync"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            GitHub
+          </a>
+          <a
+            className="transition-colors hover:text-fd-foreground"
+            href="https://github.com/sakti-dev/baresync/tree/main/examples"
+          >
+            Examples
+          </a>
+        </nav>
       </div>
     </footer>
   );

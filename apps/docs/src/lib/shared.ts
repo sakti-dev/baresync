@@ -3,7 +3,7 @@ export const docsRoute = "/docs";
 export const docsImageRoute = "/og/docs";
 
 export const gitConfig = {
-  user: "eekrain",
+  user: "sakti-dev",
   repo: "baresync",
   branch: "main",
 };

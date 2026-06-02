@@ -26,12 +26,12 @@ export const BackgroundRippleEffect = ({
     >
       <div className="pointer-events-none absolute inset-0 z-[2] h-full w-full overflow-hidden" />
       <DivGrid
-        borderColor="oklch(0.83 0.18 120 / 0.15)"
+        borderColor="oklch(0.83 0.18 120 / 0.2)"
         cellSize={cellSize}
         className="opacity-60"
         clickedCell={clickedCell ?? null}
         cols={cols}
-        fillColor="oklch(0.83 0.18 120 / 0.06)"
+        fillColor="oklch(0.83 0.18 120 / 0.1)"
         hoveredCell={hoveredCell ?? null}
         interactive={false}
         onCellClick={() => {}}
@@ -92,7 +92,7 @@ const DivGrid = ({
 }: DivGridProps) => {
   const cells = useMemo(
     () => Array.from({ length: rows * cols }, (_, idx) => idx),
-    [rows, cols]
+    [rows, cols],
   );
 
   const gridStyle: React.CSSProperties = {
@@ -131,7 +131,7 @@ const DivGrid = ({
               "cell relative border-[0.5px] opacity-40 transition-opacity duration-150 will-change-transform dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
               clickedCell && "animate-cell-ripple [animation-fill-mode:none]",
               !interactive && "pointer-events-none",
-              isHovered && "opacity-80"
+              isHovered && "opacity-80",
             )}
             key={idx}
             onClick={

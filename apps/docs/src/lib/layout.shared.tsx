@@ -7,14 +7,18 @@ export function baseOptions(): BaseLayoutProps {
       // JSX supported
       title: (
         <img
-          src="/baresync-logo-full-web.svg"
           alt="Baresync logo"
-          width={114}
-          height={24}
           className="h-6"
+          height={24}
+          src="/baresync-logo-full-web.svg"
+          width={114}
         />
       ),
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
+    themeSwitch: { enabled: false },
+    searchToggle: {
+      full: { className: "rounded-lg" },
+    },
   };
 }
