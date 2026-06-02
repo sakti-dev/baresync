@@ -129,6 +129,7 @@ export function AnimatedBeam({
       width={svgDimensions.width}
       xmlns="http://www.w3.org/2000/svg"
     >
+      <title>Animated beam</title>
       <path
         d={pathD}
         stroke={pathColor}

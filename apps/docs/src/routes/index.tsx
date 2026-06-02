@@ -229,9 +229,9 @@ const Feature = ({
       )}
     >
       {isTopRow ? (
-        <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+        <div className="pointer-events-none absolute inset-0 h-full w-full bg-linear-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
       ) : (
-        <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+        <div className="pointer-events-none absolute inset-0 h-full w-full bg-linear-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
       )}
       <div className="relative z-10 mb-4 px-10 text-fd-muted-foreground">
         {icon}
@@ -282,7 +282,7 @@ function WhatYouControl() {
 
       <div className="grid sm:grid-cols-2">
         <div className="group/feature relative border-fd-border border-b py-10 lg:border-r">
-          <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+          <div className="pointer-events-none absolute inset-0 h-full w-full bg-linear-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
           <div className="relative z-10 mb-4 px-10 font-bold text-lg">
             <div className="absolute inset-y-0 left-0 h-6 w-1 origin-center rounded-tr-full rounded-br-full bg-fd-border transition-all duration-200 group-hover/feature:h-8 group-hover/feature:bg-fd-primary" />
             <span className="inline-block text-fd-primary transition duration-200 group-hover/feature:translate-x-2">
@@ -299,7 +299,7 @@ function WhatYouControl() {
           </ul>
         </div>
         <div className="group/feature relative border-fd-border border-b py-10">
-          <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+          <div className="pointer-events-none absolute inset-0 h-full w-full bg-linear-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
           <div className="relative z-10 mb-4 px-10 font-bold text-lg">
             <div className="absolute inset-y-0 left-0 h-6 w-1 origin-center rounded-tr-full rounded-br-full bg-fd-border transition-all duration-200 group-hover/feature:h-8 group-hover/feature:bg-fd-primary" />
             <span className="inline-block text-fd-foreground transition duration-200 group-hover/feature:translate-x-2">

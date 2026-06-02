@@ -5,6 +5,13 @@ import { SyncVisualization } from "./sync-visualization";
 
 const AUTOPLAY_MS = 5000;
 
+const RUST_KEYWORDS_REGEX =
+  /(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/;
+const RUST_KEYWORD_TEST_REGEX =
+  /^(BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)$/;
+const STRING_LITERAL_REGEX = /^"(.*)"$/;
+const NUMBER_REGEX = /^\d+$/;
+
 const STEPS = [
   {
     id: "schemas",
@@ -111,7 +118,7 @@ function CodeHighlight({ code, lang }: { code: string; lang: string }) {
           animate={{ opacity: 1, x: 0 }}
           className="whitespace-nowrap"
           initial={{ opacity: 0, x: -4 }}
-          key={i}
+          key={line}
           transition={{ duration: 0.3, delay: i * 0.04, ease: "easeOut" }}
         >
           <CodeLine lang={lang} line={line} />
@@ -146,42 +153,34 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
     const indent = line.length - trimmed.length;
     return (
       <div style={{ paddingLeft: `${indent}ch` }}>
-        {trimmed
-          .split(
-            /(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/
-          )
-          .map((part, j) => {
-            if (
-              /^(BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)$/.test(
-                part
-              )
-            ) {
-              return (
-                <span className="text-fd-primary" key={j}>
-                  {part}
-                </span>
-              );
-            }
-            if (/^"(.*)"$/.test(part)) {
-              return (
-                <span className="text-emerald-400" key={j}>
-                  {part}
-                </span>
-              );
-            }
-            if (/^\d+$/.test(part)) {
-              return (
-                <span className="text-amber-400" key={j}>
-                  {part}
-                </span>
-              );
-            }
+        {trimmed.split(RUST_KEYWORDS_REGEX).map((part, _j) => {
+          if (RUST_KEYWORD_TEST_REGEX.test(part)) {
             return (
-              <span className="text-fd-foreground" key={j}>
+              <span className="text-fd-primary" key={part}>
                 {part}
               </span>
             );
-          })}
+          }
+          if (STRING_LITERAL_REGEX.test(part)) {
+            return (
+              <span className="text-emerald-400" key={part}>
+                {part}
+              </span>
+            );
+          }
+          if (NUMBER_REGEX.test(part)) {
+            return (
+              <span className="text-amber-400" key={part}>
+                {part}
+              </span>
+            );
+          }
+          return (
+            <span className="text-fd-foreground" key={part}>
+              {part}
+            </span>
+          );
+        })}
       </div>
     );
   }
@@ -293,7 +292,7 @@ export function SyncSlider() {
   }, []);
 
   const startTimer = useCallback(
-    (index: number) => {
+    (_index: number) => {
       clearTimers();
       startTimeRef.current = Date.now();
       setProgress(0);
@@ -351,7 +350,7 @@ export function SyncSlider() {
             return (
               <button
                 className={`group/tab relative select-text border-fd-border border-b py-4 pr-6 text-left transition-colors duration-200 ${
-                  isActive ? "bg-fd-muted flex-1" : "hover:bg-fd-muted/50"
+                  isActive ? "flex-1 bg-fd-muted" : "hover:bg-fd-muted/50"
                 } ${isLast ? "border-b-0" : ""}`}
                 key={step.id}
                 onClick={() => handleTabClick(index)}
@@ -362,7 +361,7 @@ export function SyncSlider() {
                   <div className="absolute bottom-0 left-0 h-[2px] w-full overflow-hidden">
                     <div className="h-full bg-fd-border" />
                     <motion.div
-                      className="absolute bottom-0 left-0 h-full bg-fd-primary origin-left"
+                      className="absolute bottom-0 left-0 h-full origin-left bg-fd-primary"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
@@ -386,32 +385,35 @@ export function SyncSlider() {
                   {step.title}
                 </h3>
 
-                <div
-                  className="grid"
-                  style={{
-                    gridTemplateRows: isActive ? "1fr" : "0fr",
-                    opacity: isActive ? 1 : 0,
-                    transition: isActive
-                      ? "grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1), opacity 250ms cubic-bezier(0.25, 1, 0.5, 1)"
-                      : "opacity 150ms cubic-bezier(0.25, 1, 0.5, 1), grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1) 50ms",
-                  }}
-                >
-                  <div className="min-h-0 overflow-hidden pl-7">
-                    <p className="mt-2 text-fd-muted-foreground text-sm leading-relaxed">
-                      {step.description}
-                    </p>
-                  </div>
-                </div>
+                <AnimatePresence initial={false}>
+                  {isActive && (
+                    <motion.div
+                      animate={{ height: "auto", opacity: 1 }}
+                      className="overflow-hidden pl-7"
+                      exit={{ height: 0, opacity: 0 }}
+                      initial={{ height: 0, opacity: 0 }}
+                      key="description"
+                      transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+                    >
+                      <p className="mt-2 text-fd-muted-foreground text-sm leading-relaxed">
+                        {step.description}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </button>
             );
           })}
         </div>
 
         {/* Right: Content */}
-        <div
+        {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: hover to pause autoplay is intentional */}
+        <section
           className="flex flex-col md:col-span-3"
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
+          role="region"
+          tabIndex={-1}
         >
           <div className="h-[420px] overflow-auto p-6">
             <AnimatePresence mode="wait">
@@ -429,7 +431,7 @@ export function SyncSlider() {
               </motion.div>
             </AnimatePresence>
           </div>
-        </div>
+        </section>
       </div>
     </section>
   );

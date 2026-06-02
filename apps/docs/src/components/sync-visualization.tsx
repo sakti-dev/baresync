@@ -16,7 +16,7 @@ export function SyncVisualization({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "relative flex h-[350px] w-full items-center justify-center overflow-hidden border-fd-border border-b p-10",
+        "relative flex h-87.5 w-full items-center justify-center overflow-hidden border-fd-border border-b p-10",
         className
       )}
       ref={containerRef}
