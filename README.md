@@ -29,7 +29,6 @@ Local-first Tauri apps tend to grow the same sync plumbing repeatedly:
 - Pull cursors and soft deletes.
 - Parent/child table ordering.
 - Server route envelopes, limits, and encoding.
-- Desktop and Android fixture verification.
 
 Baresync turns that plumbing into a reusable contract and runtime while leaving product-specific access control and persistence rules in your app.
 
