@@ -1,7 +1,7 @@
 "use client";
 
 import type { Transition } from "motion/react";
-import { motion } from "motion/react";
+import { motion, useAnimationControls } from "motion/react";
 import type React from "react";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -13,7 +13,7 @@ interface AuroraBackgroundProps extends React.HTMLProps<HTMLDivElement> {
 }
 
 interface WaveProps {
-  animate?: {
+  animate: {
     opacity?: number[];
     scale?: number[];
     x?: number[];
@@ -93,6 +93,77 @@ const WAVES: WaveProps[] = [
   },
 ];
 
+function firstKeyframe(values: number[] | undefined, fallback: number) {
+  return values?.[0] ?? fallback;
+}
+
+function AuroraWave({
+  reduceMotion,
+  wave,
+}: {
+  reduceMotion: boolean;
+  wave: WaveProps;
+}) {
+  const controls = useAnimationControls();
+
+  useEffect(() => {
+    if (reduceMotion) {
+      controls.set({
+        opacity: firstKeyframe(wave.animate.opacity, 1),
+        scale: firstKeyframe(wave.animate.scale, 1),
+        x: firstKeyframe(wave.animate.x, 0),
+        y: firstKeyframe(wave.animate.y, 0),
+      });
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      controls.start({
+        opacity: wave.animate.opacity ?? 1,
+        scale: wave.animate.scale ?? 1,
+        transition: wave.transition,
+        x: wave.animate.x ?? 0,
+        y: wave.animate.y ?? 0,
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      controls.stop();
+    };
+  }, [controls, reduceMotion, wave]);
+
+  return (
+    <motion.div
+      animate={controls}
+      aria-hidden="true"
+      className={cn(
+        "absolute transform-gpu blur-[118px] will-change-transform",
+        wave.className
+      )}
+      initial={{
+        opacity: firstKeyframe(wave.animate.opacity, 1),
+        scale: firstKeyframe(wave.animate.scale, 1),
+        x: firstKeyframe(wave.animate.x, 0),
+        y: firstKeyframe(wave.animate.y, 0),
+      }}
+      style={{
+        ...wave.style,
+        filter: "blur(108px)",
+      }}
+    >
+      <svg
+        aria-hidden="true"
+        className="h-full w-full"
+        preserveAspectRatio="none"
+        viewBox={wave.viewBox}
+      >
+        <path d={wave.path} fill="currentColor" />
+      </svg>
+    </motion.div>
+  );
+}
+
 export function AuroraBackground({
   className,
   children,
@@ -108,6 +179,13 @@ export function AuroraBackground({
     };
 
     update();
+
+    if (import.meta.env.DEV) {
+      console.info("[AuroraBackground] motion state", {
+        prefersReducedMotion: media.matches,
+        waveCount: WAVES.length,
+      });
+    }
 
     media.addEventListener("change", update);
     return () => {
@@ -135,33 +213,7 @@ export function AuroraBackground({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_18%,rgba(0,0,0,0.28)_100%)]" />
 
         {WAVES.map((wave) => (
-          <motion.svg
-            animate={
-              reduceMotion
-                ? undefined
-                : {
-                    opacity: wave.animate?.opacity ?? 1,
-                    scale: wave.animate?.scale ?? 1,
-                    x: wave.animate?.x ?? 0,
-                    y: wave.animate?.y ?? 0,
-                  }
-            }
-            aria-hidden="true"
-            className={cn(
-              "absolute transform-gpu blur-[118px] will-change-transform",
-              wave.className
-            )}
-            initial={false}
-            key={wave.id}
-            style={{
-              ...wave.style,
-              filter: "blur(108px)",
-            }}
-            transition={wave.transition}
-            viewBox={wave.viewBox}
-          >
-            <path d={wave.path} fill="currentColor" />
-          </motion.svg>
+          <AuroraWave key={wave.id} reduceMotion={reduceMotion} wave={wave} />
         ))}
 
         <div
