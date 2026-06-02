@@ -20,17 +20,11 @@ The TypeScript package is published as `baresync`, with Rust crates published as
 
 ## Why Baresync Exists
 
-Local-first Tauri apps tend to grow the same sync plumbing repeatedly:
+Building a local-first Tauri app is easy. Making it sync with your server is not.
 
-- SQLite setup and migrations.
-- Drizzle access through Tauri IPC.
-- Dirty-row tracking and outbox handling.
-- Push chunking and idempotency.
-- Pull cursors and soft deletes.
-- Parent/child table ordering.
-- Server route envelopes, limits, and encoding.
+You need a local database, a way to track what changed, a protocol to push and pull changes, conflict resolution, ordering for tables with foreign keys, and server routes that handle all of it safely. Every team that builds this ends up writing the same plumbing from scratch.
 
-Baresync turns that plumbing into a reusable contract and runtime while leaving product-specific access control and persistence rules in your app.
+Baresync gives you that plumbing as a reusable package. You define your tables in Drizzle, generate a sync contract, and get a working sync engine — client, plugin, and server helpers — out of the box. You keep full control over auth, scope, and persistence. Baresync handles the rest.
 
 ## What It Provides
 
@@ -101,13 +95,13 @@ Start new projects with `create-baresync`:
 bunx create-baresync my-app
 ```
 
-The scaffold prompts for project name and server framework (Hono recommended), then creates a monorepo:
+The scaffold prompts for project name and server framework, then creates a monorepo:
 
 ```txt
 my-app/
 ├── apps/
-│   ├── app/          # Tauri desktop app (React + Vite)
-│   └── server/       # Hono backend
+│   ├── app/          # Tauri app (React/Vite, SolidJS/Vite, etc.)
+│   └── server/       # Hono/Elysia backend
 └── packages/
     └── sync-contract/  # shared schemas + generated contract
 ```
