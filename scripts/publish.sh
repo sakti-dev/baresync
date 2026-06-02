@@ -145,7 +145,7 @@ fi
 if [[ "$PUBLISH_PLUGIN" == true ]]; then
   info "Publishing tauri-plugin-baresync $PLUGIN_VERSION to crates.io..."
   cd "$REPO_ROOT/crates/tauri-plugin-baresync"
-  cargo publish
+  cargo publish --no-verify
   info "tauri-plugin-baresync published."
 fi
 
