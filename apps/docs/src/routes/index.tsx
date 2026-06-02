@@ -16,6 +16,7 @@ import {
   BackgroundRippleEffect,
   useRipple,
 } from "@/components/ui/background-ripple-effect";
+import { WaveBackground } from "@/components/wave-background";
 import { baseOptions } from "@/lib/layout.shared";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ function Home() {
           <HeroSection />
           <SyncSlider />
           <FeatureGrid />
+          <SkillsSection />
           <WhatYouControl />
           <QuickStart />
           <Footer />
@@ -249,6 +251,41 @@ const Feature = ({
   );
 };
 
+function SkillsSection() {
+  return (
+    <AuroraBackground className="h-auto border-fd-border border-b">
+      <section className="relative z-10 px-6 py-14">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
+            AI assistants that know Baresync
+          </h2>
+          <p className="mb-8 text-balance text-fd-muted-foreground leading-relaxed">
+            Your AI assistant generates Baresync code from the actual source,
+            not stale training data. One command installs skills for your
+            editor.
+          </p>
+          <div className="mx-auto max-w-md">
+            <PmCommandBlock className="rounded-none" kind="npx" />
+          </div>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-fd-muted-foreground text-sm">
+            {[
+              "Claude Code",
+              "Cursor",
+              "Copilot",
+              "Gemini",
+              "Windsurf",
+              "Kilo",
+              "Amp",
+            ].map((name) => (
+              <span key={name}>{name}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+    </AuroraBackground>
+  );
+}
+
 function WhatYouControl() {
   const yourCodeItems = [
     "Auth and session validation in resolveScope",
@@ -322,7 +359,7 @@ function WhatYouControl() {
 
 function QuickStart() {
   return (
-    <AuroraBackground className="border-fd-border border-b">
+    <WaveBackground className="border-fd-border border-b">
       <section className="relative z-10 px-6 py-14">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="mb-4 flex items-center justify-center gap-2 font-semibold text-2xl text-fd-foreground sm:text-3xl">
@@ -343,21 +380,23 @@ function QuickStart() {
             It also includes a framework-agnostic sync client — wire it into
             your frontend to start syncing.
           </p>
-          <pre className="mx-auto max-w-md overflow-x-auto rounded-lg border border-fd-border bg-fd-card p-5 text-left text-sm">
-            <code className="font-mono text-fd-foreground">
-              <span className="text-fd-muted-foreground">$</span> bun create
-              baresync@latest{"\n"}
-              <span className="text-fd-muted-foreground">$</span> cd my-app
-              {"\n"}
-              <span className="text-fd-muted-foreground">$</span> bun run
-              generate:sync{"\n"}
-              <span className="text-fd-muted-foreground">$</span> bun run
-              migrate:local{"\n"}
-              <span className="text-fd-muted-foreground">$</span> bun run
-              migrate:server{"\n"}
-              <span className="text-fd-muted-foreground">$</span> bun run dev
-            </code>
-          </pre>
+          <div className="not-prose mx-auto max-w-md">
+            <pre className="overflow-x-auto rounded-none border border-fd-border bg-fd-card/60 p-5 text-left text-sm">
+              <code className="font-mono text-fd-foreground">
+                <span className="text-fd-muted-foreground">$</span> bun create
+                baresync@latest{"\n"}
+                <span className="text-fd-muted-foreground">$</span> cd my-app
+                {"\n"}
+                <span className="text-fd-muted-foreground">$</span> bun run
+                generate:sync{"\n"}
+                <span className="text-fd-muted-foreground">$</span> bun run
+                migrate:local{"\n"}
+                <span className="text-fd-muted-foreground">$</span> bun run
+                migrate:server{"\n"}
+                <span className="text-fd-muted-foreground">$</span> bun run dev
+              </code>
+            </pre>
+          </div>
           <div className="mt-8">
             <Link
               className="inline-flex items-center rounded-md bg-fd-primary px-6 py-2.5 font-medium text-fd-primary-foreground text-sm transition-colors hover:bg-fd-primary/90"
@@ -383,7 +422,7 @@ function QuickStart() {
           </div>
         </div>
       </section>
-    </AuroraBackground>
+    </WaveBackground>
   );
 }
 

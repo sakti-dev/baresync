@@ -29,7 +29,19 @@ my-app/
 
 The scaffold patches `tsconfig.json` in both `apps/app` and `apps/server` with `paths` aliases so you can import from `@sync-contract/...` without a workspace dependency. It also patches `vite.config.ts` with `resolve: { tsconfigPaths: true }` (Vite 8 native).
 
-## 2. Generate the sync contract
+## 2. Install AI skills <span className="text-fd-muted-foreground">(optional)</span>
+
+If you use an AI coding assistant, install Baresync skills so it generates correct code from the actual source:
+
+<PmCommandBlock kind="npx" />
+
+This copies reference files into your editor's agent directory (`.claude`, `.cursor`, `.github/copilot`, etc.). The assistant will then understand Baresync's API, schema conventions, and server patterns.
+
+Supported editors: Claude Code, Cursor, Copilot, Gemini, Windsurf, Kilo, Amp.
+
+If your coding agent is not listed, copy the skill files manually from [skills/baresync](https://github.com/sakti-dev/baresync/tree/main/skills/baresync) into your agent's instruction directory.
+
+## 3. Generate the sync contract
 
 ```bash
 bun run generate:sync

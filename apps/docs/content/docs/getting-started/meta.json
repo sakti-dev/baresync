@@ -4,6 +4,7 @@
     "introduction",
     "quick-start",
     "understanding-your-project",
+    "wire-up-frontend",
     "local-database-and-writes",
     "server-routes",
     "run-sync",

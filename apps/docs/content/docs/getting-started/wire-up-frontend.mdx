@@ -1,0 +1,128 @@
+---
+title: Wire Up the Frontend
+description: What the scaffold provides and what you need to build next.
+---
+
+# Wire Up the Frontend
+
+The scaffold created your server routes, sync contract, migrations, and Rust plugin config. It did **not** wire up the frontend — that's the piece your React, Solid, or vanilla TS code needs to handle.
+
+You need four things:
+
+| Piece | What it does |
+|-------|-------------|
+| **Database helper** | Creates a Drizzle proxy that sends SQL to the Tauri plugin via `invoke` |
+| **Sync client** | Wraps `createSyncClient` with your scope and `invoke` |
+| **Write helpers** | `writeTransaction` + `writeLocalChange` for atomic outbox-tracked writes |
+| **Event listeners** | Invalidate your query cache when the Rust engine emits `baresync://data-changed` |
+
+## Quick React example
+
+Install the query library:
+
+```bash
+bun add @tanstack/react-query
+```
+
+Create the database and sync client:
+
+```tsx
+// src/lib/db.ts
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync/db";
+import { lists, todos } from "@sync-contract/local-synced-schema";
+import { syncCursors, syncOutbox } from "@sync-contract/local-schema";
+
+export const TABLE = { lists, todos, syncCursors, syncOutbox };
+export const db = createTauriDrizzleDatabase({ schema: TABLE, invoke });
+```
+
+```tsx
+// src/lib/sync.ts
+import { invoke } from "@tauri-apps/api/core";
+import { createSyncClient } from "baresync/tauri";
+import { SYNC_SCOPE } from "@sync-contract/constants";
+
+export const syncClient = createSyncClient({ scopeId: SYNC_SCOPE, invoke });
+```
+
+Wrap your app and listen for events:
+
+```tsx
+// src/main.tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
+import { useEffect } from "react";
+import { syncClient } from "./lib/sync";
+
+const queryClient = new QueryClient();
+
+function App() {
+  useEffect(() => {
+    syncClient.startPolling();
+    const unlisten = listen("baresync://data-changed", () => {
+      queryClient.invalidateQueries();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+      syncClient.stopPolling();
+    };
+  }, []);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <YourApp />
+    </QueryClientProvider>
+  );
+}
+```
+
+Query and write data in your components:
+
+```tsx
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { db, TABLE } from "./lib/db";
+import { syncClient } from "./lib/sync";
+
+function ListsPage() {
+  const queryClient = useQueryClient();
+  const { data: lists = [] } = useQuery({
+    queryKey: ["lists"],
+    queryFn: () => db.select().from(TABLE.lists),
+  });
+
+  async function handleAdd() {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await syncClient.writeTransaction(db, async (tx) => {
+      await syncClient.writeLocalChange(tx, {
+        table: TABLE.lists,
+        rowId: id,
+        operation: "insert",
+        write: (w) => w.insert(TABLE.lists).values({ id, name: "New list", createdAt: now, updatedAt: now }),
+      });
+    });
+    await queryClient.invalidateQueries({ queryKey: ["lists"] });
+  }
+
+  return (
+    <div>
+      <button onClick={handleAdd}>Add list</button>
+      {lists.map((l) => <p key={l.id}>{l.name}</p>)}
+    </div>
+  );
+}
+```
+
+## Full guide
+
+The snippet above is a minimal working example. For production patterns — provider hooks, sync state indicators, soft deletes, Solid integration, and framework-agnostic setups — see the UI Frameworks guide.
+
+| Page | What it covers |
+|------|---------------|
+| [Overview](/docs/ui-frameworks/overview) | Event-driven architecture and integration pattern |
+| [React](/docs/ui-frameworks/react) | Provider, hooks, React Query, full examples |
+| [Solid](/docs/ui-frameworks/solid) | SolidJS equivalent with Solid Query |
+| [Framework-Agnostic](/docs/ui-frameworks/framework-agnostic-patterns) | SyncClient, events, writes without a framework |
+
+Next: [Local Database & Writes](/docs/getting-started/local-database-and-writes) for the server-side sync handlers and database setup.

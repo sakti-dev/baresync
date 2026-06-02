@@ -11,7 +11,7 @@
 
   --animate-cell-ripple: cell-ripple var(--duration, 200ms) ease-out none 1
     var(--delay, 0ms);
-  --animate-aurora: aurora 60s linear infinite;
+  --animate-aurora: aurora 20s linear infinite;
 
   /* Surfaces */
   --color-fd-background: oklch(0.13 0.008 250);

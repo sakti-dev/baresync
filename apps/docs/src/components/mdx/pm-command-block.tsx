@@ -12,6 +12,17 @@ const PM_COMMANDS: Record<Pm, string> = {
   yarn: "yarn create baresync@latest",
 };
 
+type CommandKind = "create" | "npx";
+const COMMAND_KINDS: Record<CommandKind, Record<Pm, string>> = {
+  create: PM_COMMANDS,
+  npx: {
+    bun: "bunx baresync skills install",
+    npm: "npx baresync skills install",
+    pnpm: "pnpm dlx baresync skills install",
+    yarn: "yarn dlx baresync skills install",
+  },
+};
+
 const PM_ICONS: Record<Pm, React.ReactNode> = {
   bun: (
     <svg className="size-4" fill="currentColor" viewBox="0 0 128 128">
@@ -86,9 +97,16 @@ const PM_ICONS: Record<Pm, React.ReactNode> = {
   ),
 };
 
-export function PmCommandBlock({ className }: { className?: string }) {
+export function PmCommandBlock({
+  className,
+  kind = "create",
+}: {
+  className?: string;
+  kind?: CommandKind;
+}) {
   const [pm, setPm] = useState<Pm>("bun");
   const [copied, setCopied] = useState(false);
+  const commands = COMMAND_KINDS[kind];
 
   return (
     <div
@@ -116,12 +134,12 @@ export function PmCommandBlock({ className }: { className?: string }) {
       </div>
       <div className="flex items-center justify-between px-4 py-3">
         <code className="font-mono text-fd-foreground text-sm">
-          {PM_COMMANDS[pm]}
+          {commands[pm]}
         </code>
         <button
           className="rounded-md p-1.5 text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-foreground"
           onClick={() => {
-            navigator.clipboard.writeText(PM_COMMANDS[pm]);
+            navigator.clipboard.writeText(commands[pm]);
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
           }}
