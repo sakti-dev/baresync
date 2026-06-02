@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { HomeLayout } from "fumadocs-ui/layouts/home";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   BackgroundRippleEffect,
   useRipple,
 } from "@/components/ui/background-ripple-effect";
+import { PmCommandBlock } from "@/components/mdx/pm-command-block";
 import { baseOptions } from "@/lib/layout.shared";
 
 export const Route = createFileRoute("/")({
@@ -28,21 +29,11 @@ function Home() {
   );
 }
 
-const PM_TABS = ["bun", "npm", "pnpm", "yarn"] as const;
-type Pm = (typeof PM_TABS)[number];
-const PM_COMMANDS: Record<Pm, string> = {
-  bun: "bunx create-baresync my-app",
-  npm: "npx create-baresync my-app",
-  pnpm: "pnpm create-baresync my-app",
-  yarn: "yarn create baresync my-app",
-};
-
 const CELL_SIZE = 56;
 const COLS = 30;
 const ROWS = 10;
 
 function HeroSection() {
-  const [pm, setPm] = useState<Pm>("bun");
   const sectionRef = useRef<HTMLDivElement>(null);
   const { clickedCell, hoveredCell, rippleKey, setHoveredCell, triggerRipple } =
     useRipple();
@@ -117,30 +108,7 @@ function HeroSection() {
           </p>
 
           <div className="mx-auto max-w-md">
-            <div className="overflow-hidden rounded-xl border border-fd-border bg-fd-background">
-              <div className="flex border-fd-border border-b">
-                {PM_TABS.map((t) => (
-                  <button
-                    className={`px-4 py-2 font-mono text-xs transition-colors ${
-                      pm === t
-                        ? "border-fd-primary border-b-2 text-fd-foreground"
-                        : "text-fd-muted-foreground hover:text-fd-foreground"
-                    }`}
-                    key={t}
-                    onClick={() => setPm(t)}
-                    type="button"
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between px-4 py-3">
-                <code className="font-mono text-fd-foreground text-sm">
-                  {PM_COMMANDS[pm]}
-                </code>
-                <CopyButton text={PM_COMMANDS[pm]} />
-              </div>
-            </div>
+            <PmCommandBlock />
           </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
@@ -163,52 +131,6 @@ function HeroSection() {
         </div>
       </div>
     </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <button
-      className="rounded-md p-1.5 text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-foreground"
-      onClick={() => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }}
-      title="Copy to clipboard"
-      type="button"
-    >
-      {copied ? (
-        <svg
-          aria-hidden="true"
-          className="size-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M5 13l4 4L19 7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        <svg
-          aria-hidden="true"
-          className="size-4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <rect height="13" rx="2" ry="2" width="13" x="9" y="9" />
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-        </svg>
-      )}
-    </button>
   );
 }
 
@@ -489,8 +411,8 @@ function QuickStart() {
         </p>
         <pre className="mx-auto max-w-md overflow-x-auto rounded-lg border border-fd-border bg-fd-background p-5 text-left text-sm">
           <code className="font-mono text-fd-foreground">
-            <span className="text-fd-muted-foreground">$</span> bunx
-            create-baresync my-app{"\n"}
+            <span className="text-fd-muted-foreground">$</span> bun create
+            baresync@latest{"\n"}
             <span className="text-fd-muted-foreground">$</span> cd my-app{"\n"}
             <span className="text-fd-muted-foreground">$</span> bun install
             {"\n"}

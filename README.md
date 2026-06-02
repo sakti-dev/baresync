@@ -92,7 +92,7 @@ The backend remains app-owned. Baresync helps with request/response structure, i
 Start new projects with `create-baresync`:
 
 ```bash
-bunx create-baresync my-app
+bun create baresync@latest
 ```
 
 The scaffold prompts for project name and server framework, then creates a monorepo:
