@@ -4,11 +4,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it, vi } from "vitest";
-import type { GeneratorConfig } from "../generator";
-import { runDiagnostics } from "../generator/diagnostics";
-import type { SyncContract } from "../schema/contract";
-import { defineSyncContract } from "../schema/contract";
-import { defineSyncedTable } from "../schema/synced-table";
+import type { GeneratorConfig } from "../../generator";
+import { runDiagnostics } from "../../generator/diagnostics";
+import type { SyncContract } from "../../schema/contract";
+import { defineSyncContract } from "../../schema/contract";
+import { defineSyncedTable } from "../../schema/synced-table";
 
 const categories = sqliteTable("categories", {
   id: text("id").primaryKey(),
@@ -31,7 +31,7 @@ const categoriesSynced = defineSyncedTable({
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../"
+  "../../../../../"
 );
 const inventoryContractRoot = path.join(
   repoRoot,
@@ -99,7 +99,7 @@ describe("CLI runGenerate", () => {
       tables: [categoriesSynced],
     });
 
-    const { runGenerate } = await import("../cli");
+    const { runGenerate } = await import("../generator");
     await runGenerate(contract, outputDir);
 
     const today = new Date().toISOString().slice(0, 10);
@@ -134,7 +134,7 @@ describe("CLI runGenerate", () => {
       outputDir,
     } satisfies GeneratorConfig;
 
-    const { runGenerate } = await import("../cli");
+    const { runGenerate } = await import("../generator");
     await runGenerate(config);
 
     const today = new Date().toISOString().slice(0, 10);
@@ -158,7 +158,7 @@ describe("CLI config discovery", () => {
     const previousCwd = process.cwd();
     process.chdir(cwd);
     try {
-      const { runGenerateCommand } = await import("../cli");
+      const { runGenerateCommand } = await import("../generator");
       await runGenerateCommand([]);
 
       const today = new Date().toISOString().slice(0, 10);
@@ -186,7 +186,7 @@ describe("CLI config discovery", () => {
     const previousCwd = process.cwd();
     process.chdir(cwd);
     try {
-      const { runGenerateCommand } = await import("../cli");
+      const { runGenerateCommand } = await import("../generator");
       await runGenerateCommand(["--config", "./custom/custom-sync.config.ts"]);
 
       const today = new Date().toISOString().slice(0, 10);
@@ -211,7 +211,7 @@ describe("CLI config discovery", () => {
     const previousCwd = process.cwd();
     process.chdir(cwd);
     try {
-      const { runDoctorCommand } = await import("../cli");
+      const { runDoctorCommand } = await import("../generator");
       const stdoutSpy = vi
         .spyOn(process.stdout, "write")
         .mockImplementation(() => true);

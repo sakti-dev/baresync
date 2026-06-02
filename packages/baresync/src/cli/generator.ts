@@ -1,11 +1,9 @@
-#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import type { GeneratorConfig } from "./generator/config";
-import { runDiagnostics, type SyncDiagnostic } from "./generator/diagnostics";
-import { generateSyncArtifacts, SyncDiagnosticError } from "./generator/index";
-import type { SyncContract } from "./schema/contract";
+import type { GeneratorConfig } from "../generator/config";
+import { runDiagnostics, type SyncDiagnostic } from "../generator/diagnostics";
+import { generateSyncArtifacts, SyncDiagnosticError } from "../generator/index";
+import type { SyncContract } from "../schema/contract";
 
 type GenerateSource = GeneratorConfig | string | SyncContract;
 type LoadedConfig = Record<string, unknown>;
@@ -301,9 +299,7 @@ async function loadConfigModuleFromCliOptions(options: {
 
   if (!resolvedPath) {
     throw new Error(
-      `No sync config found in ${process.cwd()}. Searched: ${CONFIG_FILENAMES.join(
-        ", "
-      )}`
+      `No sync config found in ${process.cwd()}. Searched: ${CONFIG_FILENAMES.join(", ")}`
     );
   }
 
@@ -460,40 +456,9 @@ function isGeneratorConfig(value: unknown): value is GeneratorConfig {
   );
 }
 
-function handleGenerate(args: string[]): void {
+export function handleGenerate(args: string[]): void {
   runGenerateCommand(args).catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
   });
-}
-
-function printUsage(): void {
-  process.stderr.write(
-    "Usage: baresync <doctor|generate> [options]\n\nCommands:\n  doctor [config-path]              Run diagnostics\n  generate [config-path] [options]  Generate sync artifacts\n\nGenerate options:\n  --config <path>                   Explicit config file\n  --output <dir>                    Output directory\n  --check                           Dry-run check only\n  --warnings-as-errors              Treat warnings as errors\n"
-  );
-  process.exit(1);
-}
-
-export function runCli(args: string[]): void {
-  const command = args[0];
-
-  if (command === "doctor") {
-    runDoctorCommand(args.slice(1)).catch((error: unknown) => {
-      console.error(error);
-      process.exitCode = 1;
-    });
-    return;
-  }
-
-  if (command === "generate") {
-    handleGenerate(args.slice(1));
-    return;
-  }
-
-  printUsage();
-}
-
-const currentFile = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
-  runCli(process.argv.slice(2));
 }

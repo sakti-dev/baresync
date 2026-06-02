@@ -10,7 +10,7 @@ export default defineConfig({
     "src/server/drizzle.ts",
     "src/tauri/index.ts",
     "src/limits.ts",
-    "src/cli.ts",
+    "src/cli/index.ts",
   ],
   format: ["esm"],
   target: "node18",
