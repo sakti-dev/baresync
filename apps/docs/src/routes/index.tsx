@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/background-ripple-effect";
 import { PmCommandBlock } from "@/components/mdx/pm-command-block";
 import { SyncSlider } from "@/components/sync-slider";
+import { SyncVisualization } from "@/components/sync-visualization";
 import { baseOptions } from "@/lib/layout.shared";
 
 export const Route = createFileRoute("/")({
@@ -19,6 +20,7 @@ function Home() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-7xl border-fd-border border-x">
           <HeroSection />
+          <SyncVisualization />
           <SyncSlider />
           <FeatureGrid />
           <WhatYouControl />
