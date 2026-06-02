@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { SyncVisualization } from "./sync-visualization";
 
 const AUTOPLAY_MS = 5000;
 
@@ -145,34 +146,42 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
     const indent = line.length - trimmed.length;
     return (
       <div style={{ paddingLeft: `${indent}ch` }}>
-        {trimmed.split(/(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/).map((part, j) => {
-          if (/^(BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)$/.test(part)) {
+        {trimmed
+          .split(
+            /(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/,
+          )
+          .map((part, j) => {
+            if (
+              /^(BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)$/.test(
+                part,
+              )
+            ) {
+              return (
+                <span className="text-fd-primary" key={j}>
+                  {part}
+                </span>
+              );
+            }
+            if (/^"(.*)"$/.test(part)) {
+              return (
+                <span className="text-emerald-400" key={j}>
+                  {part}
+                </span>
+              );
+            }
+            if (/^\d+$/.test(part)) {
+              return (
+                <span className="text-amber-400" key={j}>
+                  {part}
+                </span>
+              );
+            }
             return (
-              <span className="text-fd-primary" key={j}>
+              <span className="text-fd-foreground" key={j}>
                 {part}
               </span>
             );
-          }
-          if (/^"(.*)"$/.test(part)) {
-            return (
-              <span className="text-emerald-400" key={j}>
-                {part}
-              </span>
-            );
-          }
-          if (/^\d+$/.test(part)) {
-            return (
-              <span className="text-amber-400" key={j}>
-                {part}
-              </span>
-            );
-          }
-          return (
-            <span className="text-fd-foreground" key={j}>
-              {part}
-            </span>
-          );
-        })}
+          })}
       </div>
     );
   }
@@ -185,7 +194,10 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
     return (
       <div style={{ paddingLeft: `${indent}ch` }}>
         <span className="text-blue-400">{trimmed.split(" ")[0]}</span>
-        <span className="text-fd-foreground"> {trimmed.slice(trimmed.indexOf(" ") + 1)}</span>
+        <span className="text-fd-foreground">
+          {" "}
+          {trimmed.slice(trimmed.indexOf(" ") + 1)}
+        </span>
       </div>
     );
   }
@@ -199,7 +211,10 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
   }
   if (trimmed.startsWith("//")) {
     return (
-      <div className="text-fd-muted-foreground" style={{ paddingLeft: `${indent}ch` }}>
+      <div
+        className="text-fd-muted-foreground"
+        style={{ paddingLeft: `${indent}ch` }}
+      >
         {trimmed}
       </div>
     );
@@ -208,7 +223,10 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
     return (
       <div style={{ paddingLeft: `${indent}ch` }}>
         <span className="text-blue-400">{trimmed.split(" ")[0]}</span>
-        <span className="text-fd-foreground"> {trimmed.slice(trimmed.indexOf(" ") + 1)}</span>
+        <span className="text-fd-foreground">
+          {" "}
+          {trimmed.slice(trimmed.indexOf(" ") + 1)}
+        </span>
       </div>
     );
   }
@@ -232,9 +250,36 @@ export function SyncSlider() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isInView, setIsInView] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // Intersection Observer to detect if component is in viewport
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsInView(entry.isIntersecting);
+      },
+      { threshold: 0.1 },
+    );
+
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  // Pause timer when not in viewport
+  useEffect(() => {
+    if (!isInView) {
+      setIsPaused(true);
+    } else {
+      setIsPaused(false);
+    }
+  }, [isInView]);
 
   const clearTimers = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -272,9 +317,9 @@ export function SyncSlider() {
   };
 
   return (
-    <section>
+    <section ref={sectionRef}>
       <div className="border-fd-border border-b">
-        <div className="mx-auto max-w-4xl px-6 py-6 text-center">
+        <div className="mx-auto max-w-4xl px-6 py-14 text-center">
           <h2
             className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl"
             style={{ textWrap: "balance" }}
@@ -288,6 +333,8 @@ export function SyncSlider() {
           </p>
         </div>
       </div>
+
+      <SyncVisualization />
 
       <div className="grid grid-cols-1 border-fd-border border-b md:grid-cols-5 md:divide-x md:divide-fd-border">
         {/* Left: Tabs */}

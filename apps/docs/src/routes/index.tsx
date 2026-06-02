@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/background-ripple-effect";
 import { PmCommandBlock } from "@/components/mdx/pm-command-block";
 import { SyncSlider } from "@/components/sync-slider";
-import { SyncVisualization } from "@/components/sync-visualization";
 import { baseOptions } from "@/lib/layout.shared";
 
 export const Route = createFileRoute("/")({
@@ -20,7 +19,6 @@ function Home() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <div className="mx-auto w-full max-w-7xl border-fd-border border-x">
           <HeroSection />
-          <SyncVisualization />
           <SyncSlider />
           <FeatureGrid />
           <WhatYouControl />
@@ -174,7 +172,7 @@ function FeatureGrid() {
   return (
     <section>
       <div className="border-fd-border border-b">
-        <div className="mx-auto max-w-4xl px-6 py-6 text-center">
+        <div className="mx-auto max-w-4xl px-6 py-14 text-center">
           <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
             What Baresync gives you
           </h2>
@@ -202,7 +200,7 @@ function WhatYouControl() {
   return (
     <section>
       <div className="border-fd-border border-b">
-        <div className="mx-auto max-w-4xl px-6 py-6 text-center">
+        <div className="mx-auto max-w-4xl px-6 py-14 text-center">
           <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
             What you control
           </h2>
@@ -277,7 +275,7 @@ function WhatYouControl() {
 
 function QuickStart() {
   return (
-    <section className="border-fd-border border-b px-6 py-12 lg:py-16">
+    <section className="border-fd-border border-b px-6 py-14">
       <div className="mx-auto max-w-4xl text-center">
         <h2 className="mb-4 font-semibold text-2xl text-fd-foreground sm:text-3xl">
           Get started in seven commands
@@ -332,7 +330,7 @@ function QuickStart() {
 
 function Footer() {
   return (
-    <footer className="border-fd-border border-t px-6 py-12">
+    <footer className="border-fd-border border-t p-6">
       <div className="mx-auto max-w-4xl text-center">
         <p className="mb-6 text-fd-muted-foreground text-sm">
           Baresync is open source.{" "}
