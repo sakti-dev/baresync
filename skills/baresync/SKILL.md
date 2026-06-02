@@ -133,6 +133,7 @@ Local write → outbox entry → plugin polls → push to server → pull from s
 | `tauri-plugin` | User asks about plugin builder, Tauri commands, polling, migrations, or plugin testing | [reference/tauri-plugin.md](reference/tauri-plugin.md) |
 | `testing` | User asks how to test baresync integration, write tests, or verify sync behavior | [reference/testing.md](reference/testing.md) |
 | `production` | User asks about production config, monitoring, performance, DB resets, or maintenance | [reference/production.md](reference/production.md) |
+| `source`    | All other references exhausted and agent is still stuck | [reference/source.md](reference/source.md) |
 
 ## Routing rules
 
@@ -141,6 +142,7 @@ Local write → outbox entry → plugin polls → push to server → pull from s
 3. **User reports an error or bug**: load `reference/debug.md`.
 4. **User asks "what is" or "how does"**: load `reference/query.md`.
 5. **No clear match**: answer from concepts section if general enough, otherwise load the closest command reference.
+6. **All other references exhausted and still stuck**: load `reference/source.md`.
 
 ## Absolute bans
 
