@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SyncVisualization } from "./sync-visualization";
 
 const AUTOPLAY_MS = 5000;
@@ -108,13 +108,13 @@ function CodeHighlight({ code, lang }: { code: string; lang: string }) {
     <div className="font-mono text-sm leading-relaxed">
       {lines.map((line, i) => (
         <motion.div
+          animate={{ opacity: 1, x: 0 }}
           className="whitespace-nowrap"
           initial={{ opacity: 0, x: -4 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3, delay: i * 0.04, ease: "easeOut" }}
           key={i}
+          transition={{ duration: 0.3, delay: i * 0.04, ease: "easeOut" }}
         >
-          <CodeLine line={line} lang={lang} />
+          <CodeLine lang={lang} line={line} />
         </motion.div>
       ))}
     </div>
@@ -148,12 +148,12 @@ function CodeLine({ line, lang }: { line: string; lang: string }) {
       <div style={{ paddingLeft: `${indent}ch` }}>
         {trimmed
           .split(
-            /(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/,
+            /(\b(?:BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)\b)/
           )
           .map((part, j) => {
             if (
               /^(BaresyncBuilder|new|api_base_url|db_path|contract_json|include_str|migrations_path|poll_interval_secs|build)$/.test(
-                part,
+                part
               )
             ) {
               return (
@@ -259,13 +259,15 @@ export function SyncSlider() {
   // Intersection Observer to detect if component is in viewport
   useEffect(() => {
     const section = sectionRef.current;
-    if (!section) return;
+    if (!section) {
+      return;
+    }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         setIsInView(entry.isIntersecting);
       },
-      { threshold: 0.1 },
+      { threshold: 0.1 }
     );
 
     observer.observe(section);
@@ -274,16 +276,20 @@ export function SyncSlider() {
 
   // Pause timer when not in viewport
   useEffect(() => {
-    if (!isInView) {
-      setIsPaused(true);
-    } else {
+    if (isInView) {
       setIsPaused(false);
+    } else {
+      setIsPaused(true);
     }
   }, [isInView]);
 
   const clearTimers = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
   }, []);
 
   const startTimer = useCallback(
@@ -302,7 +308,7 @@ export function SyncSlider() {
         setActiveIndex((prev) => (prev + 1) % STEPS.length);
       }, AUTOPLAY_MS);
     },
-    [clearTimers],
+    [clearTimers]
   );
 
   useEffect(() => {
@@ -344,7 +350,7 @@ export function SyncSlider() {
             const isLast = index === STEPS.length - 1;
             return (
               <button
-                className={`group relative select-text border-fd-border border-b px-6 py-4 text-left transition-colors duration-200 ${
+                className={`group/tab relative select-text border-fd-border border-b py-4 pr-6 text-left transition-colors duration-200 ${
                   isActive ? "bg-fd-muted flex-1" : "hover:bg-fd-muted/50"
                 } ${isLast ? "border-b-0" : ""}`}
                 key={step.id}
@@ -363,12 +369,20 @@ export function SyncSlider() {
                 )}
 
                 <h3
-                  className={`font-semibold transition-colors duration-200 ${
+                  className={`relative pl-7 font-semibold transition-colors duration-200 ${
                     isActive
                       ? "text-fd-foreground"
-                      : "text-fd-muted-foreground group-hover:text-fd-foreground"
+                      : "text-fd-muted-foreground group-hover/tab:text-fd-foreground"
                   }`}
                 >
+                  {/* Left floating indicator */}
+                  <div
+                    className={`absolute inset-y-0 left-0 w-1 origin-center rounded-tr-full rounded-br-full transition-all duration-200 ${
+                      isActive
+                        ? "h-8 bg-fd-primary"
+                        : "h-6 bg-fd-border group-hover/tab:h-8 group-hover/tab:bg-fd-primary"
+                    }`}
+                  />
                   {step.title}
                 </h3>
 
@@ -382,7 +396,7 @@ export function SyncSlider() {
                       : "opacity 150ms cubic-bezier(0.25, 1, 0.5, 1), grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1) 50ms",
                   }}
                 >
-                  <div className="min-h-0 overflow-hidden">
+                  <div className="min-h-0 overflow-hidden pl-7">
                     <p className="mt-2 text-fd-muted-foreground text-sm leading-relaxed">
                       {step.description}
                     </p>
@@ -402,10 +416,10 @@ export function SyncSlider() {
           <div className="h-[420px] overflow-auto p-6">
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeIndex}
-                initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }}
+                key={activeIndex}
                 transition={{ duration: 0.2, ease: [0.25, 1, 0.5, 1] }}
               >
                 <CodeHighlight

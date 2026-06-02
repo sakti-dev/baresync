@@ -1,13 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { HomeLayout } from "fumadocs-ui/layouts/home";
+import {
+  Database,
+  GitMerge,
+  Layers,
+  RefreshCw,
+  Server,
+  Zap,
+} from "lucide-react";
 import { useRef } from "react";
+import { AuroraBackground } from "@/components/aurora-background";
+import { PmCommandBlock } from "@/components/mdx/pm-command-block";
+import { SyncSlider } from "@/components/sync-slider";
 import {
   BackgroundRippleEffect,
   useRipple,
 } from "@/components/ui/background-ripple-effect";
-import { PmCommandBlock } from "@/components/mdx/pm-command-block";
-import { SyncSlider } from "@/components/sync-slider";
 import { baseOptions } from "@/lib/layout.shared";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   component: Home,
@@ -121,7 +131,7 @@ function HeroSection() {
               Get started
             </Link>
             <a
-              className="inline-flex items-center rounded-lg border border-fd-border px-5 py-2.5 font-medium text-fd-foreground text-sm transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
+              className="inline-flex items-center rounded-lg bg-fd-muted px-5 py-2.5 font-medium text-fd-foreground text-sm transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
               href="https://github.com/sakti-dev/baresync"
               rel="noopener noreferrer"
               target="_blank"
@@ -141,31 +151,37 @@ function FeatureGrid() {
       title: "Outbox pattern",
       description:
         "Every write queues a sync change atomically. No lost writes, no dual-writes, no eventual consistency surprises.",
+      icon: <Database />,
     },
     {
       title: "Server-wins reconciliation",
       description:
         "Your server is always the source of truth. Conflicts resolve predictably. The client converges to server state.",
+      icon: <GitMerge />,
     },
     {
       title: "Incremental pull",
       description:
         "Cursor-based sync. Only fetch rows that changed since the last pull. No full-table scans on reconnect.",
+      icon: <RefreshCw />,
     },
     {
       title: "Idempotent by default",
       description:
         "Retries don't create duplicates. Safe to push the same batch again. Network interruptions are non-events.",
+      icon: <Zap />,
     },
     {
       title: "Automatic chunking",
       description:
         "Large payloads split into server-safe batches. You write normally. Baresync handles the boundaries.",
+      icon: <Layers />,
     },
     {
       title: "App-owned backend",
       description:
         "No hosted service. No vendor lock-in. Your server, your auth, your persistence. Baresync is infrastructure, not a platform.",
+      icon: <Server />,
     },
   ];
 
@@ -182,21 +198,72 @@ function FeatureGrid() {
           </p>
         </div>
       </div>
-      <div className="grid border-fd-border border-b sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
-        {features.map((f) => (
-          <div className="border-fd-border border-b p-6" key={f.title}>
-            <h3 className="mb-2 font-semibold text-fd-foreground">{f.title}</h3>
-            <p className="text-fd-muted-foreground text-sm leading-relaxed">
-              {f.description}
-            </p>
-          </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((feature, index) => (
+          <Feature index={index} key={feature.title} {...feature} />
         ))}
       </div>
     </section>
   );
 }
 
+const Feature = ({
+  title,
+  description,
+  icon,
+  index,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  index: number;
+}) => {
+  const cols = 3;
+  const isTopRow = index < cols;
+
+  return (
+    <div
+      className={cn(
+        "group/feature relative flex flex-col border-fd-border border-b py-10",
+        "lg:border-r"
+      )}
+    >
+      {isTopRow ? (
+        <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+      ) : (
+        <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+      )}
+      <div className="relative z-10 mb-4 px-10 text-fd-muted-foreground">
+        {icon}
+      </div>
+      <div className="relative z-10 mb-2 px-10 font-bold text-lg">
+        <div className="absolute inset-y-0 left-0 h-6 w-1 origin-center rounded-tr-full rounded-br-full bg-fd-border transition-all duration-200 group-hover/feature:h-8 group-hover/feature:bg-fd-primary" />
+        <span className="inline-block text-fd-foreground transition duration-200 group-hover/feature:translate-x-2">
+          {title}
+        </span>
+      </div>
+      <p className="relative z-10 max-w-xs px-10 text-fd-muted-foreground text-sm">
+        {description}
+      </p>
+    </div>
+  );
+};
+
 function WhatYouControl() {
+  const yourCodeItems = [
+    "Auth and session validation in resolveScope",
+    "Which rows to persist and how to apply them",
+    "Your Drizzle schemas, server database, and migrations",
+    "React UI with the sync client provider and Drizzle queries",
+  ];
+
+  const baresyncItems = [
+    "Outbox tracking: every write queues a sync change atomically",
+    "Push chunking, idempotency keys, and retry logic",
+    "Incremental pull with cursor management",
+    "Table ordering, soft-delete cleanup, and server-wins reconciliation",
+  ];
+
   return (
     <section>
       <div className="border-fd-border border-b">
@@ -213,59 +280,39 @@ function WhatYouControl() {
         </div>
       </div>
 
-      <div className="grid border-fd-border border-b sm:grid-cols-2 sm:divide-x sm:divide-fd-border">
-        <div className="border-fd-border border-b p-6">
-          <h3 className="mb-3 font-semibold text-fd-primary">Your code</h3>
-          <ul className="space-y-3 text-fd-muted-foreground text-sm">
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
-              <span>
-                Auth and session validation in{" "}
-                <code className="rounded bg-fd-muted px-1.5 py-0.5 font-mono text-fd-foreground text-xs">
-                  resolveScope
-                </code>
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
-              <span>Which rows to persist and how to apply them</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
-              <span>Your Drizzle schemas, server database, and migrations</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
-              <span>
-                React UI with the sync client provider and Drizzle queries
-              </span>
-            </li>
+      <div className="grid sm:grid-cols-2">
+        <div className="group/feature relative border-fd-border border-b py-10 lg:border-r">
+          <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-t from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+          <div className="relative z-10 mb-4 px-10 font-bold text-lg">
+            <div className="absolute inset-y-0 left-0 h-6 w-1 origin-center rounded-tr-full rounded-br-full bg-fd-border transition-all duration-200 group-hover/feature:h-8 group-hover/feature:bg-fd-primary" />
+            <span className="inline-block text-fd-primary transition duration-200 group-hover/feature:translate-x-2">
+              Your code
+            </span>
+          </div>
+          <ul className="relative z-10 space-y-3 px-10 text-fd-muted-foreground text-sm">
+            {yourCodeItems.map((item) => (
+              <li className="flex items-start gap-2" key={item}>
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-primary" />
+                <span>{item}</span>
+              </li>
+            ))}
           </ul>
         </div>
-        <div className="border-fd-border border-b p-6">
-          <h3 className="mb-3 font-semibold text-fd-foreground">Baresync</h3>
-          <ul className="space-y-3 text-fd-muted-foreground text-sm">
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
-              <span>
-                Outbox tracking: every write queues a sync change atomically
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
-              <span>Push chunking, idempotency keys, and retry logic</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
-              <span>Incremental pull with cursor management</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
-              <span>
-                Table ordering, soft-delete cleanup, and server-wins
-                reconciliation
-              </span>
-            </li>
+        <div className="group/feature relative border-fd-border border-b py-10">
+          <div className="pointer-events-none absolute inset-0 h-full w-full bg-gradient-to-b from-fd-muted/50 to-transparent opacity-0 transition-opacity duration-200 group-hover/feature:opacity-100" />
+          <div className="relative z-10 mb-4 px-10 font-bold text-lg">
+            <div className="absolute inset-y-0 left-0 h-6 w-1 origin-center rounded-tr-full rounded-br-full bg-fd-border transition-all duration-200 group-hover/feature:h-8 group-hover/feature:bg-fd-primary" />
+            <span className="inline-block text-fd-foreground transition duration-200 group-hover/feature:translate-x-2">
+              Baresync
+            </span>
+          </div>
+          <ul className="relative z-10 space-y-3 px-10 text-fd-muted-foreground text-sm">
+            {baresyncItems.map((item) => (
+              <li className="flex items-start gap-2" key={item}>
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fd-border" />
+                <span>{item}</span>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
@@ -275,56 +322,59 @@ function WhatYouControl() {
 
 function QuickStart() {
   return (
-    <section className="border-fd-border border-b px-6 py-14">
-      <div className="mx-auto max-w-4xl text-center">
-        <h2 className="mb-4 font-semibold text-2xl text-fd-foreground sm:text-3xl">
-          Get started in seven commands
-        </h2>
-        <p className="mb-8 text-balance text-fd-muted-foreground">
-          The scaffold creates a monorepo with a Tauri app, a Hono server, and a
-          shared sync contract package.
-        </p>
-        <pre className="mx-auto max-w-md overflow-x-auto rounded-lg border border-fd-border bg-fd-background p-5 text-left text-sm">
-          <code className="font-mono text-fd-foreground">
-            <span className="text-fd-muted-foreground">$</span> bun create
-            baresync@latest{"\n"}
-            <span className="text-fd-muted-foreground">$</span> cd my-app{"\n"}
-            <span className="text-fd-muted-foreground">$</span> bun install
-            {"\n"}
-            <span className="text-fd-muted-foreground">$</span> bun run
-            generate:sync{"\n"}
-            <span className="text-fd-muted-foreground">$</span> bun run
-            migrate:local{"\n"}
-            <span className="text-fd-muted-foreground">$</span> bun run
-            migrate:server{"\n"}
-            <span className="text-fd-muted-foreground">$</span> bun run dev
-          </code>
-        </pre>
-        <div className="mt-8">
-          <Link
-            className="inline-flex items-center font-medium text-fd-primary text-sm transition-colors hover:text-fd-primary/80"
-            params={{ _splat: "getting-started/quick-start" }}
-            to="/docs/$"
-          >
-            Read the full getting started guide
-            <svg
-              aria-hidden="true"
-              className="ms-1.5 size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
+    <AuroraBackground className="border-fd-border border-b">
+      <section className="relative z-10 px-6 py-14">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="mb-4 font-semibold text-2xl text-fd-foreground sm:text-3xl">
+            Get started in seven commands
+          </h2>
+          <p className="mb-8 text-balance text-fd-muted-foreground">
+            The scaffold creates a monorepo with a Tauri app, a Hono server, and
+            a shared sync contract package.
+          </p>
+          <pre className="mx-auto max-w-md overflow-x-auto rounded-lg border border-fd-border bg-fd-card p-5 text-left text-sm">
+            <code className="font-mono text-fd-foreground">
+              <span className="text-fd-muted-foreground">$</span> bun create
+              baresync@latest{"\n"}
+              <span className="text-fd-muted-foreground">$</span> cd my-app
+              {"\n"}
+              <span className="text-fd-muted-foreground">$</span> bun install
+              {"\n"}
+              <span className="text-fd-muted-foreground">$</span> bun run
+              generate:sync{"\n"}
+              <span className="text-fd-muted-foreground">$</span> bun run
+              migrate:local{"\n"}
+              <span className="text-fd-muted-foreground">$</span> bun run
+              migrate:server{"\n"}
+              <span className="text-fd-muted-foreground">$</span> bun run dev
+            </code>
+          </pre>
+          <div className="mt-8">
+            <Link
+              className="inline-flex items-center rounded-md bg-fd-primary px-6 py-2.5 font-medium text-fd-primary-foreground text-sm transition-colors hover:bg-fd-primary/90"
+              params={{ _splat: "getting-started/quick-start" }}
+              to="/docs/$"
             >
-              <path
-                d="M13 7l5 5-5 5M6 12h12"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Link>
+              Read the full getting started guide
+              <svg
+                aria-hidden="true"
+                className="ms-1.5 size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M13 7l5 5-5 5M6 12h12"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Link>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </AuroraBackground>
   );
 }
 

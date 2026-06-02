@@ -25,6 +25,22 @@ export const Route = createRootRoute({
       {
         title: "Baresync",
       },
+      {
+        property: "og:image",
+        content: "https://baresync.hieka.id/baresync-opengraph.webp",
+      },
+      {
+        property: "og:image:width",
+        content: "1200",
+      },
+      {
+        property: "og:image:height",
+        content: "630",
+      },
+      {
+        name: "twitter:card",
+        content: "summary_large_image",
+      },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -62,7 +78,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html className="dark" lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

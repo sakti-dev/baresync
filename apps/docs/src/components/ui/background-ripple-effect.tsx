@@ -92,7 +92,7 @@ const DivGrid = ({
 }: DivGridProps) => {
   const cells = useMemo(
     () => Array.from({ length: rows * cols }, (_, idx) => idx),
-    [rows, cols],
+    [rows, cols]
   );
 
   const gridStyle: React.CSSProperties = {
@@ -131,7 +131,7 @@ const DivGrid = ({
               "cell relative border-[0.5px] opacity-40 transition-opacity duration-150 will-change-transform dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
               clickedCell && "animate-cell-ripple [animation-fill-mode:none]",
               !interactive && "pointer-events-none",
-              isHovered && "opacity-80",
+              isHovered && "opacity-80"
             )}
             key={idx}
             onClick={

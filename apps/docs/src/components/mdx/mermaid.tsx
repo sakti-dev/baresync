@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useEffect, useId, useState } from "react";
 import { useTheme } from "fumadocs-ui/provider/base";
+import { use, useEffect, useId, useState } from "react";
 
 export function Mermaid({ chart }: { chart: string }) {
   const [mounted, setMounted] = useState(false);
@@ -10,15 +10,22 @@ export function Mermaid({ chart }: { chart: string }) {
     setMounted(true);
   }, []);
 
-  if (!mounted) return;
+  if (!mounted) {
+    return;
+  }
   return <MermaidContent chart={chart} />;
 }
 
 const cache = new Map<string, Promise<unknown>>();
 
-function cachePromise<T>(key: string, setPromise: () => Promise<T>): Promise<T> {
+function cachePromise<T>(
+  key: string,
+  setPromise: () => Promise<T>
+): Promise<T> {
   const cached = cache.get(key);
-  if (cached) return cached as Promise<T>;
+  if (cached) {
+    return cached as Promise<T>;
+  }
   const promise = setPromise();
   cache.set(key, promise);
   return promise;
@@ -28,7 +35,7 @@ function MermaidContent({ chart }: { chart: string }) {
   const id = useId();
   const { resolvedTheme } = useTheme();
   const { default: mermaid } = use(
-    cachePromise("mermaid", () => import("mermaid")),
+    cachePromise("mermaid", () => import("mermaid"))
   );
 
   mermaid.initialize({
@@ -41,17 +48,19 @@ function MermaidContent({ chart }: { chart: string }) {
 
   const { svg, bindFunctions } = use(
     cachePromise(`${chart}-${resolvedTheme}`, () =>
-      mermaid.render(id, chart.replaceAll("\\n", "\n")),
-    ),
+      mermaid.render(id, chart.replaceAll("\\n", "\n"))
+    )
   );
 
   return (
     <div
-      ref={(container) => {
-        if (container) bindFunctions?.(container);
-      }}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: rendered by mermaid
       dangerouslySetInnerHTML={{ __html: svg }}
+      ref={(container) => {
+        if (container) {
+          bindFunctions?.(container);
+        }
+      }}
     />
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef } from "react";
 import { Laptop, Server, Smartphone } from "lucide-react";
+import { useRef } from "react";
 
 import { cn } from "@/lib/utils";
 import { AnimatedBeam } from "./animated-beam";
@@ -16,44 +16,44 @@ export function SyncVisualization({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "relative flex h-[180px] w-full items-center justify-center overflow-hidden border-fd-border border-b p-10",
-        className,
+        "relative flex h-[350px] w-full items-center justify-center overflow-hidden border-fd-border border-b p-10",
+        className
       )}
       ref={containerRef}
     >
       <div className="flex size-full max-w-2xl flex-row items-center justify-between">
         <div className="flex flex-col items-center gap-2">
-          <Circle ref={deviceARef} className="size-16">
+          <Circle className="size-16" ref={deviceARef}>
             <Laptop className="size-6 text-fd-foreground" />
           </Circle>
-          <span className="text-sm font-medium text-fd-foreground">
-            Your App
+          <span className="font-medium text-fd-foreground text-sm">
+            Device A
           </span>
-          <span className="text-xs text-fd-muted-foreground">
+          <span className="text-fd-muted-foreground text-xs">
             Local DB + Outbox
           </span>
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          <Circle ref={serverRef} className="size-20 border-fd-primary/50">
+          <Circle className="size-20 border-fd-primary/50" ref={serverRef}>
             <Server className="size-8 text-fd-primary" />
           </Circle>
-          <span className="text-sm font-medium text-fd-foreground">
+          <span className="font-medium text-fd-foreground text-sm">
             Baresync Server
           </span>
-          <span className="text-xs text-fd-muted-foreground">
+          <span className="text-fd-muted-foreground text-xs">
             Status / Push / Pull
           </span>
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          <Circle ref={deviceBRef} className="size-16">
+          <Circle className="size-16" ref={deviceBRef}>
             <Smartphone className="size-6 text-fd-foreground" />
           </Circle>
-          <span className="text-sm font-medium text-fd-foreground">
-            Their App
+          <span className="font-medium text-fd-foreground text-sm">
+            Device B
           </span>
-          <span className="text-xs text-fd-muted-foreground">
+          <span className="text-fd-muted-foreground text-xs">
             Local DB + Outbox
           </span>
         </div>
@@ -61,77 +61,77 @@ export function SyncVisualization({ className }: { className?: string }) {
 
       <AnimatedBeam
         containerRef={containerRef}
-        fromRef={deviceARef}
-        toRef={serverRef}
         curvature={-50}
-        duration={3}
         delay={0}
+        duration={3}
+        fromRef={deviceARef}
         gradientStartColor="#6bc725"
         gradientStopColor="#3d8a0e"
         pathColor="rgba(107, 199, 37, 0.1)"
         pathWidth={2}
-      />
-      <AnimatedBeam
-        containerRef={containerRef}
-        fromRef={serverRef}
-        toRef={deviceBRef}
-        curvature={50}
-        duration={3}
-        delay={1}
-        gradientStartColor="#3da2e0"
-        gradientStopColor="#2563eb"
-        pathColor="rgba(61, 162, 224, 0.1)"
-        pathWidth={2}
-      />
-      <AnimatedBeam
-        containerRef={containerRef}
-        fromRef={serverRef}
-        toRef={deviceARef}
-        curvature={-50}
-        duration={4}
-        delay={2}
-        reverse={true}
-        gradientStartColor="#9d9ea1"
-        gradientStopColor="#6b7280"
-        pathColor="rgba(157, 158, 161, 0.05)"
-        pathWidth={1}
-      />
-      <AnimatedBeam
-        containerRef={containerRef}
-        fromRef={deviceBRef}
         toRef={serverRef}
-        curvature={-50}
-        duration={3}
-        delay={2.5}
-        reverse={true}
-        gradientStartColor="#6bc725"
-        gradientStopColor="#3d8a0e"
-        pathColor="rgba(107, 199, 37, 0.1)"
-        pathWidth={2}
       />
       <AnimatedBeam
         containerRef={containerRef}
-        fromRef={serverRef}
-        toRef={deviceBRef}
-        curvature={-50}
-        duration={4}
-        delay={4}
-        gradientStartColor="#9d9ea1"
-        gradientStopColor="#6b7280"
-        pathColor="rgba(157, 158, 161, 0.05)"
-        pathWidth={1}
-      />
-      <AnimatedBeam
-        containerRef={containerRef}
-        fromRef={serverRef}
-        toRef={deviceARef}
         curvature={50}
+        delay={1}
         duration={3}
-        delay={3.5}
+        fromRef={serverRef}
         gradientStartColor="#3da2e0"
         gradientStopColor="#2563eb"
         pathColor="rgba(61, 162, 224, 0.1)"
         pathWidth={2}
+        toRef={deviceBRef}
+      />
+      <AnimatedBeam
+        containerRef={containerRef}
+        curvature={-50}
+        delay={2}
+        duration={4}
+        fromRef={serverRef}
+        gradientStartColor="#9d9ea1"
+        gradientStopColor="#6b7280"
+        pathColor="rgba(157, 158, 161, 0.05)"
+        pathWidth={1}
+        reverse={true}
+        toRef={deviceARef}
+      />
+      <AnimatedBeam
+        containerRef={containerRef}
+        curvature={-50}
+        delay={2.5}
+        duration={3}
+        fromRef={deviceBRef}
+        gradientStartColor="#6bc725"
+        gradientStopColor="#3d8a0e"
+        pathColor="rgba(107, 199, 37, 0.1)"
+        pathWidth={2}
+        reverse={true}
+        toRef={serverRef}
+      />
+      <AnimatedBeam
+        containerRef={containerRef}
+        curvature={-50}
+        delay={4}
+        duration={4}
+        fromRef={serverRef}
+        gradientStartColor="#9d9ea1"
+        gradientStopColor="#6b7280"
+        pathColor="rgba(157, 158, 161, 0.05)"
+        pathWidth={1}
+        toRef={deviceBRef}
+      />
+      <AnimatedBeam
+        containerRef={containerRef}
+        curvature={50}
+        delay={3.5}
+        duration={3}
+        fromRef={serverRef}
+        gradientStartColor="#3da2e0"
+        gradientStopColor="#2563eb"
+        pathColor="rgba(61, 162, 224, 0.1)"
+        pathWidth={2}
+        toRef={deviceARef}
       />
     </div>
   );
