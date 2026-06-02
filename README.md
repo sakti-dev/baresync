@@ -1,18 +1,30 @@
-# Baresync
-
-<p align="center">
+<div align="center">
   <a href="https://baresync.hieka.id/">
     <img src="./apps/docs/public/baresync-logo-full-web.svg" alt="Baresync" width="320" />
   </a>
-</p>
-
-<p align="center">
+  <br />
+  <br />
   <a href="https://www.npmjs.com/package/baresync"><img src="https://img.shields.io/npm/v/baresync" alt="npm version" /></a>
-  <a href="https://crates.io/crates/baresync-core"><img src="https://img.shields.io/crates/v/baresync-core" alt="crates.io version" /></a>
-  <a href="https://crates.io/crates/tauri-plugin-baresync"><img src="https://img.shields.io/crates/v/tauri-plugin-baresync" alt="crates.io version" /></a>
-</p>
-
-SQLite-first sync infrastructure for Tauri apps.
+  <a href="https://crates.io/crates/baresync-core"><img src="https://img.shields.io/crates/v/baresync-core" alt="crates.io" /></a>
+  <a href="https://crates.io/crates/tauri-plugin-baresync"><img src="https://img.shields.io/crates/v/tauri-plugin-baresync" alt="crates.io" /></a>
+  <a href="https://github.com/sakti-dev/baresync/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license" /></a>
+  <br />
+  <br />
+  <strong>SQLite sync for Tauri apps. You own the backend.</strong>
+  <br />
+  <br />
+  <a href="https://baresync.hieka.id/docs/getting-started/quick-start">Quickstart</a>
+  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+  <a href="https://baresync.hieka.id/">Website</a>
+  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+  <a href="https://baresync.hieka.id/docs/getting-started/introduction">Docs</a>
+  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+  <a href="https://github.com/sakti-dev/baresync/tree/main/examples">Examples</a>
+  <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+  <a href="https://github.com/sakti-dev/baresync">GitHub</a>
+  <br />
+  <hr />
+</div>
 
 Baresync is an opinionated sync stack for applications that keep working data in local SQLite and reconcile it with an app-owned backend. It combines Drizzle schema helpers, a generated sync contract, a Rust sync engine, a Tauri plugin, and server helpers for push, pull, and status routes.
 
