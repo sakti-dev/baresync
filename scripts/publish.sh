@@ -55,14 +55,6 @@ if ! command -v bun &>/dev/null; then
   error "bun not found. Install bun first."
 fi
 
-# Check npm login
-npm whoami &>/dev/null || error "Not logged in to npm. Run 'npm login' first."
-
-# Check cargo login
-if [[ ! -f "$HOME/.cargo/credentials.toml" ]] && [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
-  error "Not logged in to crates.io. Run 'cargo login' first."
-fi
-
 # Check clean git state
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
   error "Working tree is not clean. Commit or stash changes first."
@@ -107,6 +99,17 @@ fi
 if [[ "$PUBLISH_CORE" == false && "$PUBLISH_PLUGIN" == false && "$PUBLISH_NPM" == false && "$PUBLISH_CREATE" == false ]]; then
   info "Nothing to publish. All versions already exist."
   exit 0
+fi
+
+# Check registry logins only for registries we need to publish to
+if [[ "$PUBLISH_NPM" == true || "$PUBLISH_CREATE" == true ]]; then
+  npm whoami &>/dev/null || error "Not logged in to npm. Run 'npm login' first."
+fi
+
+if [[ "$PUBLISH_CORE" == true || "$PUBLISH_PLUGIN" == true ]]; then
+  if [[ ! -f "$HOME/.cargo/credentials.toml" ]] && [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+    error "Not logged in to crates.io. Run 'cargo login' first."
+  fi
 fi
 
 info "Versions:"
