@@ -193,6 +193,23 @@ if [[ "$PUBLISH_CREATE" == true ]]; then
   info "create-baresync published."
 fi
 
+# ── Summary ──────────────────────────────────────────────────
+
+echo ""
+info "Published:"
+[[ "$PUBLISH_CORE" == true ]]         && info "  baresync-core@$CORE_VERSION → crates.io"
+[[ "$PUBLISH_PLUGIN" == true ]]       && info "  tauri-plugin-baresync@$PLUGIN_VERSION → crates.io"
+[[ "$PUBLISH_NPM" == true ]]          && info "  baresync@$BARESYNC_VERSION → npm"
+[[ "$PUBLISH_CREATE" == true ]]       && info "  create-baresync@$CREATE_VERSION → npm"
+
+if [[ "$PUBLISH_CORE" == false || "$PUBLISH_PLUGIN" == false || "$PUBLISH_NPM" == false || "$PUBLISH_CREATE" == false ]]; then
+  info "Skipped:"
+  [[ "$PUBLISH_CORE" == false ]]      && info "  baresync-core@$CORE_VERSION (already published)"
+  [[ "$PUBLISH_PLUGIN" == false ]]    && info "  tauri-plugin-baresync@$PLUGIN_VERSION (already published)"
+  [[ "$PUBLISH_NPM" == false ]]       && info "  baresync@$BARESYNC_VERSION (already published)"
+  [[ "$PUBLISH_CREATE" == false ]]    && info "  create-baresync@$CREATE_VERSION (already published)"
+fi
+
 # ── Done ────────────────────────────────────────────────────
 
 echo ""
