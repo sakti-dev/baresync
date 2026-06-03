@@ -17,6 +17,15 @@ warn()  { echo -e "${YELLOW}▸${NC} $*"; }
 error() { echo -e "${RED}✖${NC} $*"; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BARESYNC_STAGE_DIR=""
+
+cleanup_stage_dir() {
+  if [[ -n "$BARESYNC_STAGE_DIR" && -d "$BARESYNC_STAGE_DIR" ]]; then
+    rm -rf "$BARESYNC_STAGE_DIR"
+  fi
+}
+
+trap cleanup_stage_dir EXIT
 
 # ── Helpers ─────────────────────────────────────────────────
 
@@ -156,8 +165,18 @@ if [[ "$PUBLISH_NPM" == true ]]; then
   cd "$REPO_ROOT/packages/baresync"
   bun run build
 
+  info "Staging baresync package..."
+  BARESYNC_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/baresync-publish-XXXXXX")"
+  cp -R "$REPO_ROOT/packages/baresync/." "$BARESYNC_STAGE_DIR/"
+  rm -rf "$BARESYNC_STAGE_DIR/skills/baresync"
+  mkdir -p "$BARESYNC_STAGE_DIR/skills"
+  cp -R "$REPO_ROOT/skills/baresync" "$BARESYNC_STAGE_DIR/skills/"
+
   info "Publishing baresync $BARESYNC_VERSION to npm..."
-  npm publish
+  (
+    cd "$BARESYNC_STAGE_DIR"
+    npm publish --ignore-scripts
+  )
   info "baresync published."
 fi
 
