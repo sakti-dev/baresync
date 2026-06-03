@@ -87,6 +87,7 @@ Path: `crates/`
 | `apiSyncColumns()` return shape | `packages/baresync/src/schema/` using `rg "apiSyncColumns"` |
 | `defineSyncConfig()` behavior | `packages/baresync/src/generator/config.ts` |
 | `generateSyncArtifacts()` behavior | `packages/baresync/src/generator/index.ts` |
+| schema-module loading / export filtering | `packages/baresync/src/generator/index.ts` |
 | CLI generator behavior | `packages/baresync/src/cli/generator.ts` |
 | `writeTransaction()` behavior | `packages/baresync/src/client/` using `rg "writeTransaction"` |
 | `writeLocalChange()` behavior | `packages/baresync/src/client/` using `rg "writeLocalChange"` |
@@ -168,7 +169,7 @@ Two options. Try Option A first. If it fails, use Option B.
 npx opensrc path baresync@<VERSION>
 ```
 
-Replace `<VERSION>` with the version from Step 2. Example: `npx opensrc path baresync@0.2.0`
+Replace `<VERSION>` with the version from Step 2. Example: `npx opensrc path baresync@0.2.5`
 
 This prints an absolute path to the cached source. The source is cached at `~/.opensrc/` for future use. Works on Linux, macOS, and Windows.
 
@@ -182,7 +183,7 @@ Clone the repository at the exact version tag into the project directory:
 git clone --branch v<VERSION> --depth 1 https://github.com/sakti-dev/baresync.git ./baresync-source
 ```
 
-Replace `<VERSION>` with the version from Step 2. Example: `git clone --branch v0.2.0 --depth 1 https://github.com/sakti-dev/baresync.git ./baresync-source`
+Replace `<VERSION>` with the version from Step 2. Example: `git clone --branch v0.2.5 --depth 1 https://github.com/sakti-dev/baresync.git ./baresync-source`
 
 If the `v<VERSION>` tag does not exist, try without the `v` prefix:
 

@@ -41,20 +41,20 @@ Do not restructure the project. Scan for the essential pieces and fill what's mi
 
 ```toml
 # src-tauri/Cargo.toml
-tauri-plugin-baresync = "0.2.0"
+tauri-plugin-baresync = "0.2.5"
 env_logger = "0.11"
 ```
 
 ```json
 // apps/app/package.json
-"baresync": "^0.2.0",
+"baresync": "^0.2.5",
 "drizzle-orm": "^0.45.2"
 ```
 
 **Server** — add to package.json:
 
 ```json
-"baresync": "^0.2.0",
+"baresync": "^0.2.5",
 "drizzle-orm": "^0.45.2"
 ```
 

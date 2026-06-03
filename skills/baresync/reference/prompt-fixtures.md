@@ -50,7 +50,22 @@ Expected behavior:
 - Confirm path-based `apiSyncedSchema` and `localSyncedSchema`.
 - Do not suggest `schemaSourceDir` for current API.
 
-## Fixture 4: Outbox Stuck
+## Fixture 4: Schema Loader Regression
+
+Prompt:
+
+```text
+I upgraded to baresync 0.2.4 and generate now says missing table export for every Drizzle table.
+```
+
+Expected behavior:
+
+- Load `reference/generator.md`.
+- Inspect `packages/baresync/src/generator/index.ts`.
+- Check schema-module loading and export filtering.
+- Recognize that real Drizzle tables must be detected via Drizzle's table predicate, not a private string property.
+
+## Fixture 5: Outbox Stuck
 
 Prompt:
 
@@ -65,7 +80,7 @@ Expected behavior:
 - Check server reachability, push route, auth/scope, and logs.
 - Use `reference/verify.md` if integration may be incomplete.
 
-## Fixture 5: Review Existing Integration
+## Fixture 6: Review Existing Integration
 
 Prompt:
 
@@ -80,7 +95,7 @@ Expected behavior:
 - Check schema, generator, server, client writes, Tauri plugin, UI, and tests.
 - Do not implement fixes unless asked.
 
-## Fixture 6: Stale Skill Conflict
+## Fixture 7: Stale Skill Conflict
 
 Prompt:
 

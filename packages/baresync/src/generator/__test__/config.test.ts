@@ -1,8 +1,10 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineSyncConfig } from "../config";
+import { generateSyncArtifacts } from "../index";
 
 function createTmpSchemaFile(
   dir: string,
@@ -146,6 +148,72 @@ describe("defineSyncConfig", () => {
     expect(config).not.toHaveProperty("packageName");
     expect(config).not.toHaveProperty("encoding");
     expect(config).not.toHaveProperty("schemaSourceDir");
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("loads Drizzle tables from imported schema modules", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-config-"));
+    const require = createRequire(import.meta.url);
+    const sqliteCorePath = require.resolve("drizzle-orm/sqlite-core");
+    const schemaIndexPath = require.resolve("baresync/schema");
+    const apiPath = createTmpSchemaFile(
+      tmpDir,
+      "api-synced-schema.ts",
+      [
+        `import { sqliteTable, text } from ${JSON.stringify(sqliteCorePath)};`,
+        `import { apiSyncColumns } from ${JSON.stringify(schemaIndexPath)};`,
+        "",
+        "export const helper = { notATable: true };",
+        "",
+        'export const merchants = sqliteTable("merchants", {',
+        '  id: text("id").primaryKey(),',
+        '  name: text("name").notNull(),',
+        "  ...apiSyncColumns(),",
+        "});",
+        "",
+      ].join("\n")
+    );
+    const localPath = createTmpSchemaFile(
+      tmpDir,
+      "synced-schema.ts",
+      [
+        `import { sqliteTable, text } from ${JSON.stringify(sqliteCorePath)};`,
+        `import { localSyncColumns } from ${JSON.stringify(schemaIndexPath)};`,
+        "",
+        "export const helper = { notATable: true };",
+        "",
+        'export const merchants = sqliteTable("merchants", {',
+        '  id: text("id").primaryKey(),',
+        '  name: text("name").notNull(),',
+        "  ...localSyncColumns(),",
+        "});",
+        "",
+      ].join("\n")
+    );
+
+    const config = defineSyncConfig({
+      apiSyncedSchema: apiPath,
+      localSyncedSchema: localPath,
+      outputDir: path.join(tmpDir, "generated"),
+      tables: {
+        merchants: { scopeColumn: "id" },
+      },
+    });
+
+    await generateSyncArtifacts(config);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const generatedDir = path.join(tmpDir, "generated", today);
+    expect(fs.existsSync(path.join(generatedDir, "sync-contract.json"))).toBe(
+      true
+    );
+    expect(fs.existsSync(path.join(generatedDir, "api-synced-schema.ts"))).toBe(
+      true
+    );
+    expect(
+      fs.existsSync(path.join(generatedDir, "local-synced-schema.ts"))
+    ).toBe(true);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

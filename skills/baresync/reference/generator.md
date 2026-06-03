@@ -31,11 +31,12 @@ bunx baresync generate
 
 1. Loads `sync.config.ts`
 2. Resolves and loads schema modules from the provided file paths
-3. Validates each table against paired schemas (columns match, scope exists, PK correct)
-4. Computes table order by following foreign keys (topological sort)
-5. Runs diagnostics — errors block, warnings print
-6. Writes three output files to `outputDir`
-7. Copies frozen schema snapshots from the explicit source paths
+3. Filters exports to real Drizzle tables before building the contract
+4. Validates each table against paired schemas (columns match, scope exists, PK correct)
+5. Computes table order by following foreign keys (topological sort)
+6. Runs diagnostics — errors block, warnings print
+7. Writes three output files to `outputDir`
+8. Copies frozen schema snapshots from the explicit source paths
 
 ## sync.config.ts
 
@@ -80,6 +81,8 @@ export const syncGeneratorConfig = defineSyncConfig({
 | `serverOnlyColumns` | `["syncUpdatedAt"]` | Columns that exist only on API schema |
 
 The generator validates that local-only columns are not in the API schema and vice versa.
+
+Schema-module loading keeps only real Drizzle tables. If a schema file exports helpers, constants, or other values, the loader ignores them.
 
 If generator behavior is unclear or appears stale, inspect:
 

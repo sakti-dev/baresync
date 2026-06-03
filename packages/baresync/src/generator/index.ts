@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
+import { isTable } from "drizzle-orm/table";
 import type { SyncContract } from "../schema/contract";
 import { syncSchema } from "../schema/contract";
 import { syncedTable } from "../schema/synced-table";
@@ -79,11 +80,7 @@ async function loadSchemaModule(
   const mod = (await import(resolved)) as Record<string, unknown>;
   const schema: SyncedSchemaModule = {};
   for (const [key, value] of Object.entries(mod)) {
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      "_[drizzle]:Original" in (value as Record<string, unknown>)
-    ) {
+    if (isTable(value)) {
       schema[key] = value as import("drizzle-orm/sqlite-core").AnySQLiteTable;
     }
   }
