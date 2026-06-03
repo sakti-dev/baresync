@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -231,6 +232,53 @@ describe("CLI config discovery", () => {
       }
     } finally {
       process.chdir(previousCwd);
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("CLI entrypoint", () => {
+  it("runs when loaded through a launcher path that differs from the module path", () => {
+    const cwd = fs.mkdtempSync(
+      path.join(os.tmpdir(), "baresync-cli-entrypoint-")
+    );
+    const launcherPath = path.join(cwd, "launcher.mjs");
+    const cliSourceUrl = pathToFileURL(
+      path.join(repoRoot, "packages/baresync/src/cli/index.ts")
+    ).href;
+
+    fs.mkdirSync(path.join(cwd, ".git"));
+    fs.writeFileSync(launcherPath, `import ${JSON.stringify(cliSourceUrl)};\n`);
+
+    try {
+      const result = spawnSync(
+        "bun",
+        [
+          launcherPath,
+          "skills",
+          "install",
+          "--yes",
+          "--providers",
+          ".claude,.agents",
+        ],
+        {
+          cwd,
+          encoding: "utf-8",
+        }
+      );
+
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(
+        "Installed baresync skill into: .claude, .agents (2 folder(s))"
+      );
+      expect(
+        fs.existsSync(path.join(cwd, ".claude/skills/baresync/SKILL.md"))
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(cwd, ".agents/skills/baresync/SKILL.md"))
+      ).toBe(true);
+    } finally {
       fs.rmSync(cwd, { recursive: true, force: true });
     }
   });

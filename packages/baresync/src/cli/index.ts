@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { handleGenerate, runDoctorCommand } from "./generator";
 import { runSkillsCommand } from "./skills";
 
@@ -38,7 +36,6 @@ export function runCli(args: string[]): void {
   printUsage();
 }
 
-const currentFile = fileURLToPath(import.meta.url);
-if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
+if (process.argv[1]) {
   runCli(process.argv.slice(2));
 }
