@@ -5,12 +5,15 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { RootProvider } from "fumadocs-ui/provider/tanstack";
+import { appName } from "@/lib/shared";
 import appCss from "@/styles/app.css?url";
 
 const interFont =
   "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap";
 const jetbrainsMonoFont =
   "https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap";
+const pageDescription =
+  "SQLite sync for Tauri apps with an app-owned backend. Keep local data in sync with Drizzle schemas, a generated sync contract, and sync server routes.";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -23,11 +26,31 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Baresync",
+        title: appName,
+      },
+      {
+        name: "description",
+        content: pageDescription,
+      },
+      {
+        property: "og:title",
+        content: appName,
+      },
+      {
+        property: "og:description",
+        content: pageDescription,
+      },
+      {
+        property: "og:type",
+        content: "website",
+      },
+      {
+        property: "og:url",
+        content: "https://baresync.hieka.id/",
       },
       {
         property: "og:image",
-        content: "https://baresync.hieka.id/baresync-opengraph.webp",
+        content: "https://baresync.hieka.id/baresync-opengraph.jpg",
       },
       {
         property: "og:image:width",
@@ -38,8 +61,24 @@ export const Route = createRootRoute({
         content: "630",
       },
       {
+        property: "og:image:alt",
+        content: "Baresync landing page preview",
+      },
+      {
         name: "twitter:card",
         content: "summary_large_image",
+      },
+      {
+        name: "twitter:title",
+        content: appName,
+      },
+      {
+        name: "twitter:description",
+        content: pageDescription,
+      },
+      {
+        name: "twitter:image",
+        content: "https://baresync.hieka.id/baresync-opengraph.jpg",
       },
     ],
     links: [
