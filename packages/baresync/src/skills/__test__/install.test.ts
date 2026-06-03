@@ -126,6 +126,30 @@ describe("installSkills", () => {
     fs.rmSync(tmp, { recursive: true });
   });
 
+  it("adds an OpenCode /baresync command only for .opencode installs", () => {
+    const tmp = createTempDir();
+    createHarnessDir(tmp, ".opencode");
+    createHarnessDir(tmp, ".claude");
+
+    const written = installSkills([".opencode", ".claude"], SKILL_SOURCE, tmp);
+    expect(written).toBe(2);
+
+    const commandPath = path.join(tmp, ".opencode", "commands", "baresync.md");
+    expect(fs.existsSync(commandPath)).toBe(true);
+    expect(fs.readFileSync(commandPath, "utf-8")).toContain(
+      'skill({ name: "baresync" })'
+    );
+    expect(fs.readFileSync(commandPath, "utf-8")).toContain(
+      "User prompt: $ARGUMENTS"
+    );
+
+    expect(
+      fs.existsSync(path.join(tmp, ".claude", "commands", "baresync.md"))
+    ).toBe(false);
+
+    fs.rmSync(tmp, { recursive: true });
+  });
+
   it("copies to multiple targets", () => {
     const tmp = createTempDir();
     createHarnessDir(tmp, ".claude");

@@ -3,6 +3,16 @@ import os from "node:os";
 import path from "node:path";
 
 const SKILL_NAME = "baresync";
+const OPENCODE_COMMAND_NAME = "baresync";
+const OPENCODE_COMMAND_CONTENT = `---
+description: OpenCode shortcut that loads the baresync skill
+---
+
+First load the \`baresync\` skill by calling \`skill({ name: "baresync" })\`.
+Then handle the user's request below using that skill.
+
+User prompt: $ARGUMENTS
+`;
 
 const PROJECT_HARNESS_DIRS = [
   ".claude",
@@ -123,6 +133,14 @@ export function installSkills(
     const destDir = path.join(root, provider, "skills", SKILL_NAME);
     fs.mkdirSync(path.dirname(destDir), { recursive: true });
     fs.cpSync(skillSourceDir, destDir, { recursive: true });
+    if (provider === ".opencode") {
+      const commandDir = path.join(root, provider, "commands");
+      fs.mkdirSync(commandDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(commandDir, `${OPENCODE_COMMAND_NAME}.md`),
+        OPENCODE_COMMAND_CONTENT
+      );
+    }
     written++;
   }
   return written;
@@ -140,6 +158,14 @@ export function updateSkills(
       continue;
     }
     fs.cpSync(skillSourceDir, destDir, { recursive: true });
+    if (provider === ".opencode") {
+      const commandDir = path.join(root, provider, "commands");
+      fs.mkdirSync(commandDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(commandDir, `${OPENCODE_COMMAND_NAME}.md`),
+        OPENCODE_COMMAND_CONTENT
+      );
+    }
     updated++;
   }
   return updated;
