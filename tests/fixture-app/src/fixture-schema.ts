@@ -1,8 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createTauriDrizzleDatabase, type InvokeFn } from "baresync/db";
-import { syncedTable, syncSchema } from "baresync/schema";
 import { createSyncClient } from "baresync/tauri";
-import { desc } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const fixtureScopeId = "merchant-1";
@@ -30,7 +28,7 @@ export const products = sqliteTable("products", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const syncOutbox = sqliteTable("sync_outbox", {
+const syncOutbox = sqliteTable("sync_outbox", {
   id: text("id").primaryKey(),
   tableName: text("table_name").notNull(),
   rowId: text("row_id").notNull(),
@@ -41,30 +39,12 @@ export const syncOutbox = sqliteTable("sync_outbox", {
   syncedAt: text("synced_at"),
 });
 
-export const syncCursors = sqliteTable("sync_cursors", {
+const syncCursors = sqliteTable("sync_cursors", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
   scopeId: text("scope_id").notNull(),
   lastCursor: text("last_cursor").notNull().default(""),
   updatedAt: text("updated_at").notNull(),
 });
-
-export const syncedCategories = syncedTable(categories, {
-  scope: "merchant_id",
-  localOnlyColumns: ["isSynced"],
-});
-export const syncedProducts = syncedTable(products, {
-  scope: "merchant_id",
-  localOnlyColumns: ["isSynced"],
-});
-
-export const syncContract = syncSchema({
-  tables: [syncedCategories, syncedProducts],
-});
-
-export const fixtureOrder = {
-  upsert: ["categories", "products"] as const,
-  delete: ["products", "categories"] as const,
-};
 
 export const fixtureDb = createTauriDrizzleDatabase({
   schema: {
@@ -89,23 +69,6 @@ export function createFixtureSyncClient(_config: FixtureRuntimeConfig) {
     scopeId: fixtureScopeId,
     invoke: invoke as unknown as InvokeFn,
   });
-}
-
-export function latestRowsQuery() {
-  return {
-    categories: fixtureDb
-      .select()
-      .from(categories)
-      .orderBy(desc(categories.updatedAt)),
-    products: fixtureDb
-      .select()
-      .from(products)
-      .orderBy(desc(products.updatedAt)),
-  };
-}
-
-export function statusQuery() {
-  return fixtureDb.select().from(syncOutbox);
 }
 
 export interface FixtureRowInsert {

@@ -89,7 +89,7 @@ export function validatePairedTableColumns(input: {
   }
 }
 
-export function getColumnNames(table: AnySQLiteTable): Set<string> {
+function getColumnNames(table: AnySQLiteTable): Set<string> {
   return new Set(
     (getTableConfig(table).columns as SQLiteColumn[]).map(
       (column) => column.name

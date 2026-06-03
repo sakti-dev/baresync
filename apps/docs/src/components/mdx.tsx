@@ -3,7 +3,7 @@ import type { MDXComponents } from "mdx/types";
 import { Mermaid } from "@/components/mdx/mermaid";
 import { PmCommandBlock } from "@/components/mdx/pm-command-block";
 
-export function getMDXComponents(components?: MDXComponents) {
+function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
     ...components,

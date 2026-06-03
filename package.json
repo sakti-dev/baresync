@@ -4,7 +4,10 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "tests/*"
+    "tests/*",
+    "examples/inventory-json-polling",
+    "examples/inventory-json-polling/apps/*",
+    "examples/inventory-json-polling/packages/*"
   ],
   "scripts": {
     "coverage": "bun run coverage:js && bun run coverage:rust",
@@ -18,6 +21,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
-    "ultracite": "7.6.2"
+    "fallow": "^2.88.2"
   }
 }

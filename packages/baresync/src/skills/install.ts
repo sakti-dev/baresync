@@ -57,7 +57,7 @@ export function detectHarnesses(root: string): string[] {
   );
 }
 
-export function detectGlobalHarnesses(): string[] {
+function detectGlobalHarnesses(): string[] {
   const home = os.homedir();
   const found: string[] = [];
   for (const { home: h, provider } of GLOBAL_HARNESS_HINTS) {

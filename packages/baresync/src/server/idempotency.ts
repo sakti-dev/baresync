@@ -9,6 +9,7 @@ type DbLike = Parameters<SqliteRemoteDatabase["transaction"]>[0] extends (
   : never;
 
 export class ConflictRequestError extends Error {
+  // fallow-ignore-next-line unused-class-member
   status = 409;
   constructor(message: string) {
     super(message);

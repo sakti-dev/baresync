@@ -30,10 +30,7 @@ async function getNextSampleIndex() {
   return index;
 }
 
-export async function createSampleInventoryRows(
-  client: SyncClient,
-  index?: number
-) {
+async function createSampleInventoryRows(client: SyncClient, index?: number) {
   const sampleIndex = index ?? (await getNextSampleIndex());
   const suffix = String(sampleIndex).padStart(3, "0");
   const timestamp = new Date().toISOString();

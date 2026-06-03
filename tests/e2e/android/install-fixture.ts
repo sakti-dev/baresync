@@ -11,12 +11,18 @@ import {
   DEFAULT_FIXTURE_TRANSPORT_MODE,
   FIXTURE_TRANSPORT_ENV,
 } from "../fixture-transport";
+import {
+  fail,
+  pickUsableDevice,
+  resolveFixtureApiUrl,
+  runSync,
+  runtime,
+} from "./android-utils";
 import { buildAndroidBuildArgs } from "./build-fixture";
 import {
   buildScreenTimeoutCommand,
   buildStayAwakeCommand,
 } from "./device-power";
-import { inferLanHostAddressFromIpAddr } from "./host-address";
 import {
   buildInstallApkCommand,
   buildUninstallAppCommand,
@@ -26,8 +32,6 @@ import {
   buildReleaseKeystoreCommand,
   ensureAndroidReleaseSigning,
 } from "./release-signing";
-
-const DEVICE_STATE_SPLIT_RE = /\s+/;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = resolve(__dirname, "..");
@@ -50,100 +54,10 @@ const apkOutputDir = resolve(androidProjectDir, "app/build/outputs/apk");
 const fixtureKeystoreAlias = "baresync-fixture";
 const fixtureKeystorePassword = "baresync-fixture";
 
-const runtime = globalThis as typeof globalThis & {
-  process: {
-    env: Record<string, string | undefined>;
-    exit(code?: number): void;
-  };
-};
-
 const fixtureAppId =
   runtime.process.env.BARESYNC_ANDROID_APP_ID ?? "com.baresync.fixture";
 
 const cargoFeatures = runtime.process.env.BARESYNC_FIXTURE_CARGO_FEATURES;
-
-const bunRuntime = globalThis as typeof globalThis & {
-  Bun: {
-    spawnSync(
-      args: string[],
-      options: {
-        cwd?: string;
-        env?: Record<string, string | undefined>;
-        stderr?: "inherit" | "pipe";
-        stdin?: "inherit" | "ignore" | "pipe";
-        stdout?: "inherit" | "pipe";
-      }
-    ): {
-      exitCode: number;
-      stderr: Uint8Array;
-      stdout: Uint8Array;
-    };
-  };
-};
-
-interface DeviceTarget {
-  isEmulator: boolean;
-  serial: string;
-}
-
-function decode(bytes: Uint8Array) {
-  return new TextDecoder().decode(bytes).trim();
-}
-
-function runSync(
-  args: string[],
-  options: {
-    cwd?: string;
-    env?: Record<string, string | undefined>;
-    inherit?: boolean;
-  } = {}
-) {
-  const result = bunRuntime.Bun.spawnSync(args, {
-    cwd: options.cwd,
-    env: options.env,
-    stderr: options.inherit ? "inherit" : "pipe",
-    stdout: options.inherit ? "inherit" : "pipe",
-    stdin: "ignore",
-  });
-
-  return {
-    code: result.exitCode,
-    stderr: decode(result.stderr),
-    stdout: decode(result.stdout),
-  };
-}
-
-function fail(message: string): never {
-  console.error(`[android:install-fixture] ${message}`);
-  throw new Error(message);
-}
-
-function pickUsableDevice(devicesOutput: string): DeviceTarget | null {
-  const requestedSerial = runtime.process.env.ANDROID_SERIAL;
-  const lines = devicesOutput
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("List of devices attached"));
-
-  const deviceLine = lines.find((line) => {
-    const parts = line.split(DEVICE_STATE_SPLIT_RE);
-    return (
-      parts.includes("device") &&
-      (!requestedSerial || parts[0] === requestedSerial)
-    );
-  });
-
-  if (!deviceLine) {
-    return null;
-  }
-
-  const serial = deviceLine.split(DEVICE_STATE_SPLIT_RE)[0];
-  return {
-    isEmulator: serial.startsWith("emulator-"),
-    serial,
-  };
-}
 
 function mapAbiToTauriTarget(abi: string) {
   if (abi === "arm64-v8a") {
@@ -158,31 +72,7 @@ function mapAbiToTauriTarget(abi: string) {
   if (abi === "x86_64") {
     return "x86_64";
   }
-  fail(`Unsupported Android ABI: ${abi}`);
-}
-
-function inferHostAddress() {
-  const addresses = runSync(["ip", "-4", "addr", "show", "scope", "global"]);
-  if (addresses.code !== 0) {
-    return null;
-  }
-
-  return inferLanHostAddressFromIpAddr(addresses.stdout);
-}
-
-function resolveFixtureApiUrl(device: DeviceTarget): string {
-  if (runtime.process.env.BARESYNC_FIXTURE_API_URL) {
-    return runtime.process.env.BARESYNC_FIXTURE_API_URL;
-  }
-
-  const hostAddress = device.isEmulator ? "10.0.2.2" : inferHostAddress();
-  if (hostAddress) {
-    return `http://${hostAddress}:3001`;
-  }
-
-  return fail(
-    "BARESYNC_FIXTURE_API_URL is required for this device because the host address could not be inferred."
-  );
+  fail(`Unsupported Android ABI: ${abi}`, "android:install-fixture");
 }
 
 function collectApks(dir: string): string[] {
@@ -202,7 +92,10 @@ function collectApks(dir: string): string[] {
 function findLatestApk() {
   const apks = collectApks(apkOutputDir);
   if (apks.length === 0) {
-    fail(`No APK was produced under ${apkOutputDir}`);
+    fail(
+      `No APK was produced under ${apkOutputDir}`,
+      "android:install-fixture"
+    );
   }
 
   return apks.sort(
@@ -212,7 +105,10 @@ function findLatestApk() {
 
 function ensureReleaseSigning() {
   if (!existsSync(androidBuildGradlePath)) {
-    fail(`Android Gradle file was not generated at ${androidBuildGradlePath}`);
+    fail(
+      `Android Gradle file was not generated at ${androidBuildGradlePath}`,
+      "android:install-fixture"
+    );
   }
 
   const buildGradle = readFileSync(androidBuildGradlePath, "utf8");
@@ -245,25 +141,34 @@ function ensureReleaseSigning() {
     }
   );
   if (keytool.code !== 0) {
-    fail("Failed to generate Android fixture release keystore.");
+    fail(
+      "Failed to generate Android fixture release keystore.",
+      "android:install-fixture"
+    );
   }
 }
 
 const devices = runSync(["adb", "devices", "-l"]);
 if (devices.code !== 0) {
-  fail(`adb devices failed:\n${devices.stderr || devices.stdout}`);
+  fail(
+    `adb devices failed:\n${devices.stderr || devices.stdout}`,
+    "android:install-fixture"
+  );
 }
 
 const device = pickUsableDevice(devices.stdout);
 if (!device) {
-  fail("No usable adb target found.");
+  fail("No usable adb target found.", "android:install-fixture");
 }
 
 const keepAwake = runSync(buildStayAwakeCommand(device.serial, true), {
   inherit: true,
 });
 if (keepAwake.code !== 0) {
-  fail("Failed to keep Android device awake before fixture install.");
+  fail(
+    "Failed to keep Android device awake before fixture install.",
+    "android:install-fixture"
+  );
 }
 
 const extendScreenTimeout = runSync(
@@ -273,7 +178,10 @@ const extendScreenTimeout = runSync(
   }
 );
 if (extendScreenTimeout.code !== 0) {
-  fail("Failed to extend Android screen timeout before fixture install.");
+  fail(
+    "Failed to extend Android screen timeout before fixture install.",
+    "android:install-fixture"
+  );
 }
 
 const abi = runSync([
@@ -285,7 +193,10 @@ const abi = runSync([
   "ro.product.cpu.abi",
 ]);
 if (abi.code !== 0 || abi.stdout.length === 0) {
-  fail(`Failed to read Android ABI from ${device.serial}`);
+  fail(
+    `Failed to read Android ABI from ${device.serial}`,
+    "android:install-fixture"
+  );
 }
 
 const tauriTarget = mapAbiToTauriTarget(abi.stdout);
@@ -315,7 +226,7 @@ if (!existsSync(androidProjectDir)) {
     }
   );
   if (init.code !== 0) {
-    fail("Tauri Android project generation failed.");
+    fail("Tauri Android project generation failed.", "android:install-fixture");
   }
 }
 
@@ -327,7 +238,7 @@ const build = runSync(buildAndroidBuildArgs(tauriTarget, cargoFeatures), {
   inherit: true,
 });
 if (build.code !== 0) {
-  fail("Tauri Android APK build failed.");
+  fail("Tauri Android APK build failed.", "android:install-fixture");
 }
 
 const apk = findLatestApk();
@@ -349,7 +260,7 @@ const install = runSync(buildInstallApkCommand(device.serial, apk), {
   inherit: true,
 });
 if (install.code !== 0) {
-  fail("adb install failed.");
+  fail("adb install failed.", "android:install-fixture");
 }
 
 console.log("[android:install-fixture] install complete");

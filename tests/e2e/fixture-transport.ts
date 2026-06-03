@@ -3,7 +3,7 @@ export type FixtureTransportMode = "json";
 export const DEFAULT_FIXTURE_TRANSPORT_MODE: FixtureTransportMode = "json";
 export const FIXTURE_TRANSPORT_ENV = "BARESYNC_FIXTURE_ENCODING";
 
-export function parseFixtureTransportMode(
+function parseFixtureTransportMode(
   _value: string | undefined
 ): FixtureTransportMode {
   return DEFAULT_FIXTURE_TRANSPORT_MODE;

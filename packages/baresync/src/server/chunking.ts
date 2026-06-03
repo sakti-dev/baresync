@@ -2,8 +2,6 @@ export const SQLITE_BIND_PARAM_LIMIT = 32_766;
 export const SAFE_SQLITE_BIND_PARAM_LIMIT = 30_000;
 export const DEFAULT_MAX_ROWS_PER_WRITE_CHUNK = 500;
 export const DEFAULT_MAX_IDS_PER_READ_CHUNK = 1000;
-export const DEFAULT_MAX_EVENTS_PER_INSERT_CHUNK = 1000;
-
 export function getWriteChunkSize(input: {
   columnCount: number;
   maxBindParams?: number;

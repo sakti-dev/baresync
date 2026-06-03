@@ -9,121 +9,19 @@ import {
   hasUiText,
 } from "./adb-ui";
 import {
+  fail,
+  pickUsableDevice,
+  resolveFixtureApiUrl,
+  runSync,
+  runtime,
+} from "./android-utils";
+import {
   buildScreenTimeoutCommand,
   buildStayAwakeCommand,
 } from "./device-power";
-import { inferLanHostAddressFromIpAddr } from "./host-address";
 
-const DEVICE_STATE_SPLIT_RE = /\s+/;
 const POLL_INTERVAL_MS = 250;
 const UI_DUMP_PATH = "/sdcard/baresync-window.xml";
-
-const runtime = globalThis as typeof globalThis & {
-  process: {
-    env: Record<string, string | undefined>;
-    exit(code?: number): void;
-  };
-};
-
-const bunRuntime = globalThis as typeof globalThis & {
-  Bun: {
-    spawnSync(
-      args: string[],
-      options: {
-        stderr?: "inherit" | "pipe";
-        stdin?: "ignore";
-        stdout?: "inherit" | "pipe";
-      }
-    ): {
-      exitCode: number;
-      stderr: Uint8Array;
-      stdout: Uint8Array;
-    };
-  };
-};
-
-interface DeviceTarget {
-  isEmulator: boolean;
-  serial: string;
-}
-
-function decode(bytes: Uint8Array) {
-  return new TextDecoder().decode(bytes);
-}
-
-function runSync(args: string[], options: { inherit?: boolean } = {}) {
-  const result = bunRuntime.Bun.spawnSync(args, {
-    stderr: options.inherit ? "inherit" : "pipe",
-    stdout: options.inherit ? "inherit" : "pipe",
-    stdin: "ignore",
-  });
-
-  return {
-    code: result.exitCode,
-    stderr: decode(result.stderr),
-    stdout: decode(result.stdout),
-  };
-}
-
-function fail(message: string): never {
-  console.error(`[android:adb-sync] ${message}`);
-  throw new Error(message);
-}
-
-function pickUsableDevice(devicesOutput: string): DeviceTarget | null {
-  const requestedSerial = runtime.process.env.ANDROID_SERIAL;
-  const lines = devicesOutput
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("List of devices attached"));
-
-  const deviceLine = lines.find((line) => {
-    const parts = line.split(DEVICE_STATE_SPLIT_RE);
-    return (
-      parts.includes("device") &&
-      (!requestedSerial || parts[0] === requestedSerial)
-    );
-  });
-
-  if (!deviceLine) {
-    return null;
-  }
-
-  const serial = deviceLine.split(DEVICE_STATE_SPLIT_RE)[0];
-  return {
-    isEmulator: serial.startsWith("emulator-"),
-    serial,
-  };
-}
-
-function inferHostAddress() {
-  const addresses = runSync(["ip", "-4", "addr", "show", "scope", "global"]);
-  if (addresses.code !== 0) {
-    return null;
-  }
-
-  return inferLanHostAddressFromIpAddr(addresses.stdout);
-}
-
-function resolveFixtureApiUrl(device: DeviceTarget): string {
-  if (runtime.process.env.BARESYNC_FIXTURE_API_URL) {
-    return runtime.process.env.BARESYNC_FIXTURE_API_URL;
-  }
-
-  if (device.isEmulator) {
-    return "http://10.0.2.2:3001";
-  }
-
-  const hostAddress = inferHostAddress();
-  if (!hostAddress) {
-    fail(
-      "BARESYNC_FIXTURE_API_URL is required for this device because the host address could not be inferred."
-    );
-  }
-
-  return `http://${hostAddress}:3001`;
-}
 
 async function delay(ms: number) {
   await new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
@@ -143,7 +41,7 @@ async function waitForFixtureBackend(apiUrl: string) {
     await delay(100);
   }
 
-  fail(`Fixture backend did not become ready at ${apiUrl}`);
+  fail(`Fixture backend did not become ready at ${apiUrl}`, "android:adb-sync");
 }
 
 async function waitForBackendPush(apiUrl: string, expectedIds: string[]) {
@@ -179,7 +77,8 @@ async function waitForBackendPush(apiUrl: string, expectedIds: string[]) {
       lastState ? `Last pushed state: ${lastState}` : null,
     ]
       .filter((part): part is string => part !== null)
-      .join(" ")
+      .join(" "),
+    "android:adb-sync"
   );
 }
 
@@ -194,13 +93,17 @@ function dumpUi(serial: string): string {
     UI_DUMP_PATH,
   ]);
   if (dump.code !== 0) {
-    fail(`uiautomator dump failed:\n${dump.stderr || dump.stdout}`);
+    fail(
+      `uiautomator dump failed:\n${dump.stderr || dump.stdout}`,
+      "android:adb-sync"
+    );
   }
 
   const readDump = runSync(["adb", "-s", serial, "shell", "cat", UI_DUMP_PATH]);
   if (readDump.code !== 0) {
     fail(
-      `failed to read uiautomator dump:\n${readDump.stderr || readDump.stdout}`
+      `failed to read uiautomator dump:\n${readDump.stderr || readDump.stdout}`,
+      "android:adb-sync"
     );
   }
 
@@ -229,7 +132,8 @@ async function waitForUiText(
       lastDump ? `Last UI dump: ${lastDump.slice(0, 2000)}` : null,
     ]
       .filter((part): part is string => part !== null)
-      .join("\n")
+      .join("\n"),
+    "android:adb-sync"
   );
 }
 
@@ -243,7 +147,10 @@ async function tapText(serial: string, text: string) {
     if (bounds) {
       const tap = runSync(buildAdbTapCommand(serial, bounds));
       if (tap.code !== 0) {
-        fail(`adb tap failed for ${text}:\n${tap.stderr || tap.stdout}`);
+        fail(
+          `adb tap failed for ${text}:\n${tap.stderr || tap.stdout}`,
+          "android:adb-sync"
+        );
       }
       return;
     }
@@ -256,7 +163,8 @@ async function tapText(serial: string, text: string) {
       lastDump ? `Last UI dump: ${lastDump.slice(0, 2000)}` : null,
     ]
       .filter((part): part is string => part !== null)
-      .join("\n")
+      .join("\n"),
+    "android:adb-sync"
   );
 }
 
@@ -270,12 +178,15 @@ runtime.process.env[FIXTURE_TRANSPORT_ENV] = fixtureEncoding;
 
 const devices = runSync(["adb", "devices", "-l"]);
 if (devices.code !== 0) {
-  fail(`adb devices failed:\n${devices.stderr || devices.stdout}`);
+  fail(
+    `adb devices failed:\n${devices.stderr || devices.stdout}`,
+    "android:adb-sync"
+  );
 }
 
 const device = pickUsableDevice(devices.stdout);
 if (!device) {
-  fail("No usable adb target found.");
+  fail("No usable adb target found.", "android:adb-sync");
 }
 
 const fixtureBackendUrl = resolveFixtureApiUrl(device);
@@ -292,7 +203,10 @@ const keepAwake = runSync(buildStayAwakeCommand(device.serial, true), {
   inherit: true,
 });
 if (keepAwake.code !== 0) {
-  fail("Failed to keep Android device awake before smoke run.");
+  fail(
+    "Failed to keep Android device awake before smoke run.",
+    "android:adb-sync"
+  );
 }
 
 const extendScreenTimeout = runSync(
@@ -302,7 +216,10 @@ const extendScreenTimeout = runSync(
   }
 );
 if (extendScreenTimeout.code !== 0) {
-  fail("Failed to extend Android screen timeout before smoke run.");
+  fail(
+    "Failed to extend Android screen timeout before smoke run.",
+    "android:adb-sync"
+  );
 }
 
 try {
@@ -320,7 +237,8 @@ try {
   ]);
   if (installed.code !== 0 || installed.stdout.trim().length === 0) {
     fail(
-      `Fixture app id ${fixtureAppId} is not installed on ${device.serial}.`
+      `Fixture app id ${fixtureAppId} is not installed on ${device.serial}.`,
+      "android:adb-sync"
     );
   }
 
@@ -344,7 +262,8 @@ try {
   ]);
   if (clearApp.code !== 0) {
     fail(
-      `Failed to clear fixture app data:\n${clearApp.stderr || clearApp.stdout}`
+      `Failed to clear fixture app data:\n${clearApp.stderr || clearApp.stdout}`,
+      "android:adb-sync"
     );
   }
 
@@ -352,7 +271,7 @@ try {
     inherit: true,
   });
   if (launch.code !== 0) {
-    fail("Failed to launch fixture app via adb.");
+    fail("Failed to launch fixture app via adb.", "android:adb-sync");
   }
 
   await waitForUiText(device.serial, readyText, 30_000);

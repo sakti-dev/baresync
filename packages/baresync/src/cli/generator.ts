@@ -184,32 +184,6 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
   }
 }
 
-export async function runDoctor(configPath: string): Promise<void> {
-  const absPath = path.resolve(configPath);
-  const configModule = (await import(absPath)) as LoadedConfig;
-  const entries = resolveLoadedConfigEntries(configModule, absPath);
-
-  process.stdout.write(`Loaded config: ${absPath}\n`);
-  let hasErrors = false;
-
-  for (const entry of entries) {
-    let contract: SyncContract;
-    if (entry.pairedConfig) {
-      contract = await buildContractFromPairedConfig(entry.pairedConfig);
-    } else {
-      contract = entry.contract!;
-    }
-    hasErrors ||= printDiagnosticsReport(
-      `diagnostics for ${entry.label}`,
-      runDiagnostics(contract)
-    );
-  }
-
-  if (hasErrors) {
-    process.exit(1);
-  }
-}
-
 export async function runDoctorCommand(args: string[]): Promise<void> {
   const options = parseDoctorCliArgs(args);
   const resolved = await loadConfigModuleFromCliOptions(options);

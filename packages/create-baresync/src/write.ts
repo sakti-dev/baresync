@@ -30,12 +30,3 @@ export async function ensureEmptyTargetDir(targetDir: string): Promise<void> {
     );
   }
 }
-
-export async function pathExists(absPath: string): Promise<boolean> {
-  try {
-    await fs.access(absPath);
-    return true;
-  } catch {
-    return false;
-  }
-}

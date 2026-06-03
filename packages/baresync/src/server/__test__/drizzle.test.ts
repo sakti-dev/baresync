@@ -283,6 +283,57 @@ function createRepository(db = createTestDb()) {
   });
 }
 
+async function seedTestData(db: BunSQLiteDatabase<Record<string, never>>) {
+  await db.insert(locations).values([
+    {
+      createdAt: "2026-05-20T00:00:00.000Z",
+      deletedAt: null,
+      id: "location-1",
+      name: "Front Warehouse",
+      scopeId: "default",
+      syncUpdatedAt: 100,
+      updatedAt: "2026-05-20T00:00:00.000Z",
+    },
+  ]);
+  await db.insert(items).values([
+    {
+      createdAt: "2026-05-20T00:01:00.000Z",
+      deletedAt: null,
+      id: "item-1",
+      locationId: "location-1",
+      name: "Cordless Drill",
+      scopeId: "default",
+      sku: "DRILL-01",
+      syncUpdatedAt: 200,
+      updatedAt: "2026-05-20T00:01:00.000Z",
+    },
+    {
+      createdAt: "2026-05-20T00:02:00.000Z",
+      deletedAt: "2026-05-20T00:03:00.000Z",
+      id: "item-2",
+      locationId: "location-1",
+      name: "Old Wrench",
+      scopeId: "default",
+      sku: null,
+      syncUpdatedAt: 150,
+      updatedAt: "2026-05-20T00:02:00.000Z",
+    },
+  ]);
+  await db.insert(stockCounts).values([
+    {
+      countedQuantity: 4,
+      createdAt: "2026-05-20T00:04:00.000Z",
+      deletedAt: null,
+      id: "count-1",
+      itemId: "item-1",
+      recordedAt: "2026-05-20T00:04:00.000Z",
+      scopeId: "default",
+      syncUpdatedAt: 300,
+      updatedAt: "2026-05-20T00:04:00.000Z",
+    },
+  ]);
+}
+
 describe("validation helpers", () => {
   it("validates required strings", () => {
     expect(requiredString("value", "items.name")).toBe("value");
@@ -336,54 +387,7 @@ describe("createDrizzleSyncRepository", () => {
 describe("loadPullChanges", () => {
   it("filters requested tables, preserves order, and splits changed and deleted rows", async () => {
     const db = createTestDb();
-    await db.insert(locations).values([
-      {
-        createdAt: "2026-05-20T00:00:00.000Z",
-        deletedAt: null,
-        id: "location-1",
-        name: "Front Warehouse",
-        scopeId: "default",
-        syncUpdatedAt: 100,
-        updatedAt: "2026-05-20T00:00:00.000Z",
-      },
-    ]);
-    await db.insert(items).values([
-      {
-        createdAt: "2026-05-20T00:01:00.000Z",
-        deletedAt: null,
-        id: "item-1",
-        locationId: "location-1",
-        name: "Cordless Drill",
-        scopeId: "default",
-        sku: "DRILL-01",
-        syncUpdatedAt: 200,
-        updatedAt: "2026-05-20T00:01:00.000Z",
-      },
-      {
-        createdAt: "2026-05-20T00:02:00.000Z",
-        deletedAt: "2026-05-20T00:03:00.000Z",
-        id: "item-2",
-        locationId: "location-1",
-        name: "Old Wrench",
-        scopeId: "default",
-        sku: null,
-        syncUpdatedAt: 150,
-        updatedAt: "2026-05-20T00:02:00.000Z",
-      },
-    ]);
-    await db.insert(stockCounts).values([
-      {
-        countedQuantity: 4,
-        createdAt: "2026-05-20T00:04:00.000Z",
-        deletedAt: null,
-        id: "count-1",
-        itemId: "item-1",
-        recordedAt: "2026-05-20T00:04:00.000Z",
-        scopeId: "default",
-        syncUpdatedAt: 300,
-        updatedAt: "2026-05-20T00:04:00.000Z",
-      },
-    ]);
+    await seedTestData(db);
     const repository = createRepository(db);
 
     const response = await repository.loadPullChanges({
@@ -451,54 +455,7 @@ describe("loadPullChanges", () => {
 describe("loadSyncStatus", () => {
   it("reports changed tables since the cursor", async () => {
     const db = createTestDb();
-    await db.insert(locations).values([
-      {
-        createdAt: "2026-05-20T00:00:00.000Z",
-        deletedAt: null,
-        id: "location-1",
-        name: "Front Warehouse",
-        scopeId: "default",
-        syncUpdatedAt: 100,
-        updatedAt: "2026-05-20T00:00:00.000Z",
-      },
-    ]);
-    await db.insert(items).values([
-      {
-        createdAt: "2026-05-20T00:01:00.000Z",
-        deletedAt: null,
-        id: "item-1",
-        locationId: "location-1",
-        name: "Cordless Drill",
-        scopeId: "default",
-        sku: "DRILL-01",
-        syncUpdatedAt: 200,
-        updatedAt: "2026-05-20T00:01:00.000Z",
-      },
-      {
-        createdAt: "2026-05-20T00:02:00.000Z",
-        deletedAt: "2026-05-20T00:03:00.000Z",
-        id: "item-2",
-        locationId: "location-1",
-        name: "Old Wrench",
-        scopeId: "default",
-        sku: null,
-        syncUpdatedAt: 150,
-        updatedAt: "2026-05-20T00:02:00.000Z",
-      },
-    ]);
-    await db.insert(stockCounts).values([
-      {
-        countedQuantity: 4,
-        createdAt: "2026-05-20T00:04:00.000Z",
-        deletedAt: null,
-        id: "count-1",
-        itemId: "item-1",
-        recordedAt: "2026-05-20T00:04:00.000Z",
-        scopeId: "default",
-        syncUpdatedAt: 300,
-        updatedAt: "2026-05-20T00:04:00.000Z",
-      },
-    ]);
+    await seedTestData(db);
     const repository = createRepository(db);
 
     const response = await repository.loadSyncStatus({
@@ -513,54 +470,7 @@ describe("loadSyncStatus", () => {
 
   it("returns no changes when nothing changed since the cursor", async () => {
     const db = createTestDb();
-    await db.insert(locations).values([
-      {
-        createdAt: "2026-05-20T00:00:00.000Z",
-        deletedAt: null,
-        id: "location-1",
-        name: "Front Warehouse",
-        scopeId: "default",
-        syncUpdatedAt: 100,
-        updatedAt: "2026-05-20T00:00:00.000Z",
-      },
-    ]);
-    await db.insert(items).values([
-      {
-        createdAt: "2026-05-20T00:01:00.000Z",
-        deletedAt: null,
-        id: "item-1",
-        locationId: "location-1",
-        name: "Cordless Drill",
-        scopeId: "default",
-        sku: "DRILL-01",
-        syncUpdatedAt: 200,
-        updatedAt: "2026-05-20T00:01:00.000Z",
-      },
-      {
-        createdAt: "2026-05-20T00:02:00.000Z",
-        deletedAt: "2026-05-20T00:03:00.000Z",
-        id: "item-2",
-        locationId: "location-1",
-        name: "Old Wrench",
-        scopeId: "default",
-        sku: null,
-        syncUpdatedAt: 150,
-        updatedAt: "2026-05-20T00:02:00.000Z",
-      },
-    ]);
-    await db.insert(stockCounts).values([
-      {
-        countedQuantity: 4,
-        createdAt: "2026-05-20T00:04:00.000Z",
-        deletedAt: null,
-        id: "count-1",
-        itemId: "item-1",
-        recordedAt: "2026-05-20T00:04:00.000Z",
-        scopeId: "default",
-        syncUpdatedAt: 300,
-        updatedAt: "2026-05-20T00:04:00.000Z",
-      },
-    ]);
+    await seedTestData(db);
     const repository = createRepository(db);
 
     const response = await repository.loadSyncStatus({

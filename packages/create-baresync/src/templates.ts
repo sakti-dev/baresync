@@ -196,6 +196,10 @@ function serverV1Routes(options: ScaffoldOptions) {
   );
 }
 
+function serverSyncHandlers() {
+  return readTemplateAsset("server/src/v1/sync-handlers.ts");
+}
+
 function serverIndexPatch(options: ScaffoldOptions) {
   if (options.serverFramework === "hono") {
     return replaceProjectName(
@@ -271,6 +275,7 @@ export function buildRootScaffoldFiles(
     file("apps/server/src/db/client.ts", serverDbClient(options)),
     file("apps/server/src/db/v1/sync-repository.ts", serverSyncRepository()),
     file("apps/server/src/v1/routes.ts", serverV1Routes(options)),
+    file("apps/server/src/v1/sync-handlers.ts", serverSyncHandlers()),
     file(
       "apps/server/src/sync-fallback-instructions.md",
       serverFallbackInstructions(options)

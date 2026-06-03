@@ -1,9 +1,9 @@
 import { createTauriDrizzleDatabase } from "baresync/db";
-import { lists, todos } from "../../../packages/sync-contract/src/local-synced-schema";
+import { lists, todos } from "../../../../packages/sync-contract/src/local-synced-schema";
 import {
   syncCursors,
   syncOutbox,
-} from "../../../packages/sync-contract/src/local-schema";
+} from "../../../../packages/sync-contract/src/local-schema";
 
 export const TABLE = {
   lists,

@@ -3,9 +3,6 @@ import pushFixture from "../../../fixtures/sync/category-product-push.json";
 import idempotentReplayFixture from "../../../fixtures/sync/idempotent-replay.json";
 import payloadTooLargeFixture from "../../../fixtures/sync/payload-too-large.json";
 import serverSoftDeleteFixture from "../../../fixtures/sync/server-soft-delete.json";
-import serverWinsRejectionFixture from "../../../fixtures/sync/server-wins-rejection.json";
-import statusRequestFixture from "../../../fixtures/sync/status-request.json";
-import statusResponseFixture from "../../../fixtures/sync/status-response.json";
 
 export const baselinePull =
   baselinePullFixture as typeof baselinePullFixture & {
@@ -30,33 +27,6 @@ export const serverSoftDelete =
       deletedIds: string[];
     }>;
   };
-export const serverWinsRejection =
-  serverWinsRejectionFixture as typeof serverWinsRejectionFixture & {
-    pushResponse: {
-      serverTime: string;
-      tables: Array<{
-        table: string;
-        acceptedCreatedIds: string[];
-        acceptedUpdatedIds: string[];
-        acceptedDeletedIds: string[];
-        rejected: Array<{ id: string; reason: string }>;
-      }>;
-    };
-    reconciliationPull: {
-      cursor: string;
-      hasMore: boolean;
-      serverTime: string;
-      tables: Array<{
-        table: string;
-        changedRows: unknown[];
-        deletedIds: string[];
-      }>;
-    };
-  };
-export const statusRequest =
-  statusRequestFixture as typeof statusRequestFixture;
-export const statusResponse =
-  statusResponseFixture as typeof statusResponseFixture;
 export const idempotentReplay =
   idempotentReplayFixture as typeof idempotentReplayFixture & {
     firstRequest: {

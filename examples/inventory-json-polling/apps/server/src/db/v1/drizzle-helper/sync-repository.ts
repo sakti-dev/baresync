@@ -14,30 +14,9 @@ import { and, desc, eq, gt, type InferInsertModel } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 
 type InventoryDb = BunSQLiteDatabase<Record<string, never>>;
-type TableName = "locations" | "items" | "stock_counts";
 
 export interface InventoryScope {
   scopeId: string;
-}
-
-export interface InventoryPullTable {
-  changedRows: Record<string, unknown>[];
-  deletedIds: string[];
-  table: TableName;
-}
-
-export interface InventoryPullResponse {
-  cursor: string;
-  hasMore: boolean;
-  serverTime: string;
-  tables: InventoryPullTable[];
-}
-
-export interface InventoryStatusResponse {
-  changedTables: TableName[];
-  cursor: string;
-  hasChanges: boolean;
-  serverTime: string;
 }
 
 export function createInventorySyncRepository(db: InventoryDb) {
