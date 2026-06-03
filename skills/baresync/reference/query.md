@@ -2,6 +2,17 @@
 
 Conceptual questions about how baresync works.
 
+## Exact API Questions
+
+When the user asks about a specific function, helper, type, return value, or generated artifact:
+
+1. Check this reference for the concept.
+2. If the exact API is not documented here, load `reference/source.md`.
+3. Inspect the workspace source mapped by `reference/source.md`.
+4. Explain inputs, outputs, side effects, and common misuse.
+
+Do not answer exact API/type questions from memory when source is available.
+
 ## What is baresync?
 
 A local-first sync system for Tauri apps. Your app reads/writes SQLite directly. Changes sync to your own backend via a polling-based push/pull mechanism.
@@ -80,6 +91,8 @@ The Tauri plugin:
 4. Exposes commands that JS calls via `invoke`
 
 The TypeScript client (`baresync/db`) wraps these into a Drizzle proxy and sync client.
+
+If the exact implementation details matter, load `reference/source.md` and read the mapped workspace file.
 
 ## What does `enqueueChange` do?
 

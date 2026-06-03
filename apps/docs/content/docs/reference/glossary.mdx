@@ -21,7 +21,7 @@ description: Terms used throughout Baresync documentation.
 | **Idempotency key** | A unique key per push batch derived from outbox entry IDs. Prevents duplicate processing on network retries. |
 | **Local-only columns** | Columns that exist in the local schema but are not sent to the server (e.g. `is_synced`). Stripped from push payloads. |
 | **Outbox** | The `sync_outbox` table — queues local writes for push. Each entry has `tableName`, `rowId`, `operation`, and `syncedAt` (null until confirmed). |
-| **Paired sync config** | A generator config that takes both `localSyncedSchema` and `apiSyncedSchema`, auto-matching tables by name. Created by `defineSyncConfig`. |
+| **Paired sync config** | A generator config that takes paths to both `localSyncedSchema` and `apiSyncedSchema`, loads those schema files at generation time, and validates tables by export name. Created by `defineSyncConfig`. |
 | **Polling** | Automatic background sync on a timer. Configured via `poll_interval_secs` on the builder. |
 | **Pull** | Fetching server changes and applying them locally. Uses cursor-based incremental sync. |
 | **Push** | Sending local outbox changes to the server. Entries are chunked, sent, and marked as synced on success. |

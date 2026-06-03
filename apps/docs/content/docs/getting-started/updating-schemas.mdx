@@ -79,11 +79,15 @@ The contract JSON records the union of all columns, and tags one-side-only colum
 If you added a new table, add it to the `tables` map in `packages/sync-contract/sync.config.ts`:
 
 ```ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
-  schemaSourceDir: `${__dirname}src`,
   tables: {
     lists: { scopeColumn: "scope_id" },
     todos: { scopeColumn: "scope_id" },

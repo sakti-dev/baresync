@@ -2,6 +2,8 @@
 
 How to create, update, and delete local data that syncs to the server.
 
+If the exact write helper or data flow is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Core rule
 
 **Always use `writeTransaction` + `writeLocalChange` for syncable data.** Direct Drizzle writes bypass the outbox and will not be pushed.

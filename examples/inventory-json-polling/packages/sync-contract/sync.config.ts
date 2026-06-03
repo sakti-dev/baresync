@@ -1,18 +1,13 @@
-/** biome-ignore-all lint/performance/noNamespaceImport: Config intentionally groups synced schema exports. */
-
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-const schemaSourceDir = `${__dirname}src`;
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
-  schemaSourceDir,
   tables: {
     locations: { scopeColumn: "scope_id" },
     items: { scopeColumn: "scope_id" },

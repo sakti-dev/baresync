@@ -49,11 +49,11 @@ All generator output files (`sync-contract.json`, `sync-contract.manifest.json`,
 
 ### Requirement: Schema snapshot in generated output
 
-The generator SHALL copy the source schema files (`api-synced-schema.ts`, `local-synced-schema.ts`) into the generated dated directory alongside the contract artifacts. These copies SHALL be frozen snapshots of the current schema at generation time.
+The generator SHALL copy the source schema files (`api-synced-schema.ts`, `local-synced-schema.ts`) referenced by the paired config into the generated dated directory alongside the contract artifacts. These copies SHALL be frozen snapshots of the current schema at generation time.
 
 #### Scenario: Schema files are copied to generated directory
 
-- **WHEN** generation runs on 2026-06-01 with `outputDir: "./generated"` and the config references `src/api-synced-schema.ts` and `src/local-synced-schema.ts`
+- **WHEN** generation runs on 2026-06-01 with `outputDir: "./generated"` and the config points at `./src/api-synced-schema.ts` and `./src/local-synced-schema.ts`
 - **THEN** `./generated/2026-06-01/api-synced-schema.ts` exists
 - **AND** `./generated/2026-06-01/local-synced-schema.ts` exists
 - **AND** their contents match the source files at generation time

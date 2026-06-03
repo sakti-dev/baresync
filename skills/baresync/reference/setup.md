@@ -2,6 +2,8 @@
 
 Two paths: greenfield (scaffold) or brownfield (add to existing project).
 
+If the exact wiring or file layout is unclear, load `reference/source.md` and inspect the mapped workspace source instead of guessing.
+
 ## Prerequisites
 
 Baresync requires all of these. If any don't match, it's not the right tool:
@@ -126,13 +128,15 @@ Without these, the sync engine has nowhere to store pending changes, cursor stat
 ### Step 4: Create `sync.config.ts`
 
 ```ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
   tables: {
     items: { scopeColumn: "scope_id" },
@@ -140,7 +144,7 @@ export const syncGeneratorConfig = defineSyncConfig({
 });
 ```
 
-See [generator reference](generator.md) for full config parameters (`limits`, `schemaSourceDir`, table options defaults).
+See [generator reference](generator.md) for full config parameters (`limits`, path-based schema inputs, table options defaults).
 
 ### Step 5: Create Drizzle configs + generate contract + migrations
 

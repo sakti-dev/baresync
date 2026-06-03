@@ -1,25 +1,15 @@
+import fs from "node:fs";
 import {
   type AnySQLiteTable,
   getTableConfig,
   type SQLiteColumn,
 } from "drizzle-orm/sqlite-core";
-import {
-  type SyncContract,
-  type SyncContractLimits,
-  syncSchema,
-} from "../schema/contract";
-import { syncedTable } from "../schema/synced-table";
+import type { SyncContract, SyncContractLimits } from "../schema/contract";
 
 export interface GeneratorConfig {
   contract: SyncContract;
   outputDir: string;
 }
-
-type SyncedSchemaModule = Record<string, AnySQLiteTable>;
-type SharedSchemaKey<
-  LocalSchema extends SyncedSchemaModule,
-  ApiSchema extends SyncedSchemaModule,
-> = Extract<keyof LocalSchema, keyof ApiSchema>;
 
 export interface SyncConfigTableOptions {
   localOnlyColumns?: readonly string[];
@@ -27,106 +17,48 @@ export interface SyncConfigTableOptions {
   serverOnlyColumns?: readonly string[];
 }
 
-export type SyncConfigTables<
-  LocalSchema extends SyncedSchemaModule,
-  ApiSchema extends SyncedSchemaModule,
-> = {
-  [Key in SharedSchemaKey<LocalSchema, ApiSchema>]?: SyncConfigTableOptions;
-};
+export type SyncConfigTables = Record<
+  string,
+  SyncConfigTableOptions | undefined
+>;
 
-export interface PairedSyncGeneratorConfig extends GeneratorConfig {
-  apiSyncedSchema: SyncedSchemaModule;
-  localSyncedSchema: SyncedSchemaModule;
-  schemaSourceDir?: string;
-}
-
-interface PairedSyncConfigInput<
-  LocalSchema extends SyncedSchemaModule,
-  ApiSchema extends SyncedSchemaModule,
-> {
-  apiSyncedSchema: ApiSchema;
+export interface PairedSyncGeneratorConfig {
+  apiSyncedSchemaPath: string;
   limits?: Partial<SyncContractLimits>;
-  localSyncedSchema: LocalSchema;
+  localSyncedSchemaPath: string;
   outputDir: string;
-  schemaSourceDir?: string;
-  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+  tables: SyncConfigTables;
 }
 
-function buildPairedSyncConfig<
-  LocalSchema extends SyncedSchemaModule,
-  ApiSchema extends SyncedSchemaModule,
->(
-  input: PairedSyncConfigInput<LocalSchema, ApiSchema>
-): PairedSyncGeneratorConfig {
-  const tables = input.tables as Record<string, SyncConfigTableOptions>;
-  const tableDefinitions = Object.entries(tables).map(
-    ([exportName, options]) => {
-      if (!options) {
-        throw new Error(
-          `Sync table export "${exportName}" is missing table options.`
-        );
-      }
+export function defineSyncConfig(input: {
+  apiSyncedSchema: string;
+  limits?: Partial<SyncContractLimits>;
+  localSyncedSchema: string;
+  outputDir: string;
+  tables: SyncConfigTables;
+}): PairedSyncGeneratorConfig {
+  if (!fs.existsSync(input.apiSyncedSchema)) {
+    throw new Error(
+      `API synced schema file not found: ${input.apiSyncedSchema}`
+    );
+  }
 
-      const localTable = input.localSyncedSchema[exportName];
-      if (!localTable) {
-        throw new Error(
-          `Local synced schema is missing table export "${exportName}".`
-        );
-      }
-
-      const apiTable = input.apiSyncedSchema[exportName];
-      if (!apiTable) {
-        throw new Error(
-          `API synced schema is missing table export "${exportName}".`
-        );
-      }
-
-      const localOnlyColumns = options.localOnlyColumns ?? ["isSynced"];
-      const serverOnlyColumns = options.serverOnlyColumns ?? ["syncUpdatedAt"];
-
-      validatePairedTableColumns({
-        apiTable,
-        exportName,
-        localOnlyColumns,
-        localTable,
-        serverOnlyColumns,
-      });
-
-      return syncedTable(localTable, {
-        scope: options.scopeColumn,
-        localOnlyColumns: [...localOnlyColumns],
-        serverOnlyColumns: [...serverOnlyColumns],
-      });
-    }
-  );
+  if (!fs.existsSync(input.localSyncedSchema)) {
+    throw new Error(
+      `Local synced schema file not found: ${input.localSyncedSchema}`
+    );
+  }
 
   return {
-    apiSyncedSchema: input.apiSyncedSchema,
-    contract: syncSchema({
-      limits: input.limits,
-      tables: tableDefinitions,
-    }),
-    localSyncedSchema: input.localSyncedSchema,
+    apiSyncedSchemaPath: input.apiSyncedSchema,
+    localSyncedSchemaPath: input.localSyncedSchema,
     outputDir: input.outputDir,
-    schemaSourceDir: input.schemaSourceDir,
+    tables: input.tables,
+    limits: input.limits,
   };
 }
 
-export function defineSyncConfig<
-  LocalSchema extends SyncedSchemaModule,
-  ApiSchema extends SyncedSchemaModule,
->(input: {
-  apiSyncedSchema: ApiSchema;
-  limits?: Partial<SyncContractLimits>;
-  localSyncedSchema: LocalSchema;
-  outputDir: string;
-  schemaSourceDir?: string;
-  tables: SyncConfigTables<LocalSchema, ApiSchema>;
-}): PairedSyncGeneratorConfig {
-  return buildPairedSyncConfig(input);
-}
-
-function validatePairedTableColumns(input: {
+export function validatePairedTableColumns(input: {
   apiTable: AnySQLiteTable;
   exportName: string;
   localOnlyColumns: readonly string[];
@@ -157,7 +89,7 @@ function validatePairedTableColumns(input: {
   }
 }
 
-function getColumnNames(table: AnySQLiteTable): Set<string> {
+export function getColumnNames(table: AnySQLiteTable): Set<string> {
   return new Set(
     (getTableConfig(table).columns as SQLiteColumn[]).map(
       (column) => column.name

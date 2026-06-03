@@ -2,6 +2,8 @@
 
 Full reference for the Tauri plugin — builder config, commands, polling, events, migrations, and testing.
 
+If the exact plugin behavior is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Crates
 
 | Crate | Purpose |

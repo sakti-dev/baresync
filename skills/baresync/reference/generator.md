@@ -2,6 +2,23 @@
 
 How the sync contract generator works, its config, CLI, and output.
 
+## Migration From Old Config Shape
+
+Older examples may import schema modules and pass `schemaSourceDir`. Current paired config uses file path strings.
+
+```ts
+defineSyncConfig({
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
+  outputDir: "./generated",
+  tables: {
+    items: { scopeColumn: "scope_id" },
+  },
+});
+```
+
+Do not use `schemaSourceDir` in new configs.
+
 ## How to run
 
 ```bash
@@ -13,23 +30,27 @@ bunx baresync generate
 ## What it does
 
 1. Loads `sync.config.ts`
-2. Validates each table against paired schemas (columns match, scope exists, PK correct)
-3. Computes table order by following foreign keys (topological sort)
-4. Runs diagnostics — errors block, warnings print
-5. Writes three output files to `outputDir`
+2. Resolves and loads schema modules from the provided file paths
+3. Validates each table against paired schemas (columns match, scope exists, PK correct)
+4. Computes table order by following foreign keys (topological sort)
+5. Runs diagnostics — errors block, warnings print
+6. Writes three output files to `outputDir`
+7. Copies frozen schema snapshots from the explicit source paths
 
 ## sync.config.ts
 
 Full `defineSyncConfig` parameters:
 
 ```ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
   tables: {
     locations: { scopeColumn: "scope_id" },
@@ -44,12 +65,11 @@ export const syncGeneratorConfig = defineSyncConfig({
 
 | Parameter | Type | Purpose |
 |---|---|---|
-| `localSyncedSchema` | `* as schema` | Namespace import of local synced tables |
-| `apiSyncedSchema` | `* as schema` | Namespace import of API synced tables |
+| `localSyncedSchema` | `string` | Path to the local-side synced schema source file |
+| `apiSyncedSchema` | `string` | Path to the API-side synced schema source file |
 | `outputDir` | `string` | Where to write generated files |
 | `tables` | `Record<string, TableOptions>` | Map of export names to sync options |
 | `limits` | `{ maxPushBytes?, maxPushRows? }` | Optional. Override default push limits |
-| `schemaSourceDir` | `string` | Optional. Override schema source directory for diagnostics |
 
 ### Table options
 
@@ -60,6 +80,12 @@ export const syncGeneratorConfig = defineSyncConfig({
 | `serverOnlyColumns` | `["syncUpdatedAt"]` | Columns that exist only on API schema |
 
 The generator validates that local-only columns are not in the API schema and vice versa.
+
+If generator behavior is unclear or appears stale, inspect:
+
+- `packages/baresync/src/generator/config.ts`
+- `packages/baresync/src/generator/index.ts`
+- `packages/baresync/src/cli/generator.ts`
 
 ## CLI flags
 
@@ -149,6 +175,14 @@ Flat manifest for build tooling and CI. Detects contract drift between builds. U
   }
 }
 ```
+
+### Frozen schema snapshots
+
+The generator copies the source schema files referenced by the paired config into the generated dated directory alongside the contract artifacts. These are frozen snapshots of the current schema at generation time.
+
+The source paths are the same `apiSyncedSchema` and `localSyncedSchema` paths from your config. Editing source files after generation does not affect previously generated snapshots.
+
+**Required for:** Server imports from `@sync-contract/generated/<date>/api-synced-schema`.
 
 Run `bunx baresync doctor` to validate your schemas — runs the same diagnostics as `generate` without writing files.
 

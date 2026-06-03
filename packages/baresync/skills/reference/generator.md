@@ -16,7 +16,8 @@ bunx baresync generate
 2. Validates each table against paired schemas (columns match, scope exists, PK correct)
 3. Computes table order by following foreign keys (topological sort)
 4. Runs diagnostics — errors block, warnings print
-5. Writes three output files to `outputDir`
+5. Writes output files to `outputDir/<YYYY-MM-DD>/`
+6. Copies frozen schema snapshots when `schemaSourceDir` is provided
 
 ## sync.config.ts
 
@@ -49,7 +50,7 @@ export const syncGeneratorConfig = defineSyncConfig({
 | `outputDir` | `string` | Where to write generated files |
 | `tables` | `Record<string, TableOptions>` | Map of export names to sync options |
 | `limits` | `{ maxPushBytes?, maxPushRows? }` | Optional. Override default push limits |
-| `schemaSourceDir` | `string` | Optional. Override schema source directory for diagnostics |
+| `schemaSourceDir` | `string` | Required for snapshot copying. Path to directory containing `api-synced-schema.ts` and `local-synced-schema.ts`. Without this, frozen schema snapshots are not generated. |
 
 ### Table options
 
@@ -91,6 +92,8 @@ bunx baresync doctor --config packages/sync-contract/sync.config.ts
 ```
 
 ## Generated files
+
+All files are written to `outputDir/<YYYY-MM-DD>/`:
 
 ### sync-contract.json
 
@@ -152,6 +155,12 @@ Flat manifest for build tooling and CI. Detects contract drift between builds. U
 
 Run `bunx baresync doctor` to validate your schemas — runs the same diagnostics as `generate` without writing files.
 
+### Frozen schema snapshots (when `schemaSourceDir` is provided)
+
+Copies `api-synced-schema.ts` and `local-synced-schema.ts` from the source directory into the dated output directory. These are frozen snapshots — editing source files after generation does not affect previously generated snapshots.
+
+**Required for:** Server imports from `@sync-contract/generated/<date>/api-synced-schema`. Without `schemaSourceDir`, the server cannot import versioned schemas.
+
 ## Package exports
 
 Wire these in your sync contract `package.json`:
@@ -161,7 +170,9 @@ Wire these in your sync contract `package.json`:
   "exports": {
     "./generated/sync-table-order": "./generated/sync-table-order.ts",
     "./generated/sync-contract": "./generated/sync-contract.json",
-    "./generated/manifest": "./generated/sync-contract.manifest.json"
+    "./generated/manifest": "./generated/sync-contract.manifest.json",
+    "./generated/api-synced-schema": "./generated/api-synced-schema.ts",
+    "./generated/local-synced-schema": "./generated/local-synced-schema.ts"
   }
 }
 ```

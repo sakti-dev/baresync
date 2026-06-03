@@ -5,7 +5,7 @@ description: What the generator outputs and how to use them.
 
 # Generated Files
 
-The generator writes three files for JSON configs.
+The generator writes files to `generated/<YYYY-MM-DD>/`:
 
 ## sync-contract.json
 
@@ -64,13 +64,18 @@ import { SYNC_UPSERT_ORDER } from "@repo/sync-contract/generated/sync-table-orde
 A flat manifest for build tooling and CI. Contains:
 
 - Contract version and generator version
-- Package name
 - Table list with field numbers
 - Scope mappings
 - Table order
 - Output file paths
 
 Used to detect contract drift between builds and to verify the contract has not changed unexpectedly.
+
+## Frozen schema snapshots
+
+The generator copies the source schema files referenced by the paired config (`apiSyncedSchema` and `localSyncedSchema` paths) into the dated output directory as `api-synced-schema.ts` and `local-synced-schema.ts`. These are frozen snapshots, so editing source files after generation does not affect previously generated snapshots.
+
+**Required for:** Server imports from `@sync-contract/generated/<date>/api-synced-schema`. Without the schema file paths in your config, the server cannot import versioned schemas.
 
 ## Package exports
 
@@ -81,7 +86,9 @@ Wire these up in your sync contract `package.json`:
   "exports": {
     "./generated/sync-table-order": "./generated/sync-table-order.ts",
     "./generated/sync-contract": "./generated/sync-contract.json",
-    "./generated/manifest": "./generated/sync-contract.manifest.json"
+    "./generated/manifest": "./generated/sync-contract.manifest.json",
+    "./generated/api-synced-schema": "./generated/api-synced-schema.ts",
+    "./generated/local-synced-schema": "./generated/local-synced-schema.ts"
   }
 }
 ```

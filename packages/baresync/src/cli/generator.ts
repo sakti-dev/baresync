@@ -1,11 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { GeneratorConfig } from "../generator/config";
+import type {
+  GeneratorConfig,
+  PairedSyncGeneratorConfig,
+} from "../generator/config";
 import { runDiagnostics, type SyncDiagnostic } from "../generator/diagnostics";
-import { generateSyncArtifacts, SyncDiagnosticError } from "../generator/index";
+import {
+  buildContractFromPairedConfig,
+  generateSyncArtifacts,
+  SyncDiagnosticError,
+} from "../generator/index";
 import type { SyncContract } from "../schema/contract";
 
-type GenerateSource = GeneratorConfig | string | SyncContract;
+type GenerateSource =
+  | GeneratorConfig
+  | PairedSyncGeneratorConfig
+  | string
+  | SyncContract;
 type LoadedConfig = Record<string, unknown>;
 
 const CONFIG_FILENAMES = [
@@ -23,16 +34,17 @@ interface GenerateCliOptions {
 }
 
 interface LoadedConfigEntry {
-  contract: SyncContract;
+  contract?: SyncContract;
   key: string;
   label: string;
   outputDir?: string;
+  pairedConfig?: PairedSyncGeneratorConfig;
   syncConfig?: GeneratorConfig;
 }
 
 async function resolveGenerateSource(
   configPathOrContract: GenerateSource
-): Promise<GeneratorConfig | SyncContract> {
+): Promise<GeneratorConfig | PairedSyncGeneratorConfig | SyncContract> {
   if (typeof configPathOrContract !== "string") {
     return configPathOrContract;
   }
@@ -45,7 +57,7 @@ async function resolveGenerateSource(
 function getLegacyGenerateExport(
   configModule: LoadedConfig,
   absPath: string
-): GeneratorConfig | SyncContract {
+): GeneratorConfig | PairedSyncGeneratorConfig | SyncContract {
   const config =
     configModule.default ??
     configModule.syncGeneratorConfig ??
@@ -57,7 +69,15 @@ function getLegacyGenerateExport(
     );
   }
 
-  return config as GeneratorConfig | SyncContract;
+  return config as GeneratorConfig | PairedSyncGeneratorConfig | SyncContract;
+}
+
+function throwIfDiagnosticErrors(contract: SyncContract): void {
+  const diagnostics = runDiagnostics(contract);
+  const errors = diagnostics.filter((d) => d.severity === "error");
+  if (errors.length > 0) {
+    throw new SyncDiagnosticError(diagnostics);
+  }
 }
 
 export async function runGenerate(
@@ -66,9 +86,27 @@ export async function runGenerate(
   options?: { check?: boolean; warningsAsErrors?: boolean }
 ): Promise<void> {
   const source = await resolveGenerateSource(configPathOrContract);
-  const contract = "contract" in source ? source.contract : source;
-  const resolvedOutputDir =
-    outputDir ?? ("contract" in source ? source.outputDir : "./generated");
+
+  if (isPairedConfig(source)) {
+    if (options?.check) {
+      const contract = await buildContractFromPairedConfig(source);
+      throwIfDiagnosticErrors(contract);
+      return;
+    }
+    await generateSyncArtifacts(source);
+    return;
+  }
+
+  let contract: SyncContract;
+  let resolvedOutputDir: string;
+
+  if (isGeneratorConfig(source)) {
+    contract = source.contract;
+    resolvedOutputDir = outputDir ?? source.outputDir;
+  } else {
+    contract = source;
+    resolvedOutputDir = outputDir ?? "./generated";
+  }
 
   if (!(resolvedOutputDir || options?.check)) {
     throw new Error(
@@ -77,11 +115,7 @@ export async function runGenerate(
   }
 
   if (options?.check) {
-    const diagnostics = runDiagnostics(contract);
-    const errors = diagnostics.filter((d) => d.severity === "error");
-    if (errors.length > 0) {
-      throw new SyncDiagnosticError(diagnostics);
-    }
+    throwIfDiagnosticErrors(contract);
     return;
   }
 
@@ -100,9 +134,17 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
   process.stdout.write(`Loaded config: ${resolved.path}\n`);
 
   if (options.check) {
-    const diagnostics = entries.flatMap((entry) =>
-      runDiagnostics(entry.contract)
-    );
+    const diagnostics: SyncDiagnostic[] = [];
+    for (const entry of entries) {
+      if (entry.pairedConfig) {
+        const contract = await buildContractFromPairedConfig(
+          entry.pairedConfig
+        );
+        diagnostics.push(...runDiagnostics(contract));
+      } else if (entry.contract) {
+        diagnostics.push(...runDiagnostics(entry.contract));
+      }
+    }
     const errors = diagnostics.filter(
       (diagnostic) => diagnostic.severity === "error"
     );
@@ -126,12 +168,17 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
 
   for (const entry of entries) {
     process.stdout.write(`Running ${entry.label}\n`);
-    if (entry.syncConfig) {
-      generateSyncArtifacts(entry.syncConfig);
+    if (entry.pairedConfig) {
+      await generateSyncArtifacts(entry.pairedConfig);
       continue;
     }
 
-    generateSyncArtifacts(entry.contract, entry.outputDir ?? "./generated", {
+    if (entry.syncConfig) {
+      await generateSyncArtifacts(entry.syncConfig);
+      continue;
+    }
+
+    generateSyncArtifacts(entry.contract!, entry.outputDir ?? "./generated", {
       warningsAsErrors: options.warningsAsErrors,
     });
   }
@@ -146,9 +193,15 @@ export async function runDoctor(configPath: string): Promise<void> {
   let hasErrors = false;
 
   for (const entry of entries) {
+    let contract: SyncContract;
+    if (entry.pairedConfig) {
+      contract = await buildContractFromPairedConfig(entry.pairedConfig);
+    } else {
+      contract = entry.contract!;
+    }
     hasErrors ||= printDiagnosticsReport(
       `diagnostics for ${entry.label}`,
-      runDiagnostics(entry.contract)
+      runDiagnostics(contract)
     );
   }
 
@@ -165,10 +218,16 @@ export async function runDoctorCommand(args: string[]): Promise<void> {
   process.stdout.write(`Loaded config: ${resolved.path}\n`);
 
   for (const entry of entries) {
+    let contract: SyncContract;
+    if (entry.pairedConfig) {
+      contract = await buildContractFromPairedConfig(entry.pairedConfig);
+    } else {
+      contract = entry.contract!;
+    }
     if (
       printDiagnosticsReport(
         `diagnostics for ${entry.label}`,
-        runDiagnostics(entry.contract)
+        runDiagnostics(contract)
       )
     ) {
       process.exitCode = 1;
@@ -325,6 +384,37 @@ function resolveConfigPath(configPath?: string): string | null {
   return null;
 }
 
+function isPairedConfig(value: unknown): value is PairedSyncGeneratorConfig {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "apiSyncedSchemaPath" in value &&
+    "localSyncedSchemaPath" in value
+  );
+}
+
+function isGeneratorConfig(value: unknown): value is GeneratorConfig {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "contract" in value &&
+    "outputDir" in value
+  );
+}
+
+function isSyncContract(value: unknown): value is SyncContract {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "tables" in value &&
+    Array.isArray((value as SyncContract).tables) &&
+    "tablesMeta" in value &&
+    Array.isArray((value as SyncContract).tablesMeta) &&
+    "limits" in value &&
+    typeof (value as SyncContract).limits === "object"
+  );
+}
+
 function resolveLoadedConfigEntries(
   configModule: LoadedConfig,
   absPath: string,
@@ -366,28 +456,56 @@ function buildNamedJsonEntry(
   config: unknown,
   outputDirOverride?: string
 ): LoadedConfigEntry | null {
-  if (!isGeneratorConfig(config)) {
-    return null;
+  if (isPairedConfig(config)) {
+    const outputDir = outputDirOverride ?? config.outputDir;
+    const key = `${outputDir}`;
+    return {
+      key,
+      label: "syncGeneratorConfig",
+      outputDir,
+      pairedConfig: {
+        ...config,
+        outputDir,
+      },
+    };
   }
 
-  const outputDir = outputDirOverride ?? config.outputDir;
-  const key = `${outputDir}`;
-  return {
-    contract: config.contract,
-    key,
-    label: "syncGeneratorConfig",
-    outputDir,
-    syncConfig: {
-      ...config,
+  if (isGeneratorConfig(config)) {
+    const outputDir = outputDirOverride ?? config.outputDir;
+    const key = `${outputDir}`;
+    return {
+      contract: config.contract,
+      key,
+      label: "syncGeneratorConfig",
       outputDir,
-    },
-  };
+      syncConfig: {
+        ...config,
+        outputDir,
+      },
+    };
+  }
+
+  return null;
 }
 
 function buildDefaultExportEntry(
   config: unknown,
   outputDirOverride?: string
 ): LoadedConfigEntry | null {
+  if (isPairedConfig(config)) {
+    const outputDir = outputDirOverride ?? config.outputDir;
+    const key = `${outputDir}`;
+    return {
+      key,
+      label: "default export",
+      outputDir,
+      pairedConfig: {
+        ...config,
+        outputDir,
+      },
+    };
+  }
+
   if (isGeneratorConfig(config)) {
     const outputDir = outputDirOverride ?? config.outputDir;
     const key = `${outputDir}`;
@@ -433,27 +551,6 @@ function buildRawContractEntry(
     label: "contract",
     outputDir,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isSyncContract(value: unknown): value is SyncContract {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.tables) &&
-    Array.isArray(value.tablesMeta) &&
-    isRecord(value.limits)
-  );
-}
-
-function isGeneratorConfig(value: unknown): value is GeneratorConfig {
-  return (
-    isRecord(value) &&
-    typeof value.outputDir === "string" &&
-    isSyncContract(value.contract)
-  );
 }
 
 export function handleGenerate(args: string[]): void {

@@ -2,6 +2,8 @@
 
 How to set up server routes, sync repository, and scope resolution.
 
+If the exact handler behavior is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Three files
 
 | File | Purpose |

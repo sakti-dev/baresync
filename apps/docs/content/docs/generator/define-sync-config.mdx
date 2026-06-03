@@ -12,13 +12,15 @@ The sync config tells the generator which tables to sync, where to find schemas,
 Create `packages/sync-contract/sync.config.ts`:
 
 ```ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
   tables: {
     locations: { scopeColumn: "scope_id" },
@@ -32,12 +34,11 @@ export const syncGeneratorConfig = defineSyncConfig({
 
 | Parameter | Type | Purpose |
 |---|---|---|
-| `localSyncedSchema` | `* as schema` | Namespace import of your local synced tables |
-| `apiSyncedSchema` | `* as schema` | Namespace import of your API synced tables |
+| `localSyncedSchema` | `string` | Path to your local synced schema source file |
+| `apiSyncedSchema` | `string` | Path to your API synced schema source file |
 | `outputDir` | `string` | Where to write generated files |
 | `tables` | `Record<string, TableOptions>` | Map of export names to sync options |
 | `limits` | `{ maxPushBytes?, maxPushRows? }` | Optional. Override default push limits |
-| `schemaSourceDir` | `string` | Optional. Override schema source directory for diagnostics |
 
 ## Table options
 
@@ -61,11 +62,12 @@ tables: {
 
 The generator validates that local-only columns are not in the API schema and vice versa. If you add a column to one side and forget the other, you get a clear error.
 
-## Validation at config time
+## Validation at generation time
 
-`defineSyncConfig` validates that:
+When `generateSyncArtifacts` runs, it:
 
-- Each table export exists in both `localSyncedSchema` and `apiSyncedSchema`
-- Local-only columns are present in the local schema but not the API schema
-- Server-only columns are present in the API schema but not the local schema
-- Shared columns match between both schemas
+- Loads the schema modules from the provided file paths
+- Validates that each table export exists in both loaded modules
+- Validates that local-only columns are present in the local schema but not the API schema
+- Validates that server-only columns are present in the API schema but not the local schema
+- Validates that shared columns match between both schemas

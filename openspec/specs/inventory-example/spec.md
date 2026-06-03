@@ -301,3 +301,14 @@ The inventory example server SHALL expose sync endpoints under versioned paths.
 
 - **WHEN** the inventory server starts
 - **THEN** sync push, pull, and status endpoints are available at `/api/v1/sync/push`, `/api/v1/sync/pull`, `/api/v1/sync/status`
+
+### Requirement: Inventory example uses paired config
+
+The inventory example SHALL use `defineSyncConfig` with path-based `localSyncedSchema` and `apiSyncedSchema` inputs as its sync generator entrypoint.
+
+#### Scenario: Inventory config is path-based and paired
+
+- **WHEN** the inventory sync contract package runs its generator
+- **THEN** it passes the local and API schema source file paths to `defineSyncConfig`
+- **AND** it generates JSON artifacts through `defineSyncConfig`
+- **AND** it does not require encoding-specific config naming

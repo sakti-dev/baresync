@@ -2,6 +2,8 @@
 
 Running and maintaining baresync in production — configuration, monitoring, performance, resets, and schema changes.
 
+If a production recommendation depends on exact implementation behavior, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Environment-specific settings
 
 ### Development

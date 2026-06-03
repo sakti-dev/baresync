@@ -2,6 +2,8 @@
 
 How to add, remove, or modify synced tables.
 
+If the exact schema wiring is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Table types
 
 | Type | Defined in | Contract needed? |

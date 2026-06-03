@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -258,98 +258,21 @@ describe("generateSyncArtifacts", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("copies schema snapshot files when schemaSourceDir is provided", () => {
+  it("warns when schema file paths are not provided", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
-    const schemaDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "baresync-schema-")
-    );
-
-    fs.writeFileSync(
-      path.join(schemaDir, "api-synced-schema.ts"),
-      "export const api = true;"
-    );
-    fs.writeFileSync(
-      path.join(schemaDir, "local-synced-schema.ts"),
-      "export const local = true;"
-    );
-
     const contract = defineSyncContract({
       tables: [categoriesSynced],
     });
 
-    generateSyncArtifacts({
-      contract,
-      outputDir: tmpDir,
-      schemaSourceDir: schemaDir,
-      apiSyncedSchema: {},
-      localSyncedSchema: {},
-    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const today = new Date().toISOString().slice(0, 10);
-    const datedDir = path.join(tmpDir, today);
+    generateSyncArtifacts(contract, tmpDir);
 
-    const apiSnapshot = fs.readFileSync(
-      path.join(datedDir, "api-synced-schema.ts"),
-      "utf-8"
-    );
-    const localSnapshot = fs.readFileSync(
-      path.join(datedDir, "local-synced-schema.ts"),
-      "utf-8"
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Schema file paths not provided")
     );
 
-    expect(apiSnapshot).toBe("export const api = true;");
-    expect(localSnapshot).toBe("export const local = true;");
-
+    consoleSpy.mockRestore();
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(schemaDir, { recursive: true, force: true });
-  });
-
-  it("freezes schema snapshot — editing source does not affect generated", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "baresync-test-"));
-    const schemaDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "baresync-schema-")
-    );
-
-    fs.writeFileSync(
-      path.join(schemaDir, "api-synced-schema.ts"),
-      "export const v1 = true;"
-    );
-    fs.writeFileSync(
-      path.join(schemaDir, "local-synced-schema.ts"),
-      "export const local = true;"
-    );
-
-    const contract = defineSyncContract({
-      tables: [categoriesSynced],
-    });
-
-    generateSyncArtifacts({
-      contract,
-      outputDir: tmpDir,
-      schemaSourceDir: schemaDir,
-      apiSyncedSchema: {},
-      localSyncedSchema: {},
-    });
-
-    const today = new Date().toISOString().slice(0, 10);
-    const snapshot = fs.readFileSync(
-      path.join(tmpDir, today, "api-synced-schema.ts"),
-      "utf-8"
-    );
-    expect(snapshot).toBe("export const v1 = true;");
-
-    fs.writeFileSync(
-      path.join(schemaDir, "api-synced-schema.ts"),
-      "export const v2 = true;"
-    );
-
-    const snapshotAfter = fs.readFileSync(
-      path.join(tmpDir, today, "api-synced-schema.ts"),
-      "utf-8"
-    );
-    expect(snapshotAfter).toBe("export const v1 = true;");
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    fs.rmSync(schemaDir, { recursive: true, force: true });
   });
 });

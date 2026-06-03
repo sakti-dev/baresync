@@ -1,15 +1,13 @@
-import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defineSyncConfig } from "baresync/generator";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
-  schemaSourceDir: `${__dirname}src`,
   tables: {
     lists: { scopeColumn: "scope_id" },
     todos: { scopeColumn: "scope_id" },

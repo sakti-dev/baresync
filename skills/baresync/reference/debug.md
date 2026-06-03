@@ -2,6 +2,33 @@
 
 Troubleshooting sync issues, errors, and common problems.
 
+## Triage First
+
+Classify the failure before proposing fixes.
+
+| Symptom | Check first | Reference/source fallback |
+|---|---|---|
+| Generated import fails | Generated dated directory and schema snapshots | `reference/generator.md`, `reference/source.md` |
+| App starts but no sync logs | Rust logging setup | `reference/tauri-plugin.md`, `reference/source.md` |
+| Outbox grows | Push route, auth/scope, server errors | `reference/server.md`, `reference/verify.md` |
+| Pull returns no data | Cursor, scope auth, server repository reads | `reference/server.md`, `reference/source.md` |
+| Local writes not pushed | `writeTransaction` + `writeLocalChange` | `reference/write.md`, `reference/source.md` |
+| Table not found | Local migrations and plugin migration path | `reference/tauri-plugin.md`, `reference/source.md` |
+| UI stale after sync | Event bridge and query invalidation keys | `reference/ui-frameworks.md`, `reference/source.md` |
+| Doctor/generate fails | Schema diagnostics | `reference/generator.md`, `reference/source.md` |
+
+## Debug Output Contract
+
+When diagnosing, respond with:
+
+1. Failure class
+2. Evidence from prompt/workspace/logs
+3. Most likely cause
+4. Next command or file to inspect
+5. Smallest safe fix
+
+Do not list every possible cause unless the evidence is insufficient.
+
 ## App fails to start
 
 Run `cargo check` in `apps/app/src-tauri`. Most common cause: mismatched `tauri-plugin-baresync` version in `Cargo.toml`.

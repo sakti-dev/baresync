@@ -426,11 +426,14 @@ Creates a paired generator config for JSON sync.
 
 ```ts
 import { defineSyncConfig } from "baresync/generator";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 const config = defineSyncConfig({
-  packageName: "@repo/sync-contract",
-  localSyncedSchema,
-  apiSyncedSchema,
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
   outputDir: "./packages/sync-contract/generated",
   tables: {
     items: { scopeColumn: "scope_id" },
@@ -440,16 +443,12 @@ const config = defineSyncConfig({
 ```
 
 ```ts
-function defineSyncConfig<
-  LocalSchema extends Record<string, AnySQLiteTable>,
-  ApiSchema extends Record<string, AnySQLiteTable>,
->(input: {
-  apiSyncedSchema: ApiSchema;
+function defineSyncConfig(input: {
+  apiSyncedSchema: string;
   limits?: Partial<SyncContractLimits>;
-  localSyncedSchema: LocalSchema;
+  localSyncedSchema: string;
   outputDir: string;
-  packageName: string;
-  tables: SyncConfigTables<LocalSchema, ApiSchema>;
+  tables: SyncConfigTables;
 }): PairedSyncGeneratorConfig
 ```
 
@@ -460,13 +459,13 @@ Runs the generator — validates, generates diagnostics, writes output files.
 ```ts
 import { generateSyncArtifacts } from "baresync/generator";
 
-generateSyncArtifacts(config);
+await generateSyncArtifacts(config);
 ```
 
 Overloaded signatures:
 
 ```ts
-function generateSyncArtifacts(config: PairedSyncGeneratorConfig): void;
+function generateSyncArtifacts(config: PairedSyncGeneratorConfig): Promise<void>;
 function generateSyncArtifacts(
   contract: SyncContract,
   outputDir: string,

@@ -2,6 +2,8 @@
 
 How to verify baresync integration code. Only test when the user asks — do not generate tests proactively.
 
+If the exact test target or runtime behavior is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Testing layers
 
 | Layer | What to test | When to use |

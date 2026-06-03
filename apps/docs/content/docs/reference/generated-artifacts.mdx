@@ -17,7 +17,6 @@ Full contract definition consumed by the Rust plugin at startup.
 {
   "version": 1,
   "generatorVersion": "0.x.x",
-  "packageName": "@repo/sync-contract",
   "upsertOrder": ["locations", "items", "stock_counts"],
   "deleteOrder": ["stock_counts", "items", "locations"],
   "tables": {
@@ -49,7 +48,6 @@ Manifest for detecting contract changes between generator runs. Contains field n
 {
   "contractVersion": 1,
   "generatorVersion": "0.x.x",
-  "packageName": "@repo/sync-contract",
   "tables": [
     { "name": "items", "fields": ["id", "name", ...], "fieldNumbers": { "id": 1, "name": 2 } }
   ],
@@ -70,7 +68,7 @@ Or programmatically:
 import { generateSyncArtifacts } from "baresync/generator";
 import { config } from "./sync.config";
 
-generateSyncArtifacts(config);
+await generateSyncArtifacts(config);
 ```
 
 ## Checking for drift

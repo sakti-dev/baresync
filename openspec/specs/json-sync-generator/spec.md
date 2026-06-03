@@ -121,20 +121,19 @@ The command SHALL recognize and generate every supported config export in the lo
 
 ### Requirement: Paired local and API sync config
 
-The `packages/baresync/src/generator` public API SHALL export `defineSyncConfig(input)` for JSON-first sync generation from paired local and API synced schema modules.
+The `packages/baresync/src/generator` public API SHALL export `defineSyncConfig(input)` for JSON-first sync generation from paired local and API synced schema file paths.
 
 The input SHALL include:
 
 - `outputDir`: generated artifact output directory (parent of dated subdirectories)
-- `localSyncedSchema`: object containing local-side replicated Drizzle tables
-- `apiSyncedSchema`: object containing API-side replicated Drizzle tables
+- `localSyncedSchema`: path to the local-side synced schema module
+- `apiSyncedSchema`: path to the API-side synced schema module
 - `tables`: object keyed by table export name, with per-table sync settings
 - Optional `limits`
-- Optional `schemaSourceDir`: directory containing the source schema files to snapshot into the generated output
 
 The `packageName` field SHALL NOT be accepted by `defineSyncConfig`. The `encoding` field SHALL NOT be accepted by `defineSyncConfig`.
 
-Each `tables` key SHALL refer to a table present in both `localSyncedSchema` and `apiSyncedSchema`.
+The generator SHALL resolve both schema paths, load the schema modules they point to, and validate that each `tables` key exists in both loaded modules at runtime.
 
 #### Scenario: Paired config builds a generator config without packageName or encoding
 
@@ -142,12 +141,6 @@ Each `tables` key SHALL refer to a table present in both `localSyncedSchema` and
 - **THEN** it returns a `GeneratorConfig` accepted by `generateSyncArtifacts`
 - **AND** the config does not contain a `packageName` field
 - **AND** the config does not contain an `encoding` field
-
-#### Scenario: Table names are typed from paired schemas
-
-- **WHEN** TypeScript users define `tables` for `defineSyncConfig`
-- **THEN** table keys are inferred from keys shared by `localSyncedSchema` and `apiSyncedSchema`
-- **AND** unknown table keys are rejected by the type checker
 
 #### Scenario: Missing API table fails validation
 
@@ -202,11 +195,11 @@ Consumers MAY override those arrays per table.
 
 ### Requirement: Inventory example uses paired config
 
-The inventory example SHALL use `defineSyncConfig` with `localSyncedSchema` and `apiSyncedSchema` as its sync generator entrypoint.
+The inventory example SHALL use `defineSyncConfig` with path-based `localSyncedSchema` and `apiSyncedSchema` inputs as its sync generator entrypoint.
 
-#### Scenario: Inventory config is JSON-first and paired
+#### Scenario: Inventory config is path-based and paired
 
 - **WHEN** the inventory sync contract package runs its generator
-- **THEN** it imports both local and API synced schema modules
+- **THEN** it passes the local and API schema source file paths to `defineSyncConfig`
 - **AND** it generates JSON artifacts through `defineSyncConfig`
 - **AND** it does not require encoding-specific config naming
