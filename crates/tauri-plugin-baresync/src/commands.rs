@@ -250,9 +250,9 @@ pub async fn get_db_info(
 pub async fn run_migrations_with_state(state: &PluginState) -> Result<(), String> {
     let config = MigrationConfig::strict();
     if let Some(path) = &state.migrations_path {
-        migrations::run_migration_files(&state.db, &config, path)
+        crate::builder::run_path_migrations(&state.db, &config, path)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|error| error.to_string())
     } else {
         migrations::run_migrations(&state.db, &config, &state.embedded_migrations)
             .await

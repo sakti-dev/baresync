@@ -207,12 +207,8 @@ impl Builder {
                             format!("Failed to run embedded migrations: {}", e).into()
                         })?;
                     if let Some(path) = &resolved_migrations_path {
-                        migrations::run_migration_files(&db, &migration_config, path)
-                            .await
-                            .map_err(|e| -> Box<dyn std::error::Error> {
-                                format!("Failed to run migrations from {}: {}", path.display(), e)
-                                    .into()
-                            })?;
+                        run_path_migrations(&db, &migration_config, path)
+                            .await?;
                     }
                     Ok::<(), Box<dyn std::error::Error>>(())
                 })?;
@@ -246,6 +242,157 @@ impl Builder {
             })
             .build()
     }
+}
+
+pub(crate) async fn run_path_migrations(
+    db: &baresync_core::db::DbClient,
+    config: &MigrationConfig,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "android")]
+    if let Some(asset_path) = android_asset_migrations_path(path) {
+        let apk_path = android_apk_path()?;
+        let migrations = collect_apk_asset_migrations(&apk_path, &asset_path)?;
+        return migrations::run_migrations(db, config, &migrations)
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error> {
+                format!("Failed to run migrations from {}: {}", path.display(), e).into()
+            });
+    }
+
+    migrations::run_migration_files(db, config, path)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> {
+            format!("Failed to run migrations from {}: {}", path.display(), e).into()
+        })
+}
+
+#[cfg(any(target_os = "android", test))]
+fn collect_apk_asset_migrations(
+    apk_path: &Path,
+    migrations_path: &Path,
+) -> Result<Vec<EmbeddedMigration>, Box<dyn std::error::Error>> {
+    let apk = std::fs::File::open(apk_path)
+        .map_err(|error| format!("Failed to open APK {}: {error}", apk_path.display()))?;
+    let mut archive = zip::ZipArchive::new(apk)
+        .map_err(|error| format!("Failed to read APK zip {}: {error}", apk_path.display()))?;
+    let prefix = apk_asset_prefix(migrations_path)?;
+    let mut migrations = Vec::new();
+
+    for index in 0..archive.len() {
+        let mut file = archive.by_index(index).map_err(|error| {
+            format!(
+                "Failed to read APK zip entry #{index} from {}: {error}",
+                apk_path.display()
+            )
+        })?;
+        let Some(file_name) = direct_sql_asset_name(file.name(), &prefix) else {
+            continue;
+        };
+        let name = Path::new(&file_name)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("Invalid migration asset file name: {file_name}"))?
+            .to_owned();
+        let mut sql = String::new();
+        std::io::Read::read_to_string(&mut file, &mut sql).map_err(|error| {
+            format!(
+                "Failed to read migration asset {} from {}: {error}",
+                file.name(),
+                apk_path.display()
+            )
+        })?;
+
+        migrations.push(CollectedMigration {
+            name,
+            file_name,
+            sql,
+        });
+    }
+
+    migrations.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    Ok(migrations
+        .into_iter()
+        .map(|migration| EmbeddedMigration {
+            name: Box::leak(migration.name.into_boxed_str()),
+            sql: Box::leak(migration.sql.into_boxed_str()),
+        })
+        .collect())
+}
+
+#[cfg(any(target_os = "android", test))]
+struct CollectedMigration {
+    name: String,
+    file_name: String,
+    sql: String,
+}
+
+#[cfg(any(target_os = "android", test))]
+fn apk_asset_prefix(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    if path.is_absolute() {
+        return Err(format!(
+            "Android APK asset migrations require a resource-relative path, got {}",
+            path.display()
+        )
+        .into());
+    }
+
+    let mut prefix = PathBuf::from("assets");
+    prefix.push(path);
+    let prefix = prefix
+        .to_str()
+        .ok_or_else(|| format!("Invalid migration asset path: {}", path.display()))?
+        .trim_matches('/')
+        .replace('\\', "/");
+
+    Ok(format!("{prefix}/"))
+}
+
+#[cfg(any(target_os = "android", test))]
+fn direct_sql_asset_name(entry_name: &str, prefix: &str) -> Option<String> {
+    let relative = entry_name.strip_prefix(prefix)?;
+    if relative.contains('/') || !relative.ends_with(".sql") {
+        return None;
+    }
+    Some(relative.to_owned())
+}
+
+#[cfg(target_os = "android")]
+fn android_asset_migrations_path(path: &Path) -> Option<PathBuf> {
+    let path = path.to_string_lossy();
+    path.strip_prefix(tauri::utils::platform::ANDROID_ASSET_PROTOCOL_URI_PREFIX)
+        .map(PathBuf::from)
+}
+
+#[cfg(target_os = "android")]
+fn android_apk_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    use jni::objects::{JObject, JString};
+    let android_context = ndk_context::android_context();
+    let vm = unsafe { jni::JavaVM::from_raw(android_context.vm().cast()) }
+        .map_err(|error| format!("Failed to access Android JVM: {error}"))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|error| format!("Failed to attach current thread to Android JVM: {error}"))?;
+    let context = unsafe { JObject::from_raw(android_context.context().cast()) };
+    let app_info = env
+        .call_method(
+            &context,
+            "getApplicationInfo",
+            "()Landroid/content/pm/ApplicationInfo;",
+            &[],
+        )
+        .and_then(|value| value.l())
+        .map_err(|error| format!("Failed to get Android ApplicationInfo: {error}"))?;
+    let source_dir = env
+        .get_field(&app_info, "sourceDir", "Ljava/lang/String;")
+        .and_then(|value| value.l())
+        .map_err(|error| format!("Failed to get Android APK sourceDir: {error}"))?;
+    let source_dir: String = env
+        .get_string(&JString::from(source_dir))
+        .map_err(|error| format!("Failed to read Android APK sourceDir: {error}"))?
+        .into();
+
+    Ok(PathBuf::from(source_dir))
 }
 
 impl Default for Builder {
@@ -415,8 +562,6 @@ mod tests {
         parse_contract_json, resolve_database_path_from_app_data_dir, resolve_migrations_path,
         validate_migration_sources,
     };
-    use crate::config::PluginConfig;
-    use baresync_core::engine::SyncContractTables;
     use baresync_core::http::SyncHttpTransport;
     use baresync_core::migrations::EmbeddedMigration;
     use std::cell::Cell;
@@ -449,22 +594,6 @@ mod tests {
             _body: serde_json::Value,
         ) -> baresync_core::http::SyncTransportFuture {
             Box::pin(async { Ok(serde_json::Value::Null) })
-        }
-    }
-
-    fn test_config() -> PluginConfig {
-        PluginConfig {
-            api_base_url: "http://127.0.0.1:3001".to_string(),
-            max_push_bytes: 2 * 1024 * 1024,
-            max_push_rows: 2000,
-            db_path: ":memory:".to_string(),
-            contract_tables: SyncContractTables {
-                upsert_order: vec![],
-                delete_order: vec![],
-                local_only_columns: vec![],
-            },
-            poll_interval_secs: 30,
-            poll_on_background: false,
         }
     }
 
@@ -563,6 +692,41 @@ mod tests {
     }
 
     #[test]
+    fn apk_asset_migrations_are_collected_from_bundled_resource_dir() {
+        let apk_path = temp_file_path("baresync-test-migrations", "apk");
+        let file = std::fs::File::create(&apk_path).expect("test apk should be created");
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+
+        archive
+            .start_file("assets/migrations/0002_second.sql", options)
+            .expect("second migration entry should be created");
+        std::io::Write::write_all(&mut archive, b"CREATE TABLE second (id TEXT);")
+            .expect("second migration should be written");
+        archive
+            .start_file("assets/migrations/0001_first.sql", options)
+            .expect("first migration entry should be created");
+        std::io::Write::write_all(&mut archive, b"CREATE TABLE first (id TEXT);")
+            .expect("first migration should be written");
+        archive
+            .start_file("assets/migrations/meta/_journal.json", options)
+            .expect("non-sql entry should be created");
+        std::io::Write::write_all(&mut archive, b"{}").expect("non-sql entry should be written");
+        archive.finish().expect("test apk should be finalized");
+
+        let migrations = super::collect_apk_asset_migrations(&apk_path, Path::new("migrations"))
+            .expect("apk asset migrations should be collected");
+
+        assert_eq!(migrations.len(), 2);
+        assert_eq!(migrations[0].name, "0001_first");
+        assert_eq!(migrations[0].sql, "CREATE TABLE first (id TEXT);");
+        assert_eq!(migrations[1].name, "0002_second");
+        assert_eq!(migrations[1].sql, "CREATE TABLE second (id TEXT);");
+
+        std::fs::remove_file(&apk_path).ok();
+    }
+
+    #[test]
     fn explicit_database_path_takes_precedence() {
         let resolved = resolve_database_path_from_app_data_dir(
             Some("/tmp/custom.db"),
@@ -593,5 +757,16 @@ mod tests {
             .expect("default db path should resolve");
 
         assert_eq!(resolved, PathBuf::from("/tmp/app-data/baresync.db"));
+    }
+
+    fn temp_file_path(prefix: &str, extension: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "{prefix}-{}-{nanos}.{extension}",
+            std::process::id()
+        ))
     }
 }
