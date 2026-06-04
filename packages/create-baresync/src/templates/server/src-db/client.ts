@@ -5,7 +5,8 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 
 const dbPath = path.resolve(
   process.cwd(),
-  process.env.__PROJECT_NAME___SERVER_DB_PATH ?? "./data/__PROJECT_NAME__-server.db"
+  process.env.__PROJECT_ENV_PREFIX___SERVER_DB_PATH ??
+    "./data/__PROJECT_NAME__-server.db"
 );
 
 await fs.mkdir(path.dirname(dbPath), { recursive: true });

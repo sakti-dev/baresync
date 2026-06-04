@@ -374,6 +374,7 @@ async function patchServerFiles(
         ],
         "@sync-contract/*": ["../../packages/sync-contract/src/*"],
       },
+      types: ["bun", "node"],
     },
   });
 }

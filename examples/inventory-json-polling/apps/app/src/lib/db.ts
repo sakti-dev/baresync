@@ -1,18 +1,13 @@
-import { syncCursors, syncOutbox } from "@sync-contract/local-schema";
-import {
-  items,
-  locations,
-  stockCounts,
-} from "@sync-contract/local-synced-schema";
+// biome-ignore lint/performance/noNamespaceImport: keep the schema namespace intact for TABLE spreading
+import * as localSchema from "@sync-contract/local-schema";
+// biome-ignore lint/performance/noNamespaceImport: keep the schema namespace intact for TABLE spreading
+import * as localSyncedSchema from "@sync-contract/local-synced-schema";
 import { invoke } from "@tauri-apps/api/core";
 import { createTauriDrizzleDatabase } from "baresync/db";
 
 export const TABLE = {
-  items,
-  locations,
-  stockCounts,
-  syncCursors,
-  syncOutbox,
+  ...localSyncedSchema,
+  ...localSchema,
 };
 
 export const db = createTauriDrizzleDatabase({

@@ -1,11 +1,8 @@
 import { SYNC_SCOPE } from "@sync-contract/constants";
-import { createSyncClient } from "baresync/tauri";
+import { invoke } from "@tauri-apps/api/core";
+import { createSyncClient } from "baresync";
 
-export function createAppSyncClient(
-  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
-) {
-  return createSyncClient({
-    scopeId: SYNC_SCOPE,
-    invoke,
-  });
-}
+export const syncClient = createSyncClient({
+  scopeId: SYNC_SCOPE,
+  invoke,
+});

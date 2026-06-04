@@ -1,5 +1,6 @@
 import {
   createTauriDrizzleDatabase,
+  type InvokeFn,
   type MigrationEntry,
   type MigrationStatus,
 } from "./db/index.js";
@@ -69,6 +70,7 @@ export {
   defineSyncContract,
   defineSyncedTable,
   generateSyncArtifacts,
+  type InvokeFn,
   type LocalChangeOperation,
   type LocalChangeOptions,
   localSyncColumns,

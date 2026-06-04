@@ -1,5 +1,5 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { apiSyncColumns } from "baresync/schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const lists = sqliteTable("lists", {
   id: text("id").primaryKey(),

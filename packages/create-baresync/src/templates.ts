@@ -43,6 +43,10 @@ function replacePackageManager(
   return content.replaceAll("__PACKAGE_MANAGER__", options.packageManager);
 }
 
+function projectEnvPrefix(options: ScaffoldOptions): string {
+  return options.projectName.toUpperCase().replaceAll(/[^A-Z0-9]+/g, "_");
+}
+
 function runInWorkspaceCommand(pm: PackageManager): string {
   switch (pm) {
     case "bun":
@@ -121,6 +125,24 @@ function projectReadme(options: ScaffoldOptions) {
   );
 }
 
+function projectBiomeConfig() {
+  return readTemplateAsset("root/biome.jsonc");
+}
+
+function serverFrameworkDependency(options: ScaffoldOptions): {
+  name: string;
+  version: string;
+} {
+  switch (options.serverFramework) {
+    case "hono":
+      return { name: "hono", version: "^4.12.23" };
+    case "elysia":
+      return { name: "elysia", version: "^1.4.28" };
+    default:
+      return { name: "hono", version: "^4.12.23" };
+  }
+}
+
 export function appPackageJson(options: ScaffoldOptions) {
   return replaceProjectName(readTemplateAsset("app/package.json"), options);
 }
@@ -156,7 +178,13 @@ function appSyncClient() {
 }
 
 export function serverPackageJson(options: ScaffoldOptions) {
-  return replaceProjectName(readTemplateAsset("server/package.json"), options);
+  const framework = serverFrameworkDependency(options);
+  return replaceProjectName(
+    readTemplateAsset("server/package.json")
+      .replaceAll("__SERVER_FRAMEWORK_DEP__", framework.name)
+      .replaceAll("__SERVER_FRAMEWORK_VERSION__", framework.version),
+    options
+  );
 }
 
 export function prependPort(originalDevScript: string): string {
@@ -165,14 +193,20 @@ export function prependPort(originalDevScript: string): string {
 
 function serverDrizzleConfig(options: ScaffoldOptions) {
   return replaceProjectName(
-    readTemplateAsset("server/drizzle-config.ts"),
+    readTemplateAsset("server/drizzle-config.ts").replaceAll(
+      "__PROJECT_ENV_PREFIX__",
+      projectEnvPrefix(options)
+    ),
     options
   );
 }
 
 function serverDbClient(options: ScaffoldOptions) {
   return replaceProjectName(
-    readTemplateAsset("server/src-db/client.ts"),
+    readTemplateAsset("server/src-db/client.ts").replaceAll(
+      "__PROJECT_ENV_PREFIX__",
+      projectEnvPrefix(options)
+    ),
     options
   );
 }
@@ -194,10 +228,6 @@ function serverV1Routes(options: ScaffoldOptions) {
     readTemplateAsset("server/src/v1/routes-elysia.ts"),
     options
   );
-}
-
-function serverSyncHandlers() {
-  return readTemplateAsset("server/src/v1/sync-handlers.ts");
 }
 
 function serverIndexPatch(options: ScaffoldOptions) {
@@ -244,8 +274,10 @@ export function buildRootScaffoldFiles(
   options: ScaffoldOptions
 ): ScaffoldFile[] {
   return [
+    file(".gitignore", readTemplateAsset("root/.gitignore")),
     file("package.json", projectRootPackageJson(options)),
     file("README.md", projectReadme(options)),
+    file("biome.jsonc", projectBiomeConfig()),
     file("packages/sync-contract/package.json", syncContractPackageJson()),
     file("packages/sync-contract/tsconfig.json", syncContractTsconfig()),
     file(
@@ -275,7 +307,6 @@ export function buildRootScaffoldFiles(
     file("apps/server/src/db/client.ts", serverDbClient(options)),
     file("apps/server/src/db/v1/sync-repository.ts", serverSyncRepository()),
     file("apps/server/src/v1/routes.ts", serverV1Routes(options)),
-    file("apps/server/src/v1/sync-handlers.ts", serverSyncHandlers()),
     file(
       "apps/server/src/sync-fallback-instructions.md",
       serverFallbackInstructions(options)

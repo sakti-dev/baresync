@@ -4,11 +4,15 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "__DEV_SCRIPT__",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
     "generate:sync": "__RUN_IN_WORKSPACE__ packages/sync-contract generate",
     "migrate:local": "__RUN_IN_WORKSPACE__ apps/app db:generate:local",
     "migrate:server": "__RUN_IN_WORKSPACE__ apps/server db:generate"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@biomejs/biome": "2.4.12",
+    "concurrently": "^9.1.2",
+    "ultracite": "7.6.2"
   }
 }

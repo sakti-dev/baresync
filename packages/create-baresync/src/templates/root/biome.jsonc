@@ -1,0 +1,34 @@
+{
+  "extends": ["ultracite/biome/core"],
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "apps/**",
+      "packages/**",
+      "*.json",
+      "*.jsonc",
+      "!!**/node_modules",
+      "!!**/dist",
+      "!!apps/app/src-tauri/gen",
+      "!!packages/sync-contract/generated"
+    ],
+    "maxSize": 2097152
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "noExportedImports": "off",
+        "noNonNullAssertion": "off",
+        "noParameterProperties": "off",
+        "useFilenamingConvention": "off"
+      },
+      "suspicious": {
+        "noEmptyBlockStatements": "off"
+      },
+      "performance": {
+        "noNamespaceImport": "off",
+        "noBarrelFile": "off"
+      }
+    }
+  }
+}

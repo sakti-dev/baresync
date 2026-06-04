@@ -1,22 +1,14 @@
-import { createTauriDrizzleDatabase } from "baresync/db";
-import { lists, todos } from "../../../../packages/sync-contract/src/local-synced-schema";
-import {
-  syncCursors,
-  syncOutbox,
-} from "../../../../packages/sync-contract/src/local-schema";
+import { invoke } from "@tauri-apps/api/core";
+import { createTauriDrizzleDatabase } from "baresync";
+import * as localSchema from "../../../../packages/sync-contract/src/local-schema";
+import * as localSyncedSchema from "../../../../packages/sync-contract/src/local-synced-schema";
 
 export const TABLE = {
-  lists,
-  todos,
-  syncCursors,
-  syncOutbox,
+  ...localSyncedSchema,
+  ...localSchema,
 };
 
-export function createAppDatabase(
-  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
-) {
-  return createTauriDrizzleDatabase({
-    invoke,
-    schema: TABLE,
-  });
-}
+export const db = createTauriDrizzleDatabase({
+  invoke,
+  schema: TABLE,
+});

@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { createTauriDrizzleDatabase, type InvokeFn } from "baresync/db";
-import { createSyncClient } from "baresync/tauri";
+import { createSyncClient, createTauriDrizzleDatabase } from "baresync";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const fixtureScopeId = "merchant-1";
@@ -53,7 +52,7 @@ export const fixtureDb = createTauriDrizzleDatabase({
     syncOutbox,
     syncCursors,
   },
-  invoke: invoke as unknown as InvokeFn,
+  invoke,
 });
 
 export interface FixtureRuntimeConfig {
@@ -67,7 +66,7 @@ export async function getFixtureRuntimeConfig() {
 export function createFixtureSyncClient(_config: FixtureRuntimeConfig) {
   return createSyncClient({
     scopeId: fixtureScopeId,
-    invoke: invoke as unknown as InvokeFn,
+    invoke,
   });
 }
 
