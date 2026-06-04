@@ -17,17 +17,34 @@ const STEPS = [
     id: "schemas",
     title: "Define paired schemas",
     description:
-      "Two Drizzle tables describe the same data from each side of the sync boundary. localSyncColumns() for a boolean dirty flag. apiSyncColumns() for cursor timestamps.",
-    code: `import { localSyncColumns } from "baresync/schema";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+      "Two Drizzle schema files describe the same table from each side of the sync boundary. localSyncColumns() for the client. apiSyncColumns() for the server.",
+    code: `// src/local-synced-schema.ts
+import { localSyncColumns } from "baresync/schema";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const todos = sqliteTable("todos", {
-  id: text("id").primaryKey(),
-  workspaceId: text("workspace_id").notNull(),
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
   title: text("title").notNull(),
   completed: integer("completed").notNull().default(0),
   ...localSyncColumns(),
-});`,
+});
+
+// src/api-synced-schema.ts
+import { apiSyncColumns } from "baresync/schema";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const todos = sqliteTable(
+  "todos",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    completed: integer("completed").notNull().default(0),
+    ...apiSyncColumns(),
+  },
+  (table) => [index("todos_sync_idx").on(table.syncUpdatedAt)]
+);`,
     lang: "typescript",
   },
   {
@@ -332,9 +349,9 @@ export function SyncSlider() {
             How sync works
           </h2>
           <p className="mb-0 text-fd-muted-foreground leading-relaxed">
-            Every write goes through the outbox. The sync engine pushes pending
-            changes to your server and pulls back server state. Server-wins
-            reconciliation means your server is always the source of truth.
+            Baresync is local-first: reads and writes stay in SQLite in the app,
+            while Baresync manages sync on both the app side and the server side
+            without adding another server.
           </p>
         </div>
       </div>

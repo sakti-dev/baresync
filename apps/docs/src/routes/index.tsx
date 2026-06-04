@@ -44,7 +44,8 @@ function Home() {
 
 const CELL_SIZE = 56;
 const COLS = 30;
-const ROWS = 10;
+const ROWS = 13;
+const HERO_HEIGHT = ROWS * CELL_SIZE;
 
 function HeroSection() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,7 @@ function HeroSection() {
       onMouseMove={handleMouseMove}
       ref={sectionRef}
       role="presentation"
+      style={{ minHeight: HERO_HEIGHT }}
     >
       <BackgroundRippleEffect
         cellSize={CELL_SIZE}
@@ -103,21 +105,27 @@ function HeroSection() {
         key={rippleKey}
         rows={ROWS}
       />
-      <div className="absolute inset-0 z-10 flex items-center justify-center px-6">
+      <div className="absolute inset-0 z-10 flex items-center justify-center px-6 py-12 md:py-16">
         <div className="mx-auto max-w-4xl text-center">
+          <div className="mb-4 inline-flex items-center rounded-full border border-fd-border bg-fd-background/70 px-3 py-1 font-medium text-fd-muted-foreground text-xs uppercase tracking-[0.18em] backdrop-blur-sm">
+            Built for Tauri apps
+          </div>
           <h1
             className="mb-6 text-balance font-bold text-4xl text-fd-foreground tracking-tight sm:text-5xl lg:text-6xl"
             style={{ letterSpacing: "-0.02em" }}
           >
-            SQLite sync for Tauri apps.{" "}
-            <span className="text-fd-muted-foreground">
-              You own the backend.
-            </span>
+            Offline-first sync that runs in your server code.
           </h1>
           <p className="mx-auto mb-10 max-w-xl text-base text-fd-muted-foreground leading-relaxed">
-            Define Drizzle schemas. Generate a sync contract. Register the
-            plugin. Add three server routes. Your local database stays in sync,
-            and Baresync handles the rest.
+            If you use Drizzle, Baresync adds sync to the server you already run
+            with three routes: /status, /pull, and /push. Your local SQLite
+            database stays in sync without another separate service in the
+            middle.
+          </p>
+
+          <p className="mx-auto mb-10 max-w-2xl text-fd-muted-foreground text-sm leading-relaxed">
+            Local SQLite on the client. Drizzle for schema. Three routes on the
+            server you already run.
           </p>
 
           <div className="mx-auto max-w-md">
@@ -180,9 +188,9 @@ function FeatureGrid() {
       icon: <Layers />,
     },
     {
-      title: "App-owned backend",
+      title: "No separate sync server",
       description:
-        "No hosted service. No vendor lock-in. Your server, your auth, your persistence. Baresync is infrastructure, not a platform.",
+        "No hosted service. No extra sync process. Baresync runs sync in your app and server code.",
       icon: <Server />,
     },
   ];
@@ -195,8 +203,8 @@ function FeatureGrid() {
             What Baresync gives you
           </h2>
           <p className="mb-0 text-fd-muted-foreground leading-relaxed">
-            What you get out of the box. No configuration, no boilerplate, no
-            third-party services.
+            Local SQLite stays local. Baresync handles the sync path between
+            your app and server code.
           </p>
         </div>
       </div>
@@ -257,12 +265,14 @@ function SkillsSection() {
       <section className="relative z-10 px-6 py-14">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="mb-4 text-balance font-semibold text-2xl text-fd-foreground sm:text-3xl">
-            AI assistants that know Baresync
+            Get help from a Baresync-aware agent
           </h2>
           <p className="mb-8 text-balance text-fd-muted-foreground leading-relaxed">
-            Your AI assistant generates Baresync code from the actual source,
-            not stale training data. One command installs skills for your
-            editor.
+            Install the skill once, and your coding agent can guide you from the
+            actual repo source instead of generic sync patterns.
+          </p>
+          <p className="mb-8 text-balance text-fd-muted-foreground leading-relaxed">
+            One command, then build with an assistant that knows the project.
           </p>
           <div className="mx-auto max-w-md">
             <PmCommandBlock className="rounded-none" kind="npx" />
@@ -291,7 +301,7 @@ function WhatYouControl() {
     "Auth and session validation in resolveScope",
     "Which rows to persist and how to apply them",
     "Your Drizzle schemas, server database, and migrations",
-    "Integrate UI with the sync client and Drizzle queries",
+    "Wire the UI into the sync client and local Drizzle queries",
   ];
 
   const baresyncItems = [
@@ -309,10 +319,9 @@ function WhatYouControl() {
             What you control
           </h2>
           <p className="mb-0 text-fd-muted-foreground leading-relaxed">
-            Baresync is infrastructure, not a service. There is no hosted
-            backend, no vendor lock-in, no runtime schema negotiation. Your
-            server decides who can access which scope and how rows are
-            persisted.
+            Your app keeps local SQLite. Your server owns auth, access control,
+            and persistence. Baresync stays in the middle as sync
+            infrastructure.
           </p>
         </div>
       </div>

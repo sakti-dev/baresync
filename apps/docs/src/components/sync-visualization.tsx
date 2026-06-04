@@ -41,8 +41,11 @@ export function SyncVisualization({ className }: { className?: string }) {
           <span className="font-medium text-fd-foreground text-sm">
             Baresync Server
           </span>
-          <span className="text-fd-muted-foreground text-xs">
-            Status / Push / Pull
+
+          <span className="text-center text-fd-muted-foreground text-xs">
+            HTTP
+            <br />
+            /status, /push, pull
           </span>
         </div>
 
