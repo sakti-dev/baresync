@@ -12,7 +12,7 @@ The push engine SHALL:
 5. Greedy bin-pack units into chunks respecting `max_rows` and `target_push_bytes`
 6. Push chunks using a stack-based retry loop:
    a. Check local hard limit (`max_push_bytes`) — split in half if exceeded
-   b. Send chunk to `{api_url}/sync/push` with `Content-Type: application/json`
+   b. Send chunk to `{api_url}/push` with `Content-Type: application/json`
    c. On HTTP 413, split chunk in half and push both halves back onto stack
    d. On single-row chunk that is too large, return `SingleRowTooLarge` error
 7. Parse the JSON response for each successful chunk

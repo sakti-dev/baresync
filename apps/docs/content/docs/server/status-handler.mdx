@@ -70,7 +70,7 @@ interface SyncStatusResponse {
 When `sync_now()` runs:
 
 1. Calls `getState()` to check `local_dirty_count`
-2. Calls `/sync/status` to check `hasChanges`
+2. Calls `/status` to check `hasChanges`
 3. Decides the mode:
    - `local_dirty_count === 0 && !hasChanges` → NoOp
    - `local_dirty_count > 0 && !hasChanges` → PushOnly
@@ -80,7 +80,7 @@ When `sync_now()` runs:
 ## Wire it up
 
 ```ts
-app.post("/sync/status", (c) => status(c.req.raw, {}));
+app.post("/status", (c) => status(c.req.raw, {}));
 ```
 
 The second argument `{}` is the context — it is passed through to your callbacks. Use it to carry request-scoped data like auth tokens or trace IDs.

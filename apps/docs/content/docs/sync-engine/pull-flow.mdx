@@ -10,7 +10,7 @@ The pull flow downloads changed rows from the server and applies them to the loc
 ## Steps
 
 1. Read the stored cursor (or use empty string for baseline)
-2. Send POST to `/sync/pull` with `{ scopeId, tables, cursor, limit }`
+2. Send POST to `/pull` with `{ scopeId, tables, cursor, limit }`
 3. Server returns changed rows and deleted IDs grouped by table
 4. Engine applies changes in a transaction:
    - Upsert changed rows (respecting `is_synced` flag and `updated_at`)

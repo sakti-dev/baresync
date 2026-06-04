@@ -90,7 +90,7 @@ RUST_LOG=debug bun run dev
 ## Sync outbox not draining
 
 1. Check `contract_tables` in `lib.rs` has correct upsert/delete order
-2. Check server `/sync/push` returns 200
+2. Check server `/push` returns 200
 3. Check server console for errors in `applyPushChanges`
 
 ## "table not found" errors

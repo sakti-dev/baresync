@@ -24,7 +24,7 @@ pub fn default_transport() -> Arc<dyn SyncHttpTransport> {
 impl SyncHttpTransport for JsonHttpTransport {
     fn send_push_request(&self, api_url: String, envelope: Value) -> SyncTransportFuture {
         Box::pin(async move {
-            let url = format!("{}/sync/push", api_url.trim_end_matches('/'));
+            let url = format!("{}/push", api_url.trim_end_matches('/'));
             log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client
@@ -54,7 +54,7 @@ impl SyncHttpTransport for JsonHttpTransport {
 
     fn send_status_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         Box::pin(async move {
-            let url = format!("{}/sync/status", api_url.trim_end_matches('/'));
+            let url = format!("{}/status", api_url.trim_end_matches('/'));
             log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client
@@ -84,7 +84,7 @@ impl SyncHttpTransport for JsonHttpTransport {
 
     fn send_pull_request(&self, api_url: String, body: Value) -> SyncTransportFuture {
         Box::pin(async move {
-            let url = format!("{}/sync/pull", api_url.trim_end_matches('/'));
+            let url = format!("{}/pull", api_url.trim_end_matches('/'));
             log::debug!("[baresync] HTTP POST {}", url);
             let client = reqwest::Client::new();
             let response = client

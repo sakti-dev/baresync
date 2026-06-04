@@ -66,9 +66,9 @@ The current backend exposes:
 
 - `POST /__reset`
 - `GET /__state`
-- `POST /sync/status`
-- `POST /sync/pull`
-- `POST /sync/push`
+- `POST /status`
+- `POST /pull`
+- `POST /push`
 
 The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`. Use `protobuf` when you want the same smoke flow to exercise protobuf request/response bodies.
 The E2E package also exposes `fixture:backend:json`, `desktop:sync:json`, `android:sync:json`, and `android:maestro:sync:json` for explicit transport or runner selection.

@@ -21,9 +21,9 @@ Your server needs three `POST` endpoints:
 
 | Route | Purpose | Handler factory |
 |---|---|---|
-| `/sync/status` | "Are there changes since this cursor?" | `createSyncStatusHandler` |
-| `/sync/pull` | "Give me all changed rows since this cursor" | `createSyncPullHandler` |
-| `/sync/push` | "Here are my local changes, write them" | `createSyncPushHandler` |
+| `/status` | "Are there changes since this cursor?" | `createSyncStatusHandler` |
+| `/pull` | "Give me all changed rows since this cursor" | `createSyncPullHandler` |
+| `/push` | "Here are my local changes, write them" | `createSyncPushHandler` |
 
 ## What Baresync provides
 
@@ -53,9 +53,9 @@ If you use Drizzle ORM on the server, `createDrizzleSyncRepository` from `baresy
 ```mermaid
 flowchart LR
     Plugin["Tauri Plugin\nsync_now / push / pull"]
-    Status["POST /sync/status"]
-    Push["POST /sync/push"]
-    Pull["POST /sync/pull"]
+    Status["POST /status"]
+    Push["POST /push"]
+    Pull["POST /pull"]
 
     Plugin -- "HTTP POST" --> Status
     Plugin -- "HTTP POST" --> Push
@@ -91,9 +91,9 @@ Each handler factory wraps one endpoint and calls your callbacks:
 
 | Route | Factory | Calls your |
 |---|---|---|
-| `POST /sync/status` | `createSyncStatusHandler` | `resolveScope` + `loadSyncStatus` |
-| `POST /sync/push` | `createSyncPushHandler` | `resolveScope` + idempotency guard + `applyPushChanges` |
-| `POST /sync/pull` | `createSyncPullHandler` | `resolveScope` + `loadPullChanges` |
+| `POST /status` | `createSyncStatusHandler` | `resolveScope` + `loadSyncStatus` |
+| `POST /push` | `createSyncPushHandler` | `resolveScope` + idempotency guard + `applyPushChanges` |
+| `POST /pull` | `createSyncPullHandler` | `resolveScope` + `loadPullChanges` |
 
 ## Next steps
 

@@ -10,7 +10,7 @@ Before choosing a sync mode, the engine calls the server's status endpoint to as
 ## What happens
 
 1. Engine reads the stored cursor from `sync_cursors` for the given scope
-2. Sends a POST to `/sync/status` with `{ scopeId, cursor }`
+2. Sends a POST to `/status` with `{ scopeId, cursor }`
 3. Server compares the cursor against its data and returns:
    - `hasChanges` — boolean
    - `changedTables` — list of table names that changed

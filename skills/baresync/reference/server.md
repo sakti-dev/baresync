@@ -158,7 +158,7 @@ const status = createSyncStatusHandler({
 When `sync_now()` runs:
 
 1. Calls `getState()` to check `local_dirty_count`
-2. Calls `/sync/status` to check `hasChanges`
+2. Calls `/status` to check `hasChanges`
 3. Decides the mode:
    - `local_dirty_count === 0 && !hasChanges` → NoOp
    - `local_dirty_count > 0 && !hasChanges` → PushOnly
@@ -185,7 +185,7 @@ All three callbacks (`applyPushChanges`, `loadPullChanges`, `loadSyncStatus`) re
 The second argument to every handler is passed as `context` to all callbacks. Use it for request-scoped data:
 
 ```ts
-app.post("/sync/push", (c) => push(c.req.raw, { userId: "123" }));
+app.post("/push", (c) => push(c.req.raw, { userId: "123" }));
 ```
 
 Then in `resolveScope`:

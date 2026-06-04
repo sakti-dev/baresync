@@ -9,7 +9,7 @@ For exact Rust type signatures (`SyncEngine`, `SyncNowResult`, `PushResult`, `Pu
 Before choosing a sync mode, the engine calls the server's status endpoint:
 
 1. Reads stored cursor from `sync_cursors` for the scope
-2. Sends POST to `/sync/status` with `{ scopeId, cursor }`
+2. Sends POST to `/status` with `{ scopeId, cursor }`
 3. Server returns `hasChanges`, `changedTables`, `cursor`, `serverTime`
 
 If no cursor exists (first sync), the engine sends an empty string. The `changedTables` list is used as a filter for the pull request — avoids pulling from tables that haven't changed.

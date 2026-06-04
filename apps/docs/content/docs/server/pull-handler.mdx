@@ -86,7 +86,7 @@ The client uses these to upsert or mark deleted in the local database.
 
 ## How the sync engine uses this
 
-The engine calls `/sync/pull` with:
+The engine calls `/pull` with:
 - `cursor` from `sync_cursors.last_cursor`
 - `tables` from the status handler's `changedTables` (or all tables for baseline)
 - Empty cursor for baseline or full resync
@@ -100,7 +100,7 @@ The `limit` in the handler config is passed to your callback. Use it to cap the 
 ## Wire it up
 
 ```ts
-app.post("/sync/pull", (c) => pull(c.req.raw, {}));
+app.post("/pull", (c) => pull(c.req.raw, {}));
 ```
 
 Next: [Push Handler](/docs/server/push-handler).

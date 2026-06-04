@@ -74,9 +74,9 @@ Example shape:
 ```txt
 POST /__reset
 GET  /__state
-POST /sync/status
-POST /sync/pull
-POST /sync/push
+POST /status
+POST /pull
+POST /push
 ```
 
 `/__reset` and `/__state` are test-only endpoints. Do not expose them in production.
@@ -92,10 +92,10 @@ A useful backend contract test should:
 3. Wait until the backend is ready.
 4. Call `POST /__reset`.
 5. Assert the initial state contains your expected seed rows.
-6. Call `POST /sync/status` with the expected scope and cursor.
+6. Call `POST /status` with the expected scope and cursor.
 7. Assert invalid scopes are rejected.
-8. Call `POST /sync/pull` and assert your seed rows are returned.
-9. Call `POST /sync/push` with representative local rows.
+8. Call `POST /pull` and assert your seed rows are returned.
+9. Call `POST /push` with representative local rows.
 10. Assert the push response acknowledges the accepted rows.
 11. Call `GET /__state` and assert the pushed rows were recorded.
 12. Run the same test against every backend scenario your app supports.

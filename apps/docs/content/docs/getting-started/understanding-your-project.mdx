@@ -142,8 +142,8 @@ The `env_logger` initialization is required — without it, all `log::info!()` c
 ## The sync flow
 
 1. **Local write** — your app calls `client.writeTransaction(db, ...)` which writes to the local database and records the change in the `sync_outbox` table
-2. **Push** — the sync engine reads dirty outbox entries and POSTs them to `POST /api/v1/sync/push`
-3. **Pull** — the sync engine fetches server changes since the last cursor via `POST /api/v1/sync/pull`
+2. **Push** — the sync engine reads dirty outbox entries and POSTs them to `POST /api/sync/v1/push`
+3. **Pull** — the sync engine fetches server changes since the last cursor via `POST /api/sync/v1/pull`
 4. **Events** — the plugin emits `baresync://data-changed` and `baresync://sync-status-changed` events to invalidate React Query caches
 
 Next: [Wire Up the Frontend](/docs/getting-started/wire-up-frontend).

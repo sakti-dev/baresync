@@ -83,7 +83,7 @@ If the limits are exceeded, the handler throws `SyncPayloadTooLargeError` and re
 ## Wire it up
 
 ```ts
-app.post("/sync/push", (c) => push(c.req.raw, {}));
+app.post("/push", (c) => push(c.req.raw, {}));
 ```
 
 ## Common mistakes

@@ -55,7 +55,7 @@ const status = createSyncStatusHandler({
     }),
 });
 
-export const sync = new Elysia({ prefix: "/api/v1/sync" })
+export const sync = new Elysia({ prefix: "/api/sync/v1" })
   .post("/push", async ({ request }) => push(request, {}))
   .post("/pull", async ({ request }) => pull(request, {}))
   .post("/status", async ({ request }) => status(request, {}));

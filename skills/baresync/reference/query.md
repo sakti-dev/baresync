@@ -21,7 +21,7 @@ A local-first sync system for Tauri apps. Your app reads/writes SQLite directly.
 
 ```
 App writes to SQLite → outbox entry (atomic) → plugin polls every N seconds
-→ POST outbox entries to /sync/push → POST last cursor to /sync/pull
+→ POST outbox entries to /push → POST last cursor to /pull
 → apply pulled rows to local DB → emit Tauri events → React Query invalidates
 ```
 

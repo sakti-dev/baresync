@@ -87,7 +87,7 @@ Return `{ ok: false, status, body }` from `resolveScope` instead of throwing. Th
 If you need to log errors or add monitoring, wrap the handler:
 
 ```ts
-app.post("/sync/push", async (c) => {
+app.post("/push", async (c) => {
   const response = await push(c.req.raw, {});
   if (!response.ok) {
     console.error("Push failed:", response.status);

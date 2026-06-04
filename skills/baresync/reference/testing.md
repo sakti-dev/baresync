@@ -174,7 +174,7 @@ it("authorizes and applies push in table order", async () => {
   });
 
   const response = await handler(
-    new Request("https://api.test/sync/push", {
+    new Request("https://api.test/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

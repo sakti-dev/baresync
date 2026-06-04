@@ -22,7 +22,7 @@ describe("server and tauri scaffold templates", () => {
       (file) => file.path === "apps/server/src/sync-fallback-instructions.md"
     );
 
-    expect(serverIndex?.content).toContain('app.route("/api/v1/sync"');
+    expect(serverIndex?.content).toContain('app.route("/api/sync/v1"');
     expect(serverIndex?.content).toContain('import sync from "./v1/routes"');
     expect(routes?.content).toContain("createSyncPushHandler");
     expect(routes?.content).toContain("repository");

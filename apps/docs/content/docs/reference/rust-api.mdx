@@ -431,9 +431,9 @@ pub trait SyncHttpTransport: Send + Sync {
 Default implementation: `JsonHttpTransport` — uses `reqwest` to POST JSON.
 
 Endpoints:
-- `POST {api_url}/sync/push`
-- `POST {api_url}/sync/status`
-- `POST {api_url}/sync/pull`
+- `POST {api_url}/push`
+- `POST {api_url}/status`
+- `POST {api_url}/pull`
 
 ---
 

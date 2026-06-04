@@ -7,7 +7,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             BaresyncBuilder::new()
-                .api_base_url("http://127.0.0.1:3001")
+                .api_base_url("http://127.0.0.1:3001/api/sync/v1")
                 .db_path("baresync.db")
                 .contract_json(include_str!(
                     "../../../../packages/sync-contract/generated/__CONTRACT_DATE__/sync-contract.json"

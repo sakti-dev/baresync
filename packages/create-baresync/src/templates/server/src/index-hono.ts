@@ -4,7 +4,7 @@ import sync from "./v1/routes";
 const app = new Hono();
 
 app.get("/health", (c) => c.json({ ok: true }));
-app.route("/api/v1/sync", sync);
+app.route("/api/sync/v1", sync);
 
 export default app;
 

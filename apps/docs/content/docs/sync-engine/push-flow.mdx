@@ -13,7 +13,7 @@ The push flow reads pending local changes from the outbox, sends them to the ser
 2. Coalesce multiple operations on the same row into a single change
 3. Filter out local-only columns
 4. Chunk the changes to fit byte and row limits
-5. Send each chunk to `/sync/push`
+5. Send each chunk to `/push`
 6. Process accepted and rejected IDs
 7. Mark accepted outbox entries as synced
 8. Mark accepted rows as `is_synced = 1`

@@ -6,7 +6,7 @@ The `crates/baresync-core/src/pull.rs` module SHALL export a `pull` function tha
 
 The pull engine SHALL:
 1. Resolve the start cursor from `PullStartCursor`: `Baseline` uses empty string, `Stored` reads from `sync_cursors`
-2. Send a POST request to `{api_url}/sync/pull` with a body containing `scopeId`, `tables` (from contract `upsert_order` or the table filter), `limit`, and `cursor`
+2. Send a POST request to `{api_url}/pull` with a body containing `scopeId`, `tables` (from contract `upsert_order` or the table filter), `limit`, and `cursor`
 3. Encode the request and decode the response according to `SyncEngineConfig.encoding`
 4. Apply upserts in `upsert_order` (parent before child)
 5. Apply soft deletes in `delete_order` (child before parent)
@@ -80,7 +80,7 @@ The pull engine SHALL store the cursor in a `sync_cursors` table keyed by `scope
 
 ### Requirement: Runtime status request
 
-The runtime transport SHALL support a status request that sends `scopeId` and `cursor` to `{api_url}/sync/status` and decodes a response containing `changedTables`, `hasChanges`, `cursor`, and `serverTime`.
+The runtime transport SHALL support a status request that sends `scopeId` and `cursor` to `{api_url}/status` and decodes a response containing `changedTables`, `hasChanges`, `cursor`, and `serverTime`.
 
 #### Scenario: JSON status request
 

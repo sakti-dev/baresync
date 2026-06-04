@@ -654,10 +654,10 @@ const routeHandlers: Record<
 > = {
   "POST /__reset": handleResetRequest,
   "GET /__state": handleStateRequest,
-  "POST /sync/status": handleStatusRequest,
-  "POST /sync/pull": handlePullRequest,
-  "GET /sync/pull": handlePullRequest,
-  "POST /sync/push": handlePushRequest,
+  "POST /status": handleStatusRequest,
+  "POST /pull": handlePullRequest,
+  "GET /pull": handlePullRequest,
+  "POST /push": handlePushRequest,
 };
 
 console.log(`[fixture-backend] listening on http://${host}:${port}`);

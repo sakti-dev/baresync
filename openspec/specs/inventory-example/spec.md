@@ -290,7 +290,7 @@ The inventory example server SHALL organize sync route handlers and sync reposit
 #### Scenario: Index registers versioned routes
 
 - **WHEN** a contributor reads `apps/server/src/index.ts`
-- **THEN** it registers routes with version-prefixed paths (e.g. `/api/v1/sync/push`)
+- **THEN** it registers routes with version-prefixed paths (e.g. `/api/sync/v1/push`)
 - **AND** each version's routes delegate to its versioned route module
 
 ### Requirement: Inventory server route paths are versioned
@@ -300,7 +300,7 @@ The inventory example server SHALL expose sync endpoints under versioned paths.
 #### Scenario: Sync endpoints are under /api/v1/
 
 - **WHEN** the inventory server starts
-- **THEN** sync push, pull, and status endpoints are available at `/api/v1/sync/push`, `/api/v1/sync/pull`, `/api/v1/sync/status`
+- **THEN** sync push, pull, and status endpoints are available at `/api/sync/v1/push`, `/api/sync/v1/pull`, `/api/sync/v1/status`
 
 ### Requirement: Inventory example uses paired config
 

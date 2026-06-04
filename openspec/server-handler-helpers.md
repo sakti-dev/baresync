@@ -94,19 +94,19 @@ const pullHandler = createSyncPullHandler({
 Hono routes should pass `c.req.raw` and any app context into the handler:
 
 ```ts
-app.post("/sync/push", async (c) => {
+app.post("/push", async (c) => {
   return pushHandler(c.req.raw, {
     session: c.get("session"),
   });
 });
 
-app.post("/sync/status", async (c) => {
+app.post("/status", async (c) => {
   return statusHandler(c.req.raw, {
     session: c.get("session"),
   });
 });
 
-app.post("/sync/pull", async (c) => {
+app.post("/pull", async (c) => {
   return pullHandler(c.req.raw, {
     session: c.get("session"),
   });
@@ -118,15 +118,15 @@ app.post("/sync/pull", async (c) => {
 Elysia routes should pass `request` and route context into the handler:
 
 ```ts
-app.post("/sync/push", async ({ request, session }) => {
+app.post("/push", async ({ request, session }) => {
   return pushHandler(request, { session });
 });
 
-app.post("/sync/status", async ({ request, session }) => {
+app.post("/status", async ({ request, session }) => {
   return statusHandler(request, { session });
 });
 
-app.post("/sync/pull", async ({ request, session }) => {
+app.post("/pull", async ({ request, session }) => {
   return pullHandler(request, { session });
 });
 ```

@@ -22,8 +22,8 @@ If the mutation succeeds but the network is down, the outbox entry waits. When c
 
 The sync engine runs on a polling interval you configure in the Rust plugin builder:
 
-1. **Push** — reads pending outbox entries, batches them, and sends them to your server's `/sync/push` endpoint
-2. **Pull** — sends the last cursor timestamp to your server's `/sync/pull` endpoint and applies returned rows to the local database
+1. **Push** — reads pending outbox entries, batches them, and sends them to your server's `/push` endpoint
+2. **Pull** — sends the last cursor timestamp to your server's `/pull` endpoint and applies returned rows to the local database
 
 ## Scope
 
