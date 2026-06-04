@@ -33,6 +33,21 @@
     "examples/inventory-json-polling/packages/sync-contract/generated/**",
     "examples/inventory-json-polling/apps/server/src/db/v1/primitive/**"
   ],
-  "ignoreDependencies": ["@tanstack/react-query", "@tauri-apps/api", "hono"],
+  "ignoreDependencies": [
+    "@electric-sql/pglite",
+    "@libsql/client",
+    "@miniflare/d1",
+    "@neondatabase/serverless",
+    "@planetscale/database",
+    "@tidbcloud/serverless",
+    "@vercel/postgres",
+    "@xata.io/client",
+    "@tanstack/react-query",
+    "@tauri-apps/api",
+    "hono",
+    "mysql2",
+    "pg",
+    "postgres"
+  ],
   "rules": {}
 }

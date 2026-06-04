@@ -4,7 +4,6 @@ import {
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { Elysia } from "elysia";
 import { db } from "../db/client";
 import { repository } from "../db/v1/sync-repository";
@@ -25,7 +24,7 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
 };
 
 const push = createSyncPushHandler({
-  idempotency: { db: db as unknown as SqliteRemoteDatabase },
+  idempotency: { db },
   resolveScope,
   upsertOrder: repository.tableNames,
   applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>

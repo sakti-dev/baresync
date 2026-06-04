@@ -1,6 +1,6 @@
 {
   "name": "baresync",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": false,
   "type": "module",
   "description": "SQLite-first sync infrastructure for Tauri apps",
@@ -79,7 +79,18 @@
     "prettier": "^3.6.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.1",
+    "@libsql/client": "^0.17.3",
+    "@miniflare/d1": "^2.14.4",
+    "@neondatabase/serverless": "^1.1.0",
+    "@planetscale/database": "^1.20.1",
+    "@tidbcloud/serverless": "^0.3.0",
+    "@vercel/postgres": "^0.10.0",
+    "@xata.io/client": "^0.30.1",
     "@types/node": "^22.15.0",
+    "mysql2": "^3.14.5",
+    "pg": "^8.16.3",
+    "postgres": "^3.4.9",
     "tsup": "^8.5.1",
     "typescript": "5.9.2",
     "vitest": "^4.1.6"

@@ -4,7 +4,6 @@ import {
   createSyncPushHandler,
   createSyncStatusHandler,
 } from "baresync/server";
-import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { Hono } from "hono";
 import { db } from "../db/client";
 import {
@@ -27,11 +26,10 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
   };
 };
 
-const idempotencyDb = db as unknown as SqliteRemoteDatabase;
 const repository = createInventorySyncRepository(db);
 
 const push = createSyncPushHandler({
-  idempotency: { db: idempotencyDb },
+  idempotency: { db },
   resolveScope,
   upsertOrder: repository.tableNames,
   applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>

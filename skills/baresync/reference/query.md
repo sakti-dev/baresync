@@ -135,7 +135,7 @@ Use this to drive UI state — e.g. show a spinner only when mode is not `no_op`
 
 ## Is data available immediately after a write?
 
-Yes. Baresync uses a single SQLite connection with WAL mode. Reads after a committed write always see the new data — you don't need to wait for an event or a sync cycle.
+Yes. On the client side, Baresync uses a single SQLite connection with WAL mode. Reads after a committed write always see the new data — you don't need to wait for an event or a sync cycle.
 
 ## What's the difference between push, pull, syncNow, and fullResync?
 

@@ -1,12 +1,19 @@
 import { and, eq, lt, ne, sql } from "drizzle-orm";
-import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { syncBatchRequests } from "../schema/server-schema.js";
 
-type DbLike = Parameters<SqliteRemoteDatabase["transaction"]>[0] extends (
-  tx: infer T
-) => Promise<unknown>
-  ? T
-  : never;
+type Awaitable<T> = T | Promise<T>;
+
+export interface SyncIdempotencyDatabase<TTransaction = unknown> {
+  transaction<TResult>(
+    callback: (tx: TTransaction) => Awaitable<TResult>
+  ): Awaitable<TResult>;
+}
+
+export type SyncIdempotencyTransaction<TDb> =
+  TDb extends SyncIdempotencyDatabase<infer TTransaction>
+    ? TTransaction
+    : never;
 
 export class ConflictRequestError extends Error {
   // fallow-ignore-next-line unused-class-member
@@ -28,8 +35,21 @@ interface GuardResult<T> {
   wasReplay: boolean;
 }
 
-async function loadPushBatchResponse(tx: DbLike, params: GuardParams) {
-  const rows = await tx
+type SyncBatchRequestRow = typeof syncBatchRequests.$inferSelect;
+
+async function loadPushBatchResponse(
+  tx: unknown,
+  params: GuardParams
+): Promise<SyncBatchRequestRow | null> {
+  const rows = await (
+    tx as {
+      select: () => {
+        from: (table: unknown) => {
+          where: (condition: unknown) => Promise<SyncBatchRequestRow[]>;
+        };
+      };
+    }
+  )
     .select()
     .from(syncBatchRequests)
     .where(
@@ -42,24 +62,40 @@ async function loadPushBatchResponse(tx: DbLike, params: GuardParams) {
 }
 
 async function reservePushBatchResponse(
-  tx: DbLike,
+  tx: unknown,
   params: GuardParams
 ): Promise<void> {
-  await tx.insert(syncBatchRequests).values({
-    clientId: params.clientId,
-    idempotencyKey: params.idempotencyKey,
-    requestHash: params.requestHash,
-    status: "pending",
-    responseBody: '{"pending":true}',
-    createdAt: Date.now(),
-  });
+  await (
+    tx as {
+      insert: (table: unknown) => {
+        values: (data: unknown) => Promise<void>;
+      };
+    }
+  )
+    .insert(syncBatchRequests)
+    .values({
+      clientId: params.clientId,
+      idempotencyKey: params.idempotencyKey,
+      requestHash: params.requestHash,
+      status: "pending",
+      responseBody: '{"pending":true}',
+      createdAt: Date.now(),
+    });
 }
 
 async function finalizePushBatchResponse(
-  tx: DbLike,
+  tx: unknown,
   params: GuardParams & { response: unknown }
 ): Promise<void> {
-  await tx
+  await (
+    tx as {
+      update: (table: unknown) => {
+        set: (data: unknown) => {
+          where: (condition: unknown) => Promise<void>;
+        };
+      };
+    }
+  )
     .update(syncBatchRequests)
     .set({
       status: "completed",
@@ -74,47 +110,57 @@ async function finalizePushBatchResponse(
     );
 }
 
-export function createIdempotencyGuard({ db }: { db: SqliteRemoteDatabase }) {
+export function createIdempotencyGuard<TDb extends SyncIdempotencyDatabase>({
+  db,
+}: {
+  db: TDb;
+}) {
   return {
     run<T>(
       params: GuardParams,
       callback: () => Promise<T>
     ): Promise<GuardResult<T>> {
-      return db.transaction(async (tx) => {
-        const existing = await loadPushBatchResponse(tx, params);
+      return Promise.resolve(
+        db.transaction(async (tx) => {
+          const existing = await loadPushBatchResponse(tx, params);
 
-        if (existing) {
-          if (
-            existing.status === "completed" &&
-            existing.requestHash === params.requestHash
-          ) {
-            return {
-              result: JSON.parse(existing.responseBody!) as T,
-              wasReplay: true,
-            };
+          if (existing) {
+            if (
+              existing.status === "completed" &&
+              existing.requestHash === params.requestHash
+            ) {
+              return {
+                result: JSON.parse(existing.responseBody!) as T,
+                wasReplay: true,
+              };
+            }
+            if (existing.status === "pending") {
+              throw new ConflictRequestError(
+                "sync push is already in progress"
+              );
+            }
+            throw new ConflictRequestError(
+              "idempotency key already used with different request body"
+            );
           }
-          if (existing.status === "pending") {
-            throw new ConflictRequestError("sync push is already in progress");
-          }
-          throw new ConflictRequestError(
-            "idempotency key already used with different request body"
-          );
-        }
 
-        await reservePushBatchResponse(tx, params);
+          await reservePushBatchResponse(tx, params);
 
-        const result = await callback();
+          const result = await callback();
 
-        await finalizePushBatchResponse(tx, { ...params, response: result });
+          await finalizePushBatchResponse(tx, { ...params, response: result });
 
-        return { result, wasReplay: false };
-      });
+          return { result, wasReplay: false };
+        })
+      );
     },
   };
 }
 
-export async function cleanupSyncBatchRequests(options: {
-  db: SqliteRemoteDatabase;
+export async function cleanupSyncBatchRequests<
+  TDb extends SyncIdempotencyDatabase,
+>(options: {
+  db: TDb;
   olderThanMs: number;
   stalePendingOlderThanMs?: number;
   limit?: number;
@@ -148,16 +194,19 @@ export async function cleanupSyncBatchRequests(options: {
       ? completedCondition
       : sql`(${completedCondition}) OR (${stalePendingCondition})`;
 
+  const queryDb = options.db as unknown as Pick<
+    BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>,
+    "$count" | "select" | "delete"
+  >;
+
   if (options.dryRun) {
-    const rows = await options.db
-      .select({ count: sql<number>`count(*)` })
-      .from(syncBatchRequests)
-      .where(combinedWhere);
-    return { deletedCount: rows[0]?.count ?? 0 };
+    return {
+      deletedCount: await queryDb.$count(syncBatchRequests, combinedWhere),
+    };
   }
 
   if (options.limit !== undefined) {
-    const toDelete = await options.db
+    const toDelete = await queryDb
       .select()
       .from(syncBatchRequests)
       .where(combinedWhere)
@@ -168,7 +217,7 @@ export async function cleanupSyncBatchRequests(options: {
     }
 
     for (const row of toDelete) {
-      await options.db
+      await queryDb
         .delete(syncBatchRequests)
         .where(eq(syncBatchRequests.id, row.id));
     }
@@ -181,7 +230,7 @@ export async function cleanupSyncBatchRequests(options: {
     };
   }
 
-  const toDelete = await options.db
+  const toDelete = await queryDb
     .select()
     .from(syncBatchRequests)
     .where(combinedWhere);
@@ -190,7 +239,7 @@ export async function cleanupSyncBatchRequests(options: {
     return { deletedCount: 0 };
   }
 
-  await options.db.delete(syncBatchRequests).where(combinedWhere);
+  await queryDb.delete(syncBatchRequests).where(combinedWhere);
 
   const sorted = [...toDelete].sort((a, b) => a.createdAt - b.createdAt);
   return {

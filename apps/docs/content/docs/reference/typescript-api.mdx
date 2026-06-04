@@ -604,6 +604,8 @@ interface SyncPushChange {
 
 Wraps push handling in an idempotency check using `sync_batch_requests`.
 
+The `db` option accepts any Drizzle database with transaction support, as long as your schema includes the `sync_batch_requests` table.
+
 ```ts
 import { createIdempotencyGuard } from "baresync/server";
 
@@ -618,6 +620,8 @@ const { result, wasReplay } = await guard.run(
 ### `cleanupSyncBatchRequests`
 
 Purges old idempotency records.
+
+The `db` option uses the same database contract as `createIdempotencyGuard`.
 
 ```ts
 import { cleanupSyncBatchRequests } from "baresync/server";

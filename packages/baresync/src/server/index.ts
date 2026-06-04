@@ -27,6 +27,8 @@ import {
   ConflictRequestError,
   cleanupSyncBatchRequests,
   createIdempotencyGuard,
+  type SyncIdempotencyDatabase,
+  type SyncIdempotencyTransaction,
 } from "./idempotency.js";
 import {
   buildPullTables,
@@ -78,6 +80,8 @@ export {
   SQLITE_BIND_PARAM_LIMIT,
   type SyncAuthorizedScope,
   type SyncHandler,
+  type SyncIdempotencyDatabase,
+  type SyncIdempotencyTransaction,
   type SyncLoadPullChangesInput,
   type SyncLoadStatusInput,
   SyncPayloadTooLargeError,

@@ -1,6 +1,8 @@
-import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { DEFAULT_API_MAX_PUSH_BYTES, DEFAULT_MAX_PUSH_ROWS } from "../limits";
-import { createIdempotencyGuard } from "./idempotency";
+import {
+  createIdempotencyGuard,
+  type SyncIdempotencyDatabase,
+} from "./idempotency.js";
 import {
   decodeSyncRequest,
   encodeSyncResponse,
@@ -77,12 +79,16 @@ interface SyncHandlerError extends Error {
   status?: number;
 }
 
-interface SyncPushHandlerBase<TContext, TScope> {
+interface SyncPushHandlerBase<
+  TContext,
+  TScope,
+  TDb extends SyncIdempotencyDatabase = SyncIdempotencyDatabase,
+> {
   applyPushChanges: (
     input: SyncPushChangesInput<TContext, TScope>
   ) => Awaitable<unknown>;
   idempotency: {
-    db: SqliteRemoteDatabase;
+    db: TDb;
   };
   resolveScope: (
     input: SyncResolveScopeInput<TContext>
@@ -109,10 +115,11 @@ interface SyncPullHandlerBase<TContext, TScope> {
   ) => Awaitable<SyncScopeResolution<TScope>>;
 }
 
-export type SyncPushHandlerOptions<TContext, TScope> = SyncPushHandlerBase<
+export type SyncPushHandlerOptions<
   TContext,
-  TScope
->;
+  TScope,
+  TDb extends SyncIdempotencyDatabase = SyncIdempotencyDatabase,
+> = SyncPushHandlerBase<TContext, TScope, TDb>;
 
 export type SyncStatusHandlerOptions<TContext, TScope> = SyncStatusHandlerBase<
   TContext,

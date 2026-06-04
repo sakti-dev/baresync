@@ -8,13 +8,13 @@ If the exact handler behavior is unclear, load `reference/source.md` and inspect
 
 | File | Purpose |
 |------|---------|
-| `apps/server/src/db/client.ts` | Opens server SQLite connection |
+| `apps/server/src/db/client.ts` | Opens the default scaffold server database connection |
 | `apps/server/src/db/v1/sync-repository.ts` | Per-table CRUD for sync |
 | `apps/server/src/v1/routes.ts` | `/api/v1/sync/{push,pull,status}` handlers |
 
 ## Database connection
 
-`db/client.ts` opens `better-sqlite3` and exports a Drizzle instance:
+`db/client.ts` opens `better-sqlite3` and exports a Drizzle instance in the default scaffold:
 
 ```ts
 import Database from "better-sqlite3";
@@ -27,6 +27,8 @@ export const db = drizzle(sqlite);
 ```
 
 Override path with `MY_APP_SERVER_DB_PATH` env var. For Postgres/MySQL/libSQL, replace the driver.
+
+The idempotency guard itself is dialect-agnostic: `createSyncPushHandler` only needs a Drizzle database with transaction support for `idempotency: { db }`.
 
 ## Sync repository
 
@@ -104,6 +106,8 @@ const status = createSyncStatusHandler({
     repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
 });
 ```
+
+That `db` can come from SQLite, Postgres, MySQL, or libSQL as long as the database implementation supports the operations the guard uses.
 
 Mount in Hono:
 

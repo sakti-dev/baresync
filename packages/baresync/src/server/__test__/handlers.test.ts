@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import type { SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSyncPullHandler,
@@ -8,7 +7,7 @@ import {
   createSyncStatusHandler,
 } from "../handlers";
 
-function createTestDb(): SqliteRemoteDatabase {
+function createTestDb() {
   const sqlite = new Database(":memory:");
   sqlite.run("PRAGMA journal_mode = WAL");
   sqlite.run("PRAGMA foreign_keys = ON");
@@ -25,7 +24,7 @@ function createTestDb(): SqliteRemoteDatabase {
       UNIQUE(client_id, idempotency_key)
     )
   `);
-  return drizzle(sqlite) as unknown as SqliteRemoteDatabase;
+  return drizzle(sqlite);
 }
 
 function createJsonRequest(body: unknown): Request {

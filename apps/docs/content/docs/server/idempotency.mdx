@@ -34,13 +34,13 @@ const push = createSyncPushHandler({
 });
 ```
 
-The `db` must be a Drizzle `SqliteRemoteDatabase` with the `sync_batch_requests` table. This is the same table exported from `baresync`:
+The `db` can be any Drizzle database that supports transactions and includes the `sync_batch_requests` table. This is the same table exported from `baresync`:
 
 ```ts
 import { syncBatchRequests } from "baresync";
 ```
 
-Include it in your server database schema and migrations.
+Include it in your server database schema and migrations. The scaffold uses SQLite by default, but the idempotency guard itself is dialect-agnostic.
 
 ## The sync_batch_requests table
 
