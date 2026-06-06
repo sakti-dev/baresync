@@ -69,6 +69,7 @@ Users do not need to know command names. Route by intent.
 | Production operation | "monitoring", "resync", "performance", "cleanup" | `reference/production.md` | `reference/debug.md`, `reference/source.md` |
 | Testing strategy | "write tests", "mock invoke", "E2E" | `reference/testing.md` | workspace test files, `reference/source.md` |
 | Skill maintenance | "skill fixtures", "route prompts", "stale docs" | `reference/prompt-fixtures.md` | `reference/source.md` |
+| Auth headers, token refresh | "setHeaders", "auth token", "API key", "401", "403" | `reference/tauri-plugin.md` | `reference/ui-frameworks.md`, `reference/production.md` |
 
 ## Prerequisites
 
@@ -232,7 +233,8 @@ These must exist for baresync to work. Project structure (file paths, directory 
 | **Server routes** | Push/pull/status endpoints using `createSyncPushHandler` (requires `idempotency`), `createSyncPullHandler`, `createSyncStatusHandler`. |
 | **Client db helper** | `createTauriDrizzleDatabase` with a TABLE registry of all synced + runtime tables. |
 | **Client sync client** | `createSyncClient` scoped to `SYNC_SCOPE`. |
-| **Plugin config** | In `lib.rs`: `api_base_url`, `contract_json` (via `include_str!`), `db_path`, `migrations_path`, `poll_interval_secs`. |
+ | **Plugin config** | In `lib.rs`: `api_base_url`, `contract_json` (via `include_str!`), `db_path`, `migrations_path`, `poll_interval_secs`. |
+ | **Runtime request headers** | Custom HTTP headers attached to every sync request. Set via `client.setHeaders()` (JS) or `set_headers` Tauri command. Plugin-wide, not per-scope. `Content-Type` is reserved. Empty `{}` clears all headers. |
 | **Migrations** | Local: outbox + cursors + synced tables. Server: synced tables + batch requests. |
 
 For brownfield projects: scan the project, identify which pieces exist, and guide the user to add what's missing. Do not restructure their project to match the scaffold layout.
@@ -280,6 +282,25 @@ Every synced row belongs to a scope (tenant/workspace). Your server's `resolveSc
 
 Baresync uses soft deletes by default. A deleted row gets a `deletedAt` timestamp and `isSynced: false`. The sync engine pushes this as an update so the server can mark the row as deleted.
 
+### Runtime request headers
+
+Custom HTTP headers sent with every sync request (push, pull, status). Use for authentication tokens, API keys, or tenant identifiers.
+
+**API:** `client.setHeaders(headers: Record<string, string>)` on the JS sync client, or the `set_headers` Tauri plugin command from Rust.
+
+**Rules:**
+- `Content-Type` is reserved and rejected as a custom header.
+- Headers are validated using HTTP header parsing types. Invalid updates do not replace existing headers (atomic).
+- Passing `{}` clears all custom headers.
+- All writers (JS, Rust, builder) share one header store. Headers are plugin-wide, not per-scope.
+- Transport snapshots headers before each request. In-flight requests use the old snapshot.
+
+**When JS owns credentials** (e.g. OAuth token in browser storage): call `setHeaders` from JS after login or token refresh.
+
+**When Rust owns credentials** (e.g. keychain-stored API key): use `set_headers_with_state` from Rust host code, or `Builder::new().headers(...)` for static startup headers.
+
+**Do not:** log header values (they contain secrets), recreate the sync client for token refresh, or put auth business logic inside the plugin.
+
 ### Sync flow
 
 ```
@@ -309,6 +330,7 @@ Local write → outbox entry → plugin polls → push to server → pull from s
 | **Upsert order** | Order tables are processed during inserts/updates — parents before children. Respects FKs. |
 | **Watermark** | The `sync_updated_at` value on the server — timestamp component of the cursor. |
 | **writeTransaction** | Transaction wrapping Drizzle writes with outbox entry creation. Ensures atomicity. |
+| **Runtime request headers** | Custom HTTP headers sent with every sync request. Set via `setHeaders` (JS) or `set_headers` (Rust). Plugin-wide, atomic updates, transport snapshots per request. |
 
 ## Commands
 
@@ -328,7 +350,6 @@ If you are unsure which command applies, use `Prompt Processing (MANDATORY)` fir
 | `tauri-plugin` | User asks about plugin builder, Tauri commands, polling, migrations, or plugin testing | [reference/tauri-plugin.md](reference/tauri-plugin.md) |
 | `testing` | User asks how to test baresync integration, write tests, or verify sync behavior | [reference/testing.md](reference/testing.md) |
 | `production` | User asks about production config, monitoring, performance, DB resets, or maintenance | [reference/production.md](reference/production.md) |
-| `internals` | User asks about sync engine mechanics, chunking, idempotency, cursor storage, or status flow | [reference/internals.md](reference/internals.md) |
 | `verify` | User asks to review, audit, or validate an integration | [reference/verify.md](reference/verify.md) |
 | `prompt-fixtures` | Skill maintainers want to check routing behavior | [reference/prompt-fixtures.md](reference/prompt-fixtures.md) |
 | `source`    | All other references exhausted, or you need to inspect actual implementation details | [reference/source.md](reference/source.md) |
@@ -351,3 +372,6 @@ If you are unsure which command applies, use `Prompt Processing (MANDATORY)` fir
 - Never use `delete` (hard delete) on synced tables — always soft delete via `deletedAt`.
 - Never import from generated schema files in the Tauri app — app imports from source schemas.
 - Never forget to update the `include_str!` path in `lib.rs` after regenerating the contract.
+- Never put `Content-Type` in `setHeaders` — it is reserved.
+- Never log header values — they contain secrets.
+- Never recreate the sync client to refresh tokens — call `setHeaders` instead.

@@ -86,6 +86,7 @@ impl SimulationHarness {
             poll_interval_secs: 1,
             poll_on_background: false,
             event_sink: Arc::new(NoopPluginEventSink),
+            custom_headers: baresync_core::headers::SyncRequestHeaders::new(),
         };
 
         Self { state }

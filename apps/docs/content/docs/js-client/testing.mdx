@@ -35,6 +35,7 @@ function createMockClient(overrides?: {
       paused: false,
       last_sync_at: "2026-05-22T00:00:00.000Z",
     },
+    set_headers: { ok: true },
   };
 
   return createSyncClient({
@@ -130,4 +131,20 @@ const client = createSyncClient({
 
 const status = await client.getPollingStatus();
 expect(status.running).toBe(true);
+```
+
+## Test setHeaders
+
+```ts
+const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+const client = createSyncClient({
+  scopeId: "test",
+  invoke: (cmd, args) => {
+    calls.push({ cmd, args });
+    return Promise.resolve({});
+  },
+});
+
+await client.setHeaders({ "X-Api-Key": "test-key" });
+expect(calls).toEqual([{ cmd: "set_headers", args: { headers: { "X-Api-Key": "test-key" } } }]);
 ```

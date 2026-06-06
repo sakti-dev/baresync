@@ -1,6 +1,8 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::db::{self, EncryptionKeyProvider};
 use baresync_core::engine::SyncContractTables;
+use baresync_core::headers::SyncRequestHeaders;
+use baresync_core::http::transport_with_headers;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -42,6 +44,7 @@ pub struct Builder {
     migrations_path: Option<PathBuf>,
     poll_interval_secs: Option<u64>,
     poll_on_background: Option<bool>,
+    headers: Vec<(String, String)>,
 }
 
 impl Builder {
@@ -56,6 +59,7 @@ impl Builder {
             migrations_path: None,
             poll_interval_secs: None,
             poll_on_background: None,
+            headers: Vec::new(),
         }
     }
 
@@ -107,6 +111,11 @@ impl Builder {
         self
     }
 
+    pub fn headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.headers = headers;
+        self
+    }
+
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, Option<PluginConfig>> {
         let api_base_url = self.api_base_url.unwrap_or_default();
         let db_path = self.db_path;
@@ -117,6 +126,7 @@ impl Builder {
         let migrations_path = self.migrations_path;
         let poll_interval_secs = self.poll_interval_secs.unwrap_or(30);
         let poll_on_background = self.poll_on_background.unwrap_or(false);
+        let builder_headers = self.headers;
 
         TauriPluginBuilder::<R, Option<PluginConfig>>::new("baresync")
             .invoke_handler(tauri::generate_handler![
@@ -137,7 +147,8 @@ impl Builder {
                 commands::stop_polling,
                 commands::pause_polling,
                 commands::resume_polling,
-                commands::get_polling_status
+                commands::get_polling_status,
+                commands::set_headers
             ])
             .setup(move |app, _api| {
                 validate_migration_sources(&embedded_migrations, migrations_path.as_deref())
@@ -191,7 +202,16 @@ impl Builder {
                     }
                 })?;
 
-                let transport = baresync_core::http::default_transport();
+                let header_store = SyncRequestHeaders::new();
+                if !builder_headers.is_empty() {
+                    header_store
+                        .replace(&builder_headers)
+                        .map_err(|e| -> Box<dyn std::error::Error> {
+                            format!("Invalid static headers: {}", e).into()
+                        })?;
+                }
+
+                let transport = transport_with_headers(header_store.clone());
 
                 let sync_config = SyncEngineConfig {
                     api_url: api_base_url.clone(),
@@ -233,6 +253,7 @@ impl Builder {
                     poll_interval_secs,
                     poll_on_background,
                     event_sink: Arc::new(TauriAppEventSink { app: app.clone() }),
+                    custom_headers: header_store,
                 });
 
                 Ok(())
@@ -757,6 +778,91 @@ mod tests {
             .expect("default db path should resolve");
 
         assert_eq!(resolved, PathBuf::from("/tmp/app-data/baresync.db"));
+    }
+
+    #[test]
+    fn static_headers_seed_into_shared_store() {
+        let store = baresync_core::headers::SyncRequestHeaders::new();
+        store
+            .replace(&[
+                ("Authorization".to_string(), "Bearer static-key".to_string()),
+            ])
+            .unwrap();
+
+        let transport = baresync_core::http::transport_with_headers(store.clone());
+
+        let snapshot = store.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer static-key");
+        let _ = transport;
+    }
+
+    #[test]
+    fn runtime_replace_overwrites_static_headers() {
+        let store = baresync_core::headers::SyncRequestHeaders::with_headers(&[
+            ("Authorization".to_string(), "Bearer static-key".to_string()),
+        ])
+        .unwrap();
+
+        store
+            .replace(&[
+                ("Authorization".to_string(), "Bearer runtime-key".to_string()),
+            ])
+            .unwrap();
+
+        let snapshot = store.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer runtime-key");
+    }
+
+    #[tokio::test]
+    async fn runtime_rust_replace_overwrites_static_headers() {
+        let store = baresync_core::headers::SyncRequestHeaders::with_headers(&[
+            ("X-Api-Key".to_string(), "static-key".to_string()),
+        ])
+        .unwrap();
+
+        let state = crate::commands::PluginState {
+            db: Arc::new(baresync_core::db::DbClient::connect(":memory:").await.unwrap()),
+            sync_config: baresync_core::config::SyncEngineConfig::default(),
+            contract_tables: baresync_core::engine::SyncContractTables {
+                upsert_order: Vec::new(),
+                delete_order: Vec::new(),
+                local_only_columns: Vec::new(),
+            },
+            db_path: PathBuf::from(":memory:"),
+            embedded_migrations: Arc::new(Vec::new()),
+            migrations_path: None,
+            poll_notify: Arc::new(tokio::sync::Notify::new()),
+            sync_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            sql_transaction_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            sql_transaction_has_writes: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            poll_control_tx: tokio::sync::Mutex::new(None),
+            poll_task_handle: tokio::sync::Mutex::new(None),
+            poll_state: Arc::new(tokio::sync::Mutex::new(crate::polling::PollingState {
+                paused: false,
+                last_sync_at: None,
+            })),
+            poll_interval_secs: 30,
+            poll_on_background: false,
+            event_sink: Arc::new(crate::commands::NoopPluginEventSink),
+            custom_headers: store.clone(),
+        };
+
+        crate::commands::set_headers_with_state(&state, vec![
+            ("X-Api-Key".to_string(), "rust-runtime-key".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        let snapshot = store.snapshot();
+        assert_eq!(snapshot.get("x-api-key").unwrap(), "rust-runtime-key");
+    }
+
+    #[test]
+    fn invalid_static_headers_cause_failure() {
+        let result = baresync_core::headers::SyncRequestHeaders::with_headers(&[
+            ("Content-Type".to_string(), "text/plain".to_string()),
+        ]);
+        assert!(result.is_err());
     }
 
     fn temp_file_path(prefix: &str, extension: &str) -> PathBuf {

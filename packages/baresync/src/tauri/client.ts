@@ -15,6 +15,7 @@ export interface SyncClientCommands {
   pull?: string;
   push?: string;
   resumePolling?: string;
+  setHeaders?: string;
   startPolling?: string;
   stopPolling?: string;
   syncNow?: string;
@@ -64,6 +65,7 @@ export interface SyncClient {
   pull(): Promise<unknown>;
   push(): Promise<unknown>;
   resumePolling(): Promise<unknown>;
+  setHeaders(headers: Record<string, string>): Promise<void>;
   startPolling(): Promise<unknown>;
   stopPolling(): Promise<unknown>;
   syncNow(): Promise<unknown>;
@@ -126,6 +128,7 @@ export function createSyncClient(config: SyncClientConfig): SyncClient {
       config.commands?.pausePolling ?? "plugin:baresync|pause_polling",
     resumePolling:
       config.commands?.resumePolling ?? "plugin:baresync|resume_polling",
+    setHeaders: config.commands?.setHeaders ?? "plugin:baresync|set_headers",
     getPollingStatus:
       config.commands?.getPollingStatus ?? "plugin:baresync|get_polling_status",
   };
@@ -177,6 +180,9 @@ export function createSyncClient(config: SyncClientConfig): SyncClient {
     },
     resumePolling() {
       return invoke(commands.resumePolling);
+    },
+    setHeaders(headers: Record<string, string>): Promise<void> {
+      return invoke(commands.setHeaders, { headers }) as Promise<void>;
     },
     getPollingStatus() {
       return invoke(commands.getPollingStatus) as Promise<PollingStatus>;

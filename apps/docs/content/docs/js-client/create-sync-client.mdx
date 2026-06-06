@@ -60,6 +60,7 @@ plugin:baresync|stop_polling
 plugin:baresync|pause_polling
 plugin:baresync|resume_polling
 plugin:baresync|get_polling_status
+plugin:baresync|set_headers
 ```
 
 ## Return type
@@ -76,6 +77,7 @@ interface SyncClient {
   pull(): Promise<unknown>;
   push(): Promise<unknown>;
   resumePolling(): Promise<unknown>;
+  setHeaders(headers: Record<string, string>): Promise<void>;
   startPolling(): Promise<unknown>;
   stopPolling(): Promise<unknown>;
   syncNow(): Promise<unknown>;

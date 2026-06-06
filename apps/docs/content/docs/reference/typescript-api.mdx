@@ -226,6 +226,43 @@ getPollingStatus(): Promise<{
 }>
 ```
 
+#### `setHeaders`
+
+Replaces all custom HTTP headers sent with sync requests. Call after login to set auth tokens, or pass `{}` to clear all headers.
+
+```ts
+await client.setHeaders({ Authorization: "Bearer token123" });
+```
+
+```ts
+setHeaders(headers: Record<string, string>): Promise<void>
+```
+
+Headers are validated against HTTP header name/value rules. `Content-Type` is reserved and rejected. Invalid updates don't replace existing headers (atomic). All sync requests (push, pull, status) include these headers.
+
+### `SyncClientCommands`
+
+The default command names used by `createSyncClient`. Override individual names via the `commands` config option.
+
+```ts
+interface SyncClientCommands {
+  enqueueChange: string;
+  fullResync: string;
+  getPollingStatus: string;
+  getState: string;
+  pausePolling: string;
+  pull: string;
+  push: string;
+  resumePolling: string;
+  setHeaders: string;
+  startPolling: string;
+  stopPolling: string;
+  syncNow: string;
+  writeLocalChange: string;
+  writeTransaction: string;
+}
+```
+
 ---
 
 ## Drizzle Proxy

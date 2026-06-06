@@ -470,6 +470,6 @@ export async function scaffoldProject(): Promise<void> {
   outro(
     `${color.green("Success!")} Baresync monorepo starter is ready!\n\n${buildUserFacingNextSteps(
       options
-    )}`
+    )}\n\nTip: If your sync routes need authentication, use syncClient.setHeaders() — see the README.`
   );
 }

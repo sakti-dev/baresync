@@ -41,6 +41,7 @@ tauri::Builder::default()
 | `migrations` | `Vec<EmbeddedMigration>` | Yes | empty | Embedded SQL migrations |
 | `migrations_path` | `impl Into<PathBuf>` | No | `None` | Path to `.sql` migrations bundled with the app or resolved absolutely |
 | `encryption_key_provider` | `impl EncryptionKeyProvider` | No | `None` | Custom encryption key provider for encrypted SQLite databases |
+| `headers` | `Vec<(impl Into<String>, impl Into<String>)>` | No | empty | Static HTTP headers to send with every sync request |
 | `poll_interval_secs` | `u64` | No | `30` | Seconds between polling cycles |
 | `poll_on_background` | `bool` | No | `false` | Whether to poll when the window is unfocused |
 
@@ -140,6 +141,20 @@ When `false` (default), the plugin pauses polling when the window loses focus an
 When `true`, polling continues regardless of window focus. Use this for background services or mobile apps where the webview lifecycle is managed differently.
 
 On mobile, the plugin relies on app lifecycle and focus events exposed by Tauri. If your app needs background sync while unfocused, enable `poll_on_background` and verify that behavior on the target platform.
+
+### headers
+
+Static headers set at plugin startup. Use for API keys or other non-session headers that don't change at runtime. For dynamic headers (like auth tokens), use `setHeaders` from JS after login.
+
+```rust
+BaresyncBuilder::new()
+    .headers(vec![
+        ("X-Api-Key", "my-static-api-key"),
+        ("X-Client-Version", env!("CARGO_PKG_VERSION")),
+    ])
+```
+
+`Content-Type` is reserved — do not include it. Headers set via the builder can be replaced at runtime by calling `setHeaders` from JS.
 
 ## What happens during setup
 

@@ -14,6 +14,7 @@ The JS client does not wrap or transform errors. Every method rejects with whate
 | Tauri IPC | Network failure, plugin not registered, command panic | Varies — typically a string or structured error from the Rust side |
 | Drizzle / SQLite | Schema mismatch, constraint violation, locked database | Drizzle `SqliteError` |
 | Server | Auth expired, rate limited, validation error | HTTP error response forwarded by the plugin |
+| `setHeaders` validation | Invalid header name/value, reserved header (`Content-Type`) | Rejected promise with a descriptive string from the plugin |
 
 ## No Tauri runtime
 
@@ -81,6 +82,18 @@ If the `write` callback fails, the outbox entry is not inserted — they are in 
 ## Polling errors
 
 If a polling cycle fails, the plugin emits a `baresync://sync-status-changed` event. The polling loop continues — it does not stop on failure. Check `getPollingStatus()` to see if polling is still running.
+
+## setHeaders errors
+
+`setHeaders` rejects if any header name or value fails validation. `Content-Type` is reserved and will be rejected. Invalid updates are atomic — existing headers are preserved.
+
+```ts
+try {
+  await client.setHeaders({ "X-Api-Key": "key" });
+} catch (error) {
+  // Validation failed; fix the header name or value and try again.
+}
+```
 
 ## What not to do
 

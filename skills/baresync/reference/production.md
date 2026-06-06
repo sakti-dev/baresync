@@ -386,6 +386,54 @@ function SyncSettings({ client }: { client: SyncClient }) {
 
 For error types, HTTP status codes, and diagnostic flowcharts, see [debug.md](debug.md).
 
+## Auth lifecycle
+
+### JS-owned credentials
+
+When the app stores tokens in browser storage, IndexedDB, or manages OAuth in the frontend:
+
+1. On login, call `client.setHeaders({ Authorization: \`Bearer \${token}\` })`.
+2. On token refresh, call `setHeaders` again with the new token.
+3. On logout, call `client.setHeaders({})` to clear headers.
+4. Delay `startPolling` until after the initial `setHeaders` call completes.
+5. Handle 401 errors in sync by refreshing the token and calling `setHeaders` before retrying.
+
+```ts
+async function onAuthChange(token: string | null) {
+  if (token) {
+    await client.setHeaders({ Authorization: `Bearer ${token}` });
+  } else {
+    await client.setHeaders({});
+  }
+}
+```
+
+### Rust-owned credentials
+
+When the app stores API keys in the OS keychain, a secrets manager, or a secure enclave:
+
+1. Retrieve the credential from secure storage in Rust.
+2. Call `set_headers_with_state(&plugin_state, headers)` to update headers.
+3. For static keys that never change, use `Builder::new().headers(vec![...])` at startup.
+4. Do not pass secrets through JS — keep them in Rust.
+
+```rust
+use tauri_plugin_baresync::commands::set_headers_with_state;
+
+async fn refresh_api_key(state: &PluginState) -> Result<(), String> {
+    let key = keychain::get("my-api-key").await.map_err(|e| e.to_string())?;
+    set_headers_with_state(state, vec![("X-Api-Key".to_string(), key)])
+}
+```
+
+### Rules
+
+- Do not log header values — they contain secrets.
+- Do not recreate the sync client for token refresh. Call `setHeaders` on the existing client.
+- Auth business logic (when to refresh, where to store tokens) is app-owned. Baresync does not manage auth.
+- `Content-Type` is reserved. Do not include it in `setHeaders`.
+- Headers are plugin-wide — all scopes share the same headers. If you need per-scope auth, include scope info in your server's `resolveScope` logic, not in headers.
+
 ### Dirty count never reaches 0
 
 ```ts

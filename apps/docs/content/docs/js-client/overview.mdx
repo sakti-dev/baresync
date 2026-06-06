@@ -23,6 +23,7 @@ The `"baresync/tauri"` sub-path exports the client and its types.
 | Control polling | `startPolling`, `stopPolling`, `pausePolling`, `resumePolling` | Invokes plugin commands |
 | Read state | `getState`, `getPollingStatus` | Invokes plugin commands |
 | Write local data | `writeTransaction`, `writeLocalChange`, `enqueueChange` | Inserts into `sync_outbox` via Drizzle |
+| Set request headers | `setHeaders` | Invokes `set_headers` — replaces all custom HTTP headers for sync requests |
 | Abstract transport | `invoke` config option | Swap Tauri IPC for a test mock |
 
 ## What the client does not do

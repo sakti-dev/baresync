@@ -77,6 +77,15 @@ function App() {
 }
 ```
 
+If your server requires auth headers, set them after login and before starting polling:
+
+```tsx
+async function handleLogin(token: string) {
+  await syncClient.setHeaders({ Authorization: `Bearer ${token}` });
+  await syncClient.startPolling();
+}
+```
+
 Query and write data in your components:
 
 ```tsx

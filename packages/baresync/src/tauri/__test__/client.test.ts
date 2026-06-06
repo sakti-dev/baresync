@@ -38,6 +38,7 @@ describe("createSyncClient", () => {
     expect(client).toHaveProperty("stopPolling");
     expect(client).toHaveProperty("pausePolling");
     expect(client).toHaveProperty("resumePolling");
+    expect(client).toHaveProperty("setHeaders");
     expect(client).toHaveProperty("getPollingStatus");
     expect(client).toHaveProperty("writeTransaction");
     expect(client).toHaveProperty("writeLocalChange");
@@ -51,6 +52,7 @@ describe("createSyncClient", () => {
     expect(typeof client.stopPolling).toBe("function");
     expect(typeof client.pausePolling).toBe("function");
     expect(typeof client.resumePolling).toBe("function");
+    expect(typeof client.setHeaders).toBe("function");
     expect(typeof client.getPollingStatus).toBe("function");
     expect(typeof client.writeTransaction).toBe("function");
     expect(typeof client.writeLocalChange).toBe("function");
@@ -149,6 +151,7 @@ describe("createSyncClient", () => {
         pull: "sync_pull",
         push: "sync_push",
         resumePolling: "resume_polling",
+        setHeaders: "my_set_headers",
         startPolling: "start_polling",
         stopPolling: "stop_polling",
         syncNow: "sync_now",
@@ -173,6 +176,7 @@ describe("createSyncClient", () => {
     await client.stopPolling();
     await client.pausePolling();
     await client.resumePolling();
+    await client.setHeaders({ Authorization: "Bearer test" });
     await client.getPollingStatus();
 
     expect(calls.map((call) => call.cmd)).toEqual([
@@ -185,6 +189,7 @@ describe("createSyncClient", () => {
       "stop_polling",
       "pause_polling",
       "resume_polling",
+      "my_set_headers",
       "get_polling_status",
     ]);
   });
@@ -498,5 +503,105 @@ describe("createSyncClient", () => {
       "item-1",
       "item-2",
     ]);
+  });
+
+  it("returns client with setHeaders method", () => {
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+    expect(client).toHaveProperty("setHeaders");
+    expect(typeof client.setHeaders).toBe("function");
+  });
+
+  it("setHeaders calls invoke with default command and passes headers", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve();
+      },
+    });
+    await client.setHeaders({ Authorization: "Bearer abc123" });
+    expect(calls).toEqual([
+      {
+        cmd: "plugin:baresync|set_headers",
+        args: { headers: { Authorization: "Bearer abc123" } },
+      },
+    ]);
+  });
+
+  it("setHeaders uses custom command override", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      commands: { setHeaders: "my_set_headers" },
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve();
+      },
+    });
+    await client.setHeaders({ "X-Custom": "value" });
+    expect(calls).toEqual([
+      { cmd: "my_set_headers", args: { headers: { "X-Custom": "value" } } },
+    ]);
+  });
+
+  it("setHeaders propagates rejected invoke errors unchanged", async () => {
+    const error = new Error("invoke failed");
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.reject(error),
+    });
+    await expect(client.setHeaders({ Authorization: "Bearer x" })).rejects.toBe(
+      error
+    );
+  });
+
+  it("repeated setHeaders calls send full replacement sets", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve();
+      },
+    });
+    await client.setHeaders({ Authorization: "Bearer token-v1" });
+    await client.setHeaders({ Authorization: "Bearer token-v2" });
+    await client.setHeaders({
+      Authorization: "Bearer token-v3",
+      "X-Request-Id": "abc",
+    });
+    expect(calls).toEqual([
+      {
+        cmd: "plugin:baresync|set_headers",
+        args: { headers: { Authorization: "Bearer token-v1" } },
+      },
+      {
+        cmd: "plugin:baresync|set_headers",
+        args: { headers: { Authorization: "Bearer token-v2" } },
+      },
+      {
+        cmd: "plugin:baresync|set_headers",
+        args: {
+          headers: { Authorization: "Bearer token-v3", "X-Request-Id": "abc" },
+        },
+      },
+    ]);
+  });
+
+  it("setHeaders does not include scopeId in args", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve();
+      },
+    });
+    await client.setHeaders({ Authorization: "Bearer abc" });
+    expect(calls[0]?.args).not.toHaveProperty("scopeId");
   });
 });

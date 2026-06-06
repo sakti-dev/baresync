@@ -25,13 +25,15 @@ Your app depends on `tauri-plugin-baresync` for the runtime plugin. Add `baresyn
 - Event emission (`baresync://data-changed`, `baresync://sync-status-changed`)
 - Drizzle proxy commands (`run_sql`, `run_sql_batch`)
 - Client identity (a UUID stored in `sync_client_identity`)
+- Custom HTTP headers store (set via `setHeaders` or builder, sent with all sync requests)
 
 ## What the plugin does not own
 
-- Authorization headers — your server handles auth
 - Conflict resolution — the server decides merge outcomes
 - UI state — your React code reads events and invalidates caches
 - Server implementation — see [Server](/docs/server/overview)
+
+The plugin sends custom HTTP headers (set via `setHeaders` or the builder's `.headers()` option) with every sync request, but does not manage auth token lifecycle — your app must call `setHeaders` when tokens change.
 
 ## Your app's responsibility
 

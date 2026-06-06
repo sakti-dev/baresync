@@ -2,6 +2,8 @@
 
 Two paths: greenfield (scaffold) or brownfield (add to existing project).
 
+If the exact wiring or file layout is unclear, load `reference/source.md` and inspect the mapped workspace source instead of guessing.
+
 ## Prerequisites
 
 Baresync requires all of these. If any don't match, it's not the right tool:
@@ -126,13 +128,15 @@ Without these, the sync engine has nowhere to store pending changes, cursor stat
 ### Step 4: Create `sync.config.ts`
 
 ```ts
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineSyncConfig } from "baresync/generator";
-import * as apiSyncedSchema from "./src/api-synced-schema";
-import * as localSyncedSchema from "./src/local-synced-schema";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema,
-  localSyncedSchema,
+  apiSyncedSchema: path.join(__dirname, "src", "api-synced-schema.ts"),
+  localSyncedSchema: path.join(__dirname, "src", "local-synced-schema.ts"),
   outputDir: "./generated",
   tables: {
     items: { scopeColumn: "scope_id" },
@@ -140,7 +144,7 @@ export const syncGeneratorConfig = defineSyncConfig({
 });
 ```
 
-See [generator reference](generator.md) for full config parameters (`limits`, `schemaSourceDir`, table options defaults).
+See [generator reference](generator.md) for full config parameters (`limits`, path-based schema inputs, table options defaults).
 
 ### Step 5: Create Drizzle configs + generate contract + migrations
 
@@ -343,6 +347,54 @@ export function createAppSyncClient(invoke) {
 ```
 
 Wrap in a React provider with event listeners for cache invalidation. See [UI frameworks reference](ui-frameworks.md).
+
+### Step 11b: Set up authenticated sync (brownfield with auth)
+
+If your server requires authentication headers (API keys, Bearer tokens), set headers after creating the sync client:
+
+**JS-owned credentials** (token in browser storage, OAuth flow):
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+
+const client = createSyncClient({ scopeId: SYNC_SCOPE, invoke });
+
+async function onLogin(token: string) {
+  await client.setHeaders({ Authorization: `Bearer ${token}` });
+}
+
+async function onLogout() {
+  await client.setHeaders({});
+}
+```
+
+Call `setHeaders` after login, token refresh, or when auth state changes. The transport snapshots headers before each request — in-flight requests use the old snapshot.
+
+**Rust-owned credentials** (keychain, static API key):
+
+```rust
+use tauri_plugin_baresync::commands::set_headers_with_state;
+
+fn set_api_key(state: &PluginState, key: &str) -> Result<(), String> {
+    set_headers_with_state(state, vec![("X-Api-Key".to_string(), key.to_string())])
+}
+```
+
+Or set static headers at startup via the builder:
+
+```rust
+BaresyncBuilder::new()
+    .api_base_url("http://127.0.0.1:3001")
+    .headers(vec![("X-Api-Key", "my-static-key")])
+    .build()
+```
+
+**Rules:**
+- `Content-Type` is reserved and will be rejected.
+- Headers are plugin-wide, not per-scope.
+- Invalid updates don't replace existing headers (atomic).
+- Pass `{}` to clear all headers.
+- Do not log header values. Do not recreate the client for token refresh.
 
 ### Verify
 

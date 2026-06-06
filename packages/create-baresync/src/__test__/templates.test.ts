@@ -110,5 +110,6 @@ describe("buildUserFacingNextSteps", () => {
     expect(text).toContain("npm run migrate:local");
     expect(text).toContain("npm run migrate:server");
     expect(text).toContain("npm run dev");
+    expect(text).toContain("auth headers");
   });
 });

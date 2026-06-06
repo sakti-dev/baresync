@@ -322,5 +322,6 @@ export function buildUserFacingNextSteps(options: ScaffoldOptions): string {
     `3. ${options.packageManager} run migrate:local`,
     `4. ${options.packageManager} run migrate:server`,
     `5. ${options.packageManager} run dev`,
+    "6. (optional) Add auth headers — see apps/app/src/lib/baresync-sync-client.ts and README.md",
   ].join("\n");
 }

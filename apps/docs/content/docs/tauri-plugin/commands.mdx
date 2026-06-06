@@ -75,6 +75,27 @@ All sync commands take `scope_id: String`, except `purge_synced_outbox` which ta
 
 See [Polling](/docs/tauri-plugin/polling) for the polling lifecycle.
 
+### Configuration
+
+| Command | JS invoke | Description |
+|---|---|---|
+| `set_headers` | `"plugin:baresync|set_headers"` | Replace all custom HTTP headers for sync requests |
+
+`set_headers` accepts `{ headers: Record<string, string> }`. Pass the full set of headers — the call replaces all previous headers. Pass `{}` to clear.
+
+Validation rules:
+
+- Header names and values must comply with HTTP header rules
+- `Content-Type` is reserved and will be rejected
+- Invalid updates are atomic — existing headers are preserved if validation fails
+- Header values are redacted in plugin logs
+
+```ts
+await invoke("plugin:baresync|set_headers", {
+  headers: { Authorization: "Bearer token123", "X-Api-Key": "key" },
+});
+```
+
 ## Error handling
 
 All commands return `Result<T, String>`. Errors are converted to strings with `.to_string()` before being sent back to JS. The JS client receives them as rejected promises.

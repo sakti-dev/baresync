@@ -31,6 +31,11 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
     })
   );
 
+  // To attach auth headers (e.g. after login or token refresh), call:
+  //   client.setHeaders({ Authorization: `Bearer ${token}` });
+  // This replaces all custom headers on every sync request.
+  // Call client.setHeaders({}) to clear them.
+
   useEffect(() => {
     client
       .startPolling()

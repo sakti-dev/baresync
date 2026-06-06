@@ -82,6 +82,7 @@ async fn plugin_state_uses_db_client_and_runs_migrations_before_commands() {
         poll_interval_secs: 30,
         poll_on_background: false,
         event_sink: Arc::new(NoopEventSink),
+        custom_headers: baresync_core::headers::SyncRequestHeaders::new(),
     };
 
     let _ = state;

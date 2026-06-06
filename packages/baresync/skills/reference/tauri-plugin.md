@@ -2,6 +2,8 @@
 
 Full reference for the Tauri plugin — builder config, commands, polling, events, migrations, and testing.
 
+If the exact plugin behavior is unclear, load `reference/source.md` and inspect the mapped workspace source.
+
 ## Crates
 
 | Crate | Purpose |
@@ -39,6 +41,7 @@ BaresyncBuilder::new()
 | `poll_interval_secs` | `u64` | `30` | Seconds between polling cycles |
 | `poll_on_background` | `bool` | `false` | Poll when window is unfocused |
 | `encryption_key_provider` | `impl EncryptionKeyProvider` | `None` | Custom encryption key for SQLite |
+| `headers` | `Vec<(String, String)>` | empty | Static headers set at plugin startup |
 
 ### db_path details
 
@@ -126,6 +129,41 @@ Both `run_sql` and `run_sql_batch` emit `baresync://data-changed` when `rows_aff
 | `get_sync_local_state` | `"plugin:baresync\|get_sync_local_state"` | `LocalSyncState` |
 
 All sync commands take `scope_id: String`, except `purge_synced_outbox` which takes `older_than: String` (it operates across all scopes).
+
+### Runtime request headers
+
+| Command | JS invoke | Returns |
+|---|---|---|
+| `set_headers` | `"plugin:baresync\|set_headers"` | `()` |
+
+**JS usage:**
+
+```ts
+await invoke("plugin:baresync|set_headers", { headers: { "Authorization": "Bearer token" } });
+```
+
+**Rust host-callable:**
+
+```rust
+use tauri_plugin_baresync::commands::set_headers_with_state;
+
+set_headers_with_state(&plugin_state, vec![
+    ("Authorization".to_string(), format!("Bearer {}", token)),
+])?;
+```
+
+**Shared header store:**
+- All writers (JS `setHeaders`, Rust `set_headers_with_state`, builder `.headers(...)`) write to the same `Arc<RwLock<HashMap<String, String>>>` inside `PluginState`.
+- Headers are plugin-wide, not per-scope.
+- `Content-Type` is reserved — the command rejects it with a validation error.
+- Header names and values are validated using HTTP header parsing types.
+- Invalid updates are rejected without replacing existing headers (atomic).
+- Pass an empty map `{}` (JS) or empty `Vec` (Rust) to clear all headers.
+
+**Transport behavior:**
+- Before each sync request (push, pull, status), the transport snapshots the current headers from the shared store.
+- In-flight requests use the snapshot from when they started — later `setHeaders` calls do not affect them.
+- This means you can safely call `setHeaders` while sync is in progress.
 
 ### Maintenance
 

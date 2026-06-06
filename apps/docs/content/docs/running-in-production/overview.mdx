@@ -55,6 +55,67 @@ If polling is enabled, also check `getPollingStatus()`:
 | `paused` | Paused because window lost focus (if `poll_on_background` is `false`) |
 | `last_sync_at` | Timestamp of the last completed sync cycle |
 
+## Authenticated sync
+
+If your server requires auth headers for sync endpoints, you need to manage the header lifecycle in your app. The plugin sends custom headers with every sync HTTP request, but does not handle token refresh or login itself.
+
+### JS-owned login
+
+When your frontend handles login (e.g. OAuth, email/password), set headers from JS after receiving the token:
+
+```ts
+const token = await login(username, password);
+await syncClient.setHeaders({ Authorization: `Bearer ${token}` });
+await syncClient.startPolling();
+```
+
+On logout, clear headers and stop polling:
+
+```ts
+await syncClient.stopPolling();
+await syncClient.setHeaders({});
+```
+
+### Rust-owned secure storage
+
+For apps that store tokens in the OS keychain via Rust, read the token from Rust and call `set_headers_with_state` during plugin setup. That keeps the native-owned credential path on the Rust side and writes into the same shared header store used by the JS client.
+
+### Token refresh
+
+When tokens expire, the server returns 401. Handle this in your app:
+
+1. Catch 401 sync errors (check for `kind: "auth"`)
+2. Refresh the token using your auth provider
+3. Call `setHeaders` with the new token
+4. The next polling cycle or manual `syncNow()` will use the updated headers
+
+```ts
+async function syncWithAuthRefresh() {
+  try {
+    await client.syncNow();
+  } catch (error) {
+    if (isAuthError(error)) {
+      const newToken = await refreshToken();
+      await client.setHeaders({ Authorization: `Bearer ${newToken}` });
+      await client.syncNow();
+    } else {
+      throw error;
+    }
+  }
+}
+```
+
+### Static headers via builder
+
+For non-session headers (API keys, client version), use the Rust builder:
+
+```rust
+BaresyncBuilder::new()
+    .headers(vec![("X-Api-Key", "static-key")])
+```
+
+These are set once at startup. Use `setHeaders` from JS to add or replace headers at runtime.
+
 ## Where to go next
 
 | I need to... | Go to |

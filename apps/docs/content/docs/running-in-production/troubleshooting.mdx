@@ -39,6 +39,26 @@ The server rejected the request because the scope isn't authorized. This happens
 
 **Fix**: Check that the `scopeId` in your `SyncClient` config matches a scope the server recognizes. If you use auth, ensure tokens are valid.
 
+If your server requires auth headers, verify they are set:
+
+```ts
+// After login
+await client.setHeaders({ Authorization: `Bearer ${token}` });
+
+// After token refresh
+await client.setHeaders({ Authorization: `Bearer ${newToken}` });
+
+// On logout
+await client.setHeaders({});
+await client.stopPolling();
+```
+
+Common auth header issues:
+
+- **Headers never set** — `setHeaders` was never called after login. The plugin sends requests without auth headers.
+- **Expired token** — The token was valid when set but has since expired. Refresh tokens before they expire or catch 401 errors and refresh + retry.
+- **Cleared after re-render** — If the client is recreated on re-render (wrong pattern), headers are lost. Create the client once with `useState` or `useRef`.
+
 ### 409 — Idempotency conflict
 
 ```txt

@@ -58,6 +58,51 @@ const client = createSyncClient({
 await expect(client.syncNow()).rejects.toThrow("network unavailable");
 ```
 
+### Test setHeaders
+
+Mock the `set_headers` command to verify header updates:
+
+```ts
+it("sets auth headers before sync", async () => {
+  const invoked: Array<{ cmd: string; args: unknown }> = [];
+  const invoke = vi.fn(async (cmd: string, args?: unknown) => {
+    invoked.push({ cmd, args });
+    if (cmd === "plugin:baresync|set_headers") return;
+    if (cmd === "get_sync_local_state") {
+      return { local_dirty_count: 0, last_server_watermark: "", needs_baseline_sync: false };
+    }
+    return {};
+  });
+
+  const client = createSyncClient({ scopeId: "merchant-1", invoke });
+  await client.setHeaders({ Authorization: "Bearer test-token" });
+
+  expect(invoke).toHaveBeenCalledWith("plugin:baresync|set_headers", {
+    headers: { Authorization: "Bearer test-token" },
+  });
+});
+```
+
+### Test that headers are not logged
+
+```ts
+it("does not expose header values in error messages", async () => {
+  const consoleSpy = vi.spyOn(console, "error");
+  const client = createSyncClient({
+    scopeId: "merchant-1",
+    invoke: async (cmd: string) => {
+      if (cmd === "plugin:baresync|set_headers") return;
+      throw new Error("sync failed");
+    },
+  });
+
+  await client.setHeaders({ "X-Api-Key": "secret-key" });
+  await expect(client.syncNow()).rejects.toThrow("sync failed");
+  const logged = consoleSpy.mock.calls.flat().join(" ");
+  expect(logged).not.toContain("secret-key");
+});
+```
+
 ### Test event bridges
 
 Mock `@tauri-apps/api/event` and capture the listener:

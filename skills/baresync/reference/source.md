@@ -50,7 +50,7 @@ Path: `packages/baresync/src/`
 
 | Directory | Contains |
 |-----------|----------|
-| `packages/baresync/src/client/` | `createSyncClient`, `writeTransaction`, `writeLocalChange` — client-side sync logic |
+| `packages/baresync/src/tauri/client.ts` | `createSyncClient`, `writeTransaction`, `writeLocalChange` — client-side sync logic |
 | `packages/baresync/src/server/` | `createSyncPushHandler`, `createSyncPullHandler`, `createDrizzleSyncRepository` — server handler factories |
 | `packages/baresync/src/generator/` | `defineSyncConfig`, `generateSyncArtifacts`, diagnostics — sync config and code generation |
 | `packages/baresync/src/schema/` | `defineSyncContract`, `defineSyncedTable`, `apiSyncColumns`, `localSyncColumns` — schema helpers |
@@ -68,16 +68,20 @@ Path: `crates/`
 
 ### Common lookups
 
-- "What does `createSyncClient` accept?" → `packages/baresync/src/client/`
+- "What does `createSyncClient` accept?" → `packages/baresync/src/tauri/client.ts`
 - "How does the plugin poll?" → `crates/tauri-plugin-baresync/src/polling.rs`
 - "What does `createDrizzleSyncRepository` return?" → `packages/baresync/src/server/drizzle.ts`
 - "How does chunking work?" → `crates/baresync-core/src/chunking.rs`
 - "What Tauri commands does the plugin register?" → `crates/tauri-plugin-baresync/src/commands.rs`
 - "How does the outbox work?" → `crates/baresync-core/src/outbox.rs`
 - "What does the generator output?" → `packages/baresync/src/generator/`
-- "How does `writeTransaction` work?" → `packages/baresync/src/client/`
+- "How does `writeTransaction` work?" → `packages/baresync/src/tauri/client.ts`
 - "What are the sync transport traits?" → `crates/baresync-core/src/transport.rs`
 - "How does the migration runner work?" → `crates/tauri-plugin-baresync/src/migrations.rs`
+- "How does `setHeaders` work on the JS client?" → `packages/baresync/src/tauri/client.ts` using `rg "setHeaders"`
+- "How does `set_headers` command work in Rust?" → `crates/tauri-plugin-baresync/src/commands.rs` using `rg "set_headers"`
+- "How are headers stored and shared?" → `crates/tauri-plugin-baresync/src/commands.rs` (look for `PluginState`)
+- "How does the transport snapshot headers?" → `crates/baresync-core/src/transport.rs` using `rg "headers"` or `rg "snapshot"`
 
 ## Specific API Lookup
 
@@ -89,12 +93,18 @@ Path: `crates/`
 | `generateSyncArtifacts()` behavior | `packages/baresync/src/generator/index.ts` |
 | schema-module loading / export filtering | `packages/baresync/src/generator/index.ts` |
 | CLI generator behavior | `packages/baresync/src/cli/generator.ts` |
-| `writeTransaction()` behavior | `packages/baresync/src/client/` using `rg "writeTransaction"` |
-| `writeLocalChange()` behavior | `packages/baresync/src/client/` using `rg "writeLocalChange"` |
+| `writeTransaction()` behavior | `packages/baresync/src/tauri/client.ts` using `rg "writeTransaction"` |
+| `writeLocalChange()` behavior | `packages/baresync/src/tauri/client.ts` using `rg "writeLocalChange"` |
 | server push handler | `packages/baresync/src/server/` using `rg "createSyncPushHandler"` |
 | server pull handler | `packages/baresync/src/server/` using `rg "createSyncPullHandler"` |
 | Drizzle repository | `packages/baresync/src/server/` using `rg "createDrizzleSyncRepository"` |
 | Tauri DB bridge | `packages/baresync/src/tauri/` using `rg "createTauriDrizzleDatabase"` |
+| `setHeaders()` JS client method | `packages/baresync/src/tauri/client.ts` using `rg "setHeaders"` |
+| `set_headers` Rust command | `crates/tauri-plugin-baresync/src/commands.rs` using `rg "set_headers"` |
+| `set_headers_with_state` host-callable | `crates/tauri-plugin-baresync/src/commands.rs` using `rg "set_headers_with_state"` |
+| Header store (shared `Arc<RwLock<HashMap>>`) | `crates/tauri-plugin-baresync/src/` using `rg "custom_headers"` |
+| Builder `.headers()` method | `crates/tauri-plugin-baresync/src/builder.rs` using `rg "fn headers"` |
+| Header validation logic | `crates/baresync-core/src/` or `crates/tauri-plugin-baresync/src/` using `rg "Content-Type"` |
 | Rust polling loop | `crates/tauri-plugin-baresync/src/polling.rs` |
 | Rust commands | `crates/tauri-plugin-baresync/src/commands.rs` |
 | Rust chunking | `crates/baresync-core/src/chunking.rs` |

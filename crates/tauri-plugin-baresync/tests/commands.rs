@@ -217,6 +217,7 @@ impl TestCommandState {
             poll_interval_secs: 30,
             poll_on_background: false,
             event_sink: Arc::new(event_sink.clone()),
+            custom_headers: baresync_core::headers::SyncRequestHeaders::new(),
         };
 
         Self { state, event_sink }
@@ -644,6 +645,7 @@ async fn migration_commands_apply_filesystem_migrations_from_path() {
             poll_interval_secs: 30,
             poll_on_background: false,
             event_sink: Arc::new(RecordingEventSink::default()),
+            custom_headers: baresync_core::headers::SyncRequestHeaders::new(),
         },
         event_sink: RecordingEventSink::default(),
     };

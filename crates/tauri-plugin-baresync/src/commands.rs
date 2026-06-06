@@ -1,5 +1,6 @@
 use baresync_core::config::SyncEngineConfig;
 use baresync_core::engine::{SyncContractTables, SyncEngine, SyncNowResult};
+use baresync_core::headers::SyncRequestHeaders;
 use baresync_core::migrations::{self, EmbeddedMigration, MigrationConfig, MigrationRecord};
 use baresync_core::state::LocalSyncState;
 
@@ -50,6 +51,7 @@ pub struct PluginState {
     pub poll_interval_secs: u64,
     pub poll_on_background: bool,
     pub event_sink: Arc<dyn PluginEventSink>,
+    pub custom_headers: SyncRequestHeaders,
 }
 
 fn make_engine(
@@ -577,6 +579,24 @@ pub async fn get_polling_status_with_state(state: &PluginState) -> Result<Pollin
     })
 }
 
+pub async fn set_headers_with_state(
+    state: &PluginState,
+    headers: Vec<(String, String)>,
+) -> Result<(), String> {
+    state
+        .custom_headers
+        .replace(&headers)
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn set_headers(
+    state: State<'_, PluginState>,
+    headers: Vec<(String, String)>,
+) -> Result<(), String> {
+    set_headers_with_state(&state, headers).await
+}
+
 async fn notify_polling_sync_completed(state: &PluginState) {
     let guard = state.poll_control_tx.lock().await;
     if let Some(tx) = guard.as_ref() {
@@ -670,6 +690,7 @@ mod tests {
         let _ = super::pause_polling;
         let _ = super::resume_polling;
         let _ = super::get_polling_status;
+        let _ = super::set_headers;
     }
 
     async fn test_state() -> PluginState {
@@ -699,6 +720,7 @@ mod tests {
             poll_interval_secs: 30,
             poll_on_background: false,
             event_sink: Arc::new(NoopPluginEventSink),
+            custom_headers: SyncRequestHeaders::new(),
         }
     }
 
@@ -772,5 +794,97 @@ mod tests {
             classify_sql_transaction_action("insert into items values ('1')"),
             1
         ));
+    }
+
+    #[tokio::test]
+    async fn set_headers_stores_valid_headers() {
+        let state = test_state().await;
+        set_headers_with_state(&state, vec![
+            ("Authorization".to_string(), "Bearer token-1".to_string()),
+            ("X-Api-Key".to_string(), "key-1".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        let snapshot = state.custom_headers.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer token-1");
+        assert_eq!(snapshot.get("x-api-key").unwrap(), "key-1");
+    }
+
+    #[tokio::test]
+    async fn set_headers_clears_headers_with_empty_vec() {
+        let state = test_state().await;
+        set_headers_with_state(&state, vec![
+            ("Authorization".to_string(), "Bearer token".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        set_headers_with_state(&state, vec![]).await.unwrap();
+
+        let snapshot = state.custom_headers.snapshot();
+        assert!(snapshot.is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_headers_rejects_invalid_header_name() {
+        let state = test_state().await;
+        let result = set_headers_with_state(&state, vec![
+            ("Invalid Name!".to_string(), "value".to_string()),
+        ])
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn set_headers_rejects_invalid_header_value() {
+        let state = test_state().await;
+        let result = set_headers_with_state(&state, vec![
+            ("X-Test".to_string(), "value\nwith\nnewlines".to_string()),
+        ])
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn set_headers_preserves_old_headers_on_failed_validation() {
+        let state = test_state().await;
+        set_headers_with_state(&state, vec![
+            ("Authorization".to_string(), "Bearer valid".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        let result = set_headers_with_state(&state, vec![
+            ("Invalid Name!".to_string(), "value".to_string()),
+        ])
+        .await;
+        assert!(result.is_err());
+
+        let snapshot = state.custom_headers.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer valid");
+    }
+
+    #[tokio::test]
+    async fn js_command_and_rust_host_write_same_store() {
+        let state = test_state().await;
+
+        set_headers_with_state(&state, vec![
+            ("Authorization".to_string(), "Bearer rust-host".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        let snapshot = state.custom_headers.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer rust-host");
+
+        set_headers_with_state(&state, vec![
+            ("Authorization".to_string(), "Bearer js-command".to_string()),
+        ])
+        .await
+        .unwrap();
+
+        let snapshot = state.custom_headers.snapshot();
+        assert_eq!(snapshot.get("authorization").unwrap(), "Bearer js-command");
     }
 }

@@ -348,6 +348,54 @@ export function createAppSyncClient(invoke) {
 
 Wrap in a React provider with event listeners for cache invalidation. See [UI frameworks reference](ui-frameworks.md).
 
+### Step 11b: Set up authenticated sync (brownfield with auth)
+
+If your server requires authentication headers (API keys, Bearer tokens), set headers after creating the sync client:
+
+**JS-owned credentials** (token in browser storage, OAuth flow):
+
+```ts
+import { createSyncClient } from "baresync/tauri";
+
+const client = createSyncClient({ scopeId: SYNC_SCOPE, invoke });
+
+async function onLogin(token: string) {
+  await client.setHeaders({ Authorization: `Bearer ${token}` });
+}
+
+async function onLogout() {
+  await client.setHeaders({});
+}
+```
+
+Call `setHeaders` after login, token refresh, or when auth state changes. The transport snapshots headers before each request — in-flight requests use the old snapshot.
+
+**Rust-owned credentials** (keychain, static API key):
+
+```rust
+use tauri_plugin_baresync::commands::set_headers_with_state;
+
+fn set_api_key(state: &PluginState, key: &str) -> Result<(), String> {
+    set_headers_with_state(state, vec![("X-Api-Key".to_string(), key.to_string())])
+}
+```
+
+Or set static headers at startup via the builder:
+
+```rust
+BaresyncBuilder::new()
+    .api_base_url("http://127.0.0.1:3001")
+    .headers(vec![("X-Api-Key", "my-static-key")])
+    .build()
+```
+
+**Rules:**
+- `Content-Type` is reserved and will be rejected.
+- Headers are plugin-wide, not per-scope.
+- Invalid updates don't replace existing headers (atomic).
+- Pass `{}` to clear all headers.
+- Do not log header values. Do not recreate the client for token refresh.
+
 ### Verify
 
 ```bash

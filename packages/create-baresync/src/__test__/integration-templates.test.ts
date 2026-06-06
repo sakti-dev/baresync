@@ -74,5 +74,29 @@ describe("server and tauri scaffold templates", () => {
     expect(libRs?.content).toMatch(CONTRACT_PATH_RE);
     expect(dbHelper?.content).toContain("createTauriDrizzleDatabase");
     expect(syncClient?.content).toContain("createSyncClient");
+    expect(syncClient?.content).toContain("setHeaders");
+  });
+
+  it("includes auth header guidance in generated templates", () => {
+    const files = buildRootScaffoldFiles({
+      packageManager: "bun",
+      projectName: "acme-inventory",
+      serverFramework: "hono",
+    });
+
+    const syncClient = files.find(
+      (file) => file.path === "apps/app/src/lib/baresync-sync-client.ts"
+    );
+    const readme = files.find((file) => file.path === "README.md");
+    const fallback = files.find(
+      (file) => file.path === "apps/server/src/sync-fallback-instructions.md"
+    );
+
+    expect(syncClient?.content).toContain("setHeaders");
+    expect(syncClient?.content).toContain("Authorization");
+    expect(readme?.content).toContain("setHeaders");
+    expect(readme?.content).toContain("resolveScope");
+    expect(fallback?.content).toContain("resolveScope");
+    expect(fallback?.content).toContain("setHeaders");
   });
 });

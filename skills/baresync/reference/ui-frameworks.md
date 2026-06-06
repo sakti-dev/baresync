@@ -259,6 +259,7 @@ The write patterns (`writeTransaction` + `writeLocalChange`) are identical acros
 | `writeTransaction(db, tx)` | Open a Drizzle transaction |
 | `writeLocalChange(tx, opts)` | Atomic write + outbox entry |
 | `enqueueChange(tx, opts)` | Outbox entry only, no write |
+| `setHeaders(headers)` | Replace all custom HTTP headers. Pass `{}` to clear. Returns `Promise<void>` |
 
 ## Displaying sync status
 
@@ -276,6 +277,61 @@ if (state.needs_baseline_sync) {
 ```
 
 Invalidate the `["sync-state"]` query key when `baresync://sync-status-changed` fires.
+
+## Auth-state-driven setHeaders
+
+When your server requires authentication, call `setHeaders` from your auth provider — not inside the sync client.
+
+### React: auth-aware provider
+
+```tsx
+import { createSyncClient, type SyncClient } from "baresync/tauri";
+
+function SyncClientProvider({ children, authToken }: { children: ReactNode; authToken: string | null }) {
+  const [client] = useState(() => createSyncClient({ scopeId: "your-scope-id", invoke }));
+
+  useEffect(() => {
+    if (authToken) {
+      client.setHeaders({ Authorization: `Bearer ${authToken}` });
+    } else {
+      client.setHeaders({});
+    }
+  }, [client, authToken]);
+
+  return <SyncClientContext.Provider value={client}>{children}</SyncClientContext.Provider>;
+}
+```
+
+Place `SyncClientProvider` inside your auth provider so it receives the token as a prop.
+
+### Solid: auth-aware provider
+
+```tsx
+export const SyncClientProvider: ParentComponent = (props) => {
+  const auth = useAuthContext();
+  const [client] = createSignal(createSyncClient({ scopeId: "your-scope-id", invoke }));
+
+  createEffect(() => {
+    const token = auth.token();
+    if (token) {
+      client().setHeaders({ Authorization: `Bearer ${token}` });
+    } else {
+      client().setHeaders({});
+    }
+  });
+
+  return <SyncClientContext.Provider value={client()}>{props.children}</SyncClientContext.Provider>;
+};
+```
+
+### Rules
+
+- Call `setHeaders` when auth state changes (login, logout, token refresh).
+- Pass `{}` on logout to clear headers.
+- `Content-Type` is reserved — do not include it.
+- Headers are plugin-wide — all scopes share the same headers.
+- Do not recreate the sync client for token refresh. Call `setHeaders` on the existing client.
+- Do not log header values.
 
 ## Common mistakes
 

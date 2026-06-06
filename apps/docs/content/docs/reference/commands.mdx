@@ -200,6 +200,24 @@ const status = await invoke("plugin:baresync|get_polling_status");
 // { running: true, paused: false, last_sync_at: "2026-05-22T10:30:00Z" }
 ```
 
+## Configuration
+
+### `set_headers`
+
+Replace all custom HTTP headers sent with sync requests. Headers are shared across all scopes.
+
+```ts
+await invoke("plugin:baresync|set_headers", {
+  headers: { Authorization: "Bearer token123", "X-Api-Key": "key" },
+});
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `headers` | `Record<string, string>` | Complete set of custom headers. Pass `{}` to clear all. |
+
+Headers are validated against HTTP header name/value rules. `Content-Type` is reserved and will be rejected. Invalid updates don't replace existing headers. All sync HTTP requests (push, pull, status) include these headers.
+
 ## Command summary
 
 | Command | Params | Returns |
@@ -221,3 +239,4 @@ const status = await invoke("plugin:baresync|get_polling_status");
 | `pause_polling` | - | `()` |
 | `resume_polling` | - | `()` |
 | `get_polling_status` | - | `PollingStatus` |
+| `set_headers` | `headers` | `()` |

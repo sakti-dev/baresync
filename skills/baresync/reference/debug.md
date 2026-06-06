@@ -16,6 +16,7 @@ Classify the failure before proposing fixes.
 | Table not found | Local migrations and plugin migration path | `reference/tauri-plugin.md`, `reference/source.md` |
 | UI stale after sync | Event bridge and query invalidation keys | `reference/ui-frameworks.md`, `reference/source.md` |
 | Doctor/generate fails | Schema diagnostics | `reference/generator.md`, `reference/source.md` |
+| 401/403 on every sync | Missing or stale auth headers | See "Auth header issues" below |
 
 ## Debug Output Contract
 
@@ -92,6 +93,48 @@ RUST_LOG=debug bun run dev
 1. Check `contract_tables` in `lib.rs` has correct upsert/delete order
 2. Check server `/push` returns 200
 3. Check server console for errors in `applyPushChanges`
+
+## Auth header issues (401/403)
+
+When sync requests fail with 401 or 403, the server is rejecting the request due to missing or invalid authentication headers.
+
+### Diagnosis
+
+1. Run with `RUST_LOG=debug` and look for `[baresync] HTTP POST ... -> 401` or `-> 403`.
+2. Check whether `setHeaders` was called before sync started:
+   ```ts
+   const state = await client.getState();
+   // If needs_baseline_sync is true and 401 appears, headers may not be set yet
+   ```
+3. Verify the header store is populated (check your auth provider flow).
+
+### Common causes
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| 401 on every request after login | `setHeaders` not called | Call `client.setHeaders({ Authorization: ... })` after login |
+| 401 after token refresh | Stale token in headers | Call `setHeaders` again with the new token |
+| 401 immediately on app start | Auth state not loaded before sync starts | Delay `startPolling` until after `setHeaders` completes |
+| 403 on every request | Wrong scope or insufficient permissions | Check server's `resolveScope` logic, not headers |
+| Validation error from `setHeaders` | `Content-Type` in headers | Remove `Content-Type` — it is reserved |
+
+### Token refresh flow
+
+When a sync request fails with 401, refresh the token and call `setHeaders` again:
+
+```ts
+try {
+  await client.syncNow();
+} catch (e) {
+  if (e instanceof Error && e.message.includes("auth")) {
+    const newToken = await refreshToken();
+    await client.setHeaders({ Authorization: `Bearer ${newToken}` });
+    await client.syncNow();
+  }
+}
+```
+
+Do not recreate the sync client. Call `setHeaders` on the existing client.
 
 ## "table not found" errors
 
