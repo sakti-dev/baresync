@@ -4,9 +4,9 @@
 description = """
 ### Default Permissions
 
-This permission set enables the Baresync local database, migration, sync, and polling commands.
+This permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.
 
-These commands are intended for trusted Tauri app frontends that own the local sync database.
+These commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.
 """
 permissions = [
   "allow-run-sql",
@@ -17,6 +17,7 @@ permissions = [
   "allow-sync-now",
   "allow-sync-push",
   "allow-sync-pull",
+  "allow-set_headers",
   "allow-sync-full-resync",
   "allow-get-sync-local-state",
   "allow-purge-synced-outbox",

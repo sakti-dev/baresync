@@ -2,9 +2,9 @@
 
 ### Default Permissions
 
-This permission set enables the Baresync local database, migration, sync, and polling commands.
+This permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.
 
-These commands are intended for trusted Tauri app frontends that own the local sync database.
+These commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.
 
 #### This default permission set includes the following:
 
@@ -16,6 +16,7 @@ These commands are intended for trusted Tauri app frontends that own the local s
 - `allow-sync-now`
 - `allow-sync-push`
 - `allow-sync-pull`
+- `allow-set_headers`
 - `allow-sync-full-resync`
 - `allow-get-sync-local-state`
 - `allow-purge-synced-outbox`
@@ -317,6 +318,32 @@ Enables the run_sql_batch command without any pre-configured scope.
 <td>
 
 Denies the run_sql_batch command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`baresync:allow-set_headers`
+
+</td>
+<td>
+
+Enables the set_headers command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`baresync:deny-set_headers`
+
+</td>
+<td>
+
+Denies the set_headers command without any pre-configured scope.
 
 </td>
 </tr>
