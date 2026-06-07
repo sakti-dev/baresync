@@ -6,9 +6,14 @@ import { SyncClientProvider } from "../useBaresyncQuery";
 
 const listen = vi.hoisted(() => vi.fn());
 const createSyncClient = vi.hoisted(() => vi.fn());
+const invokeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("baresync/tauri", () => ({
   createSyncClient,
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -22,6 +27,7 @@ describe("SyncClientProvider event bridge", () => {
 
   function createClientMock() {
     return {
+      setHeaders: vi.fn().mockResolvedValue(undefined),
       startPolling: vi.fn().mockResolvedValue(undefined),
       stopPolling: vi.fn().mockResolvedValue(undefined),
     };
@@ -30,6 +36,10 @@ describe("SyncClientProvider event bridge", () => {
   function renderProvider(queryClient: QueryClient, strict = false) {
     const client = createClientMock();
     createSyncClient.mockReturnValue(client);
+    invokeMock.mockResolvedValue({
+      api_url: "http://127.0.0.1:3001/api/sync/v1",
+      auth_token: null,
+    });
 
     const provider = createElement(
       QueryClientProvider,
@@ -108,12 +118,64 @@ describe("SyncClientProvider event bridge", () => {
   it("restarts polling after StrictMode effect cleanup", async () => {
     const queryClient = new QueryClient();
     listen.mockResolvedValue(async () => {});
+    invokeMock.mockResolvedValue({
+      api_url: "http://127.0.0.1:3001/api/sync/v1",
+      auth_token: null,
+    });
 
     const { client } = renderProvider(queryClient, true);
 
     await waitFor(() => {
-      expect(client.startPolling).toHaveBeenCalledTimes(2);
+      expect(client.startPolling).toHaveBeenCalledTimes(1);
     });
     expect(client.stopPolling).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets auth headers before starting polling when the runtime token exists", async () => {
+    const queryClient = new QueryClient();
+    const calls: string[] = [];
+    const client = createClientMock();
+    client.setHeaders.mockImplementation(() => {
+      calls.push("setHeaders");
+      return Promise.resolve();
+    });
+    client.startPolling.mockImplementation(() => {
+      calls.push("startPolling");
+      return Promise.resolve();
+    });
+    createSyncClient.mockReturnValue(client);
+    listen.mockResolvedValue(() => {});
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_inventory_runtime_config") {
+        return Promise.resolve({
+          api_url: "http://127.0.0.1:3001/api/sync/v1",
+          auth_token: "demo-token",
+        });
+      }
+
+      return Promise.reject(new Error(`unexpected invoke: ${command}`));
+    });
+
+    render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          SyncClientProvider,
+          null,
+          createElement("div", null, "child")
+        )
+      )
+    );
+
+    await waitFor(() => {
+      expect(client.startPolling).toHaveBeenCalled();
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("get_inventory_runtime_config");
+    expect(client.setHeaders).toHaveBeenCalledWith({
+      Authorization: "Bearer demo-token",
+    });
+    expect(calls).toEqual(["setHeaders", "startPolling"]);
   });
 });

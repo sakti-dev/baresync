@@ -136,6 +136,12 @@ All sync commands take `scope_id: String`, except `purge_synced_outbox` which ta
 |---|---|---|
 | `set_headers` | `"plugin:baresync\|set_headers"` | `()` |
 
+**Permission mapping:**
+
+- Command names keep underscores: `set_headers`
+- Tauri permission identifiers use hyphens: `allow-set-headers`, `deny-set-headers`
+- Capability files must reference the hyphenated identifiers, not the command name
+
 **JS usage:**
 
 ```ts

@@ -3,11 +3,11 @@
 "$schema" = "../../schemas/schema.json"
 
 [[permission]]
-identifier = "allow-set_headers"
+identifier = "allow-set-headers"
 description = "Enables the set_headers command without any pre-configured scope."
 commands.allow = ["set_headers"]
 
 [[permission]]
-identifier = "deny-set_headers"
+identifier = "deny-set-headers"
 description = "Denies the set_headers command without any pre-configured scope."
 commands.deny = ["set_headers"]

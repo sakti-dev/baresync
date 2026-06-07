@@ -68,6 +68,22 @@ function findAvailablePort() {
   });
 }
 
+function runCheckedCommand(
+  command: string,
+  args: string[],
+  options: Parameters<typeof spawnSync>[2]
+) {
+  const result = spawnSync(command, args, options);
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `${command} ${args.join(" ")} failed with exit code ${result.status}`
+    );
+  }
+}
+
 async function waitForFixtureBackend(apiUrl: string) {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -147,11 +163,18 @@ export const config = {
     });
     await waitForFixtureBackend(fixtureApiUrl);
 
+    const fixtureAppDir = path.resolve(__dirname, "../../../tests/fixture-app");
+    runCheckedCommand("bun", ["run", "build"], {
+      cwd: fixtureAppDir,
+      env: runtime.process.env,
+      stdio: "inherit",
+    });
+
     fixtureDevServer = spawn(
       "bun",
       ["x", "vite", "--host", "127.0.0.1", "--port", "5173"],
       {
-        cwd: path.resolve(__dirname, "../../../tests/fixture-app"),
+        cwd: fixtureAppDir,
         stdio: ["ignore", runtime.process.stdout, runtime.process.stderr],
       }
     );
@@ -160,7 +183,7 @@ export const config = {
       runtime.process.exit(1);
     });
 
-    spawnSync(
+    runCheckedCommand(
       "cargo",
       [
         "build",

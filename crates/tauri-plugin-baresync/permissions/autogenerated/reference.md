@@ -16,7 +16,7 @@ These commands are intended for trusted Tauri app frontends that own the local s
 - `allow-sync-now`
 - `allow-sync-push`
 - `allow-sync-pull`
-- `allow-set_headers`
+- `allow-set-headers`
 - `allow-sync-full-resync`
 - `allow-get-sync-local-state`
 - `allow-purge-synced-outbox`
@@ -325,7 +325,7 @@ Denies the run_sql_batch command without any pre-configured scope.
 <tr>
 <td>
 
-`baresync:allow-set_headers`
+`baresync:allow-set-headers`
 
 </td>
 <td>
@@ -338,7 +338,7 @@ Enables the set_headers command without any pre-configured scope.
 <tr>
 <td>
 
-`baresync:deny-set_headers`
+`baresync:deny-set-headers`
 
 </td>
 <td>

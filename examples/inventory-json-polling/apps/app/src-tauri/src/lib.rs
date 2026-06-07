@@ -33,24 +33,41 @@ async fn reset_fixture_state(state: State<'_, PluginState>) -> Result<(), String
 }
 
 #[command]
-async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
-    let config = FixtureRuntimeConfig {
+async fn get_inventory_runtime_config() -> Result<InventoryRuntimeConfig, String> {
+    let config = InventoryRuntimeConfig {
         api_url: fixture_api_url(),
+        auth_token: inventory_auth_token(),
     };
     eprintln!(
-        "[inventory-app] get_fixture_runtime_config api_url={}",
-        config.api_url
+        "[inventory-app] get_inventory_runtime_config api_url={} auth_token={}",
+        config.api_url,
+        if config.auth_token.is_some() {
+            "set"
+        } else {
+            "unset"
+        }
     );
     Ok(config)
 }
 
 #[derive(Serialize)]
-struct FixtureRuntimeConfig {
+struct InventoryRuntimeConfig {
     api_url: String,
+    auth_token: Option<String>,
 }
 
 fn fixture_api_url() -> String {
     env::var("INVENTORY_API_URL").unwrap_or_else(|_| "http://127.0.0.1:3001".to_string())
+}
+
+fn inventory_auth_token() -> Option<String> {
+    Some(
+        env::var("INVENTORY_SYNC_TOKEN")
+            .unwrap_or_else(|_| "demo-token".to_string())
+            .trim()
+            .to_string(),
+    )
+    .filter(|token| !token.is_empty())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,7 +86,10 @@ pub fn run() {
                 .poll_interval_secs(30)
                 .build(),
         )
-        .invoke_handler(generate_handler![reset_fixture_state, get_fixture_runtime_config])
+        .invoke_handler(generate_handler![
+            reset_fixture_state,
+            get_inventory_runtime_config
+        ])
         .run(generate_context!())
         .expect("failed to run inventory app");
 }

@@ -49,6 +49,33 @@ async function waitForText(
   );
 }
 
+async function waitForAppReady() {
+  const runtime = globalThis as typeof globalThis & {
+    browser: {
+      waitUntil(
+        condition: () => Promise<boolean>,
+        options?: { timeout?: number; timeoutMsg?: string }
+      ): Promise<void>;
+    };
+  };
+  await runtime.browser.waitUntil(
+    async () => {
+      const status = await text("#app-status");
+      return status === "ready" || status === "error";
+    },
+    {
+      timeout: 30_000,
+      timeoutMsg: "app should finish booting",
+    }
+  );
+
+  const status = await text("#app-status");
+  ensure(
+    status === "ready",
+    `app failed to boot: ${await text("#sync-result")}`
+  );
+}
+
 async function waitForTextIncludes(
   selector: string,
   expected: string,
@@ -124,7 +151,7 @@ smokeSuite("public fixture desktop smoke", () => {
 
     const appStatus = await runtime.browser.$("#app-status");
     await appStatus.waitForDisplayed();
-    await waitForText("#app-status", "ready", "app should be ready");
+    await waitForAppReady();
     ensure(
       (await text("#db-path")).includes("fixture-"),
       "db path should include fixture"
@@ -198,7 +225,7 @@ smokeSuite("public fixture desktop smoke", () => {
     await runtime.browser.reloadSession();
     const restartedStatus = await runtime.browser.$("#app-status");
     await restartedStatus.waitForDisplayed();
-    await waitForText("#app-status", "ready", "restarted app should be ready");
+    await waitForAppReady();
     ensure(
       (await text("#categories-list")).includes("Fixture Category 001"),
       "category should survive restart"

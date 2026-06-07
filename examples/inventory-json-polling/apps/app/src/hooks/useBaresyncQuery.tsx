@@ -20,6 +20,11 @@ interface UseQueryResult<Row> {
 
 type QueryBuilder<Row> = () => PromiseLike<Row[]>;
 
+interface InventoryRuntimeConfig {
+  api_url: string;
+  auth_token: string | null;
+}
+
 const SyncClientContext = createContext<SyncClient | null>(null);
 
 export function SyncClientProvider({ children }: { children: ReactNode }) {
@@ -37,16 +42,33 @@ export function SyncClientProvider({ children }: { children: ReactNode }) {
   // Call client.setHeaders({}) to clear them.
 
   useEffect(() => {
-    client
-      .startPolling()
-      .then(async () => {
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      try {
+        const runtimeConfig = (await invoke(
+          "get_inventory_runtime_config"
+        )) as InventoryRuntimeConfig;
+        if (cancelled) {
+          return;
+        }
+
+        await client.setHeaders(
+          runtimeConfig.auth_token
+            ? { Authorization: `Bearer ${runtimeConfig.auth_token}` }
+            : {}
+        );
+        await client.startPolling();
         await queryClient.invalidateQueries({ queryKey: ["sync-state"] });
-      })
-      .catch((err) => {
-        console.error("[baresync] startPolling failed:", err);
-      });
+      } catch (err) {
+        console.error("[baresync] inventory bootstrap failed:", err);
+      }
+    };
+
+    bootstrap();
 
     return () => {
+      cancelled = true;
       client.stopPolling().catch(() => {});
     };
   }, [client, queryClient]);

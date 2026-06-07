@@ -83,6 +83,15 @@ it("sets auth headers before sync", async () => {
 });
 ```
 
+### Test Tauri permission wiring
+
+If you add a new command or capability entry, verify both names:
+
+- the IPC command stays underscored, e.g. `set_headers`
+- the permission identifier is hyphenated, e.g. `allow-set-headers`
+
+In consumer-app tests, assert the capability file includes the hyphenated identifier when the app enables `baresync:default`. A command can be registered correctly and still fail at boot if the permission identifier is malformed.
+
 ### Test that headers are not logged
 
 ```ts

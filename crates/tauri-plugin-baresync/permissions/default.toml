@@ -17,7 +17,7 @@ permissions = [
   "allow-sync-now",
   "allow-sync-push",
   "allow-sync-pull",
-  "allow-set_headers",
+  "allow-set-headers",
   "allow-sync-full-resync",
   "allow-get-sync-local-state",
   "allow-purge-synced-outbox",

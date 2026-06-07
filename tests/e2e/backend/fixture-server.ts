@@ -6,6 +6,7 @@ import {
   encodeSyncResponse,
 } from "../../../packages/baresync/src/server/index";
 import { resolveFixtureTransportMode } from "../fixture-transport";
+import { requireFixtureAuthorization } from "./fixture-auth";
 import { resolveFixtureBackendHost } from "./fixture-server-config";
 
 interface Row extends Record<string, unknown> {
@@ -515,6 +516,11 @@ function handleStateRequest(): Response | Promise<Response> {
 }
 
 async function handleStatusRequest(request: Request): Promise<Response> {
+  const authResponse = requireFixtureAuthorization(request);
+  if (authResponse !== null) {
+    return authResponse;
+  }
+
   const decoded = await decodeFixtureRequest({
     kind: "status",
     request,
@@ -534,6 +540,11 @@ async function handleStatusRequest(request: Request): Promise<Response> {
 }
 
 async function handlePullRequest(request: Request): Promise<Response> {
+  const authResponse = requireFixtureAuthorization(request);
+  if (authResponse !== null) {
+    return authResponse;
+  }
+
   if (request.method === "GET") {
     const requestedScope = new URL(request.url).searchParams.get("scopeId");
     if (requestedScope !== scopeId) {
@@ -577,6 +588,11 @@ async function handlePullRequest(request: Request): Promise<Response> {
 }
 
 async function handlePushRequest(request: Request): Promise<Response> {
+  const authResponse = requireFixtureAuthorization(request);
+  if (authResponse !== null) {
+    return authResponse;
+  }
+
   const decoded = await decodeFixtureRequest({
     kind: "push",
     request,

@@ -5,6 +5,7 @@ import {
   createSyncStatusHandler,
 } from "baresync/server";
 import { Hono } from "hono";
+import { requireInventoryAuthorization } from "../auth";
 import { db } from "../db/client";
 import {
   createInventorySyncRepository,
@@ -62,8 +63,29 @@ const status = createSyncStatusHandler({
 
 const sync = new Hono();
 
-sync.post("/push", (c) => push(c.req.raw, {}));
-sync.post("/pull", (c) => pull(c.req.raw, {}));
-sync.post("/status", (c) => status(c.req.raw, {}));
+sync.post("/push", (c) => {
+  const authorization = requireInventoryAuthorization(c.req.raw);
+  if (!authorization.ok) {
+    return c.json(authorization.body, authorization.status);
+  }
+
+  return push(c.req.raw, {});
+});
+sync.post("/pull", (c) => {
+  const authorization = requireInventoryAuthorization(c.req.raw);
+  if (!authorization.ok) {
+    return c.json(authorization.body, authorization.status);
+  }
+
+  return pull(c.req.raw, {});
+});
+sync.post("/status", (c) => {
+  const authorization = requireInventoryAuthorization(c.req.raw);
+  if (!authorization.ok) {
+    return c.json(authorization.body, authorization.status);
+  }
+
+  return status(c.req.raw, {});
+});
 
 export default sync;

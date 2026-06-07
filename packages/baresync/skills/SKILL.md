@@ -235,6 +235,7 @@ These must exist for baresync to work. Project structure (file paths, directory 
 | **Client sync client** | `createSyncClient` scoped to `SYNC_SCOPE`. |
  | **Plugin config** | In `lib.rs`: `api_base_url`, `contract_json` (via `include_str!`), `db_path`, `migrations_path`, `poll_interval_secs`. |
  | **Runtime request headers** | Custom HTTP headers attached to every sync request. Set via `client.setHeaders()` (JS) or `set_headers` Tauri command. Plugin-wide, not per-scope. `Content-Type` is reserved. Empty `{}` clears all headers. |
+| **Tauri permission IDs** | Command names keep underscores (`set_headers`), but generated permission identifiers replace underscores with hyphens (`allow-set-headers`, `deny-set-headers`). Capability files must use the hyphenated identifier. |
 | **Migrations** | Local: outbox + cursors + synced tables. Server: synced tables + batch requests. |
 
 For brownfield projects: scan the project, identify which pieces exist, and guide the user to add what's missing. Do not restructure their project to match the scaffold layout.
@@ -288,6 +289,8 @@ Custom HTTP headers sent with every sync request (push, pull, status). Use for a
 
 **API:** `client.setHeaders(headers: Record<string, string>)` on the JS sync client, or the `set_headers` Tauri plugin command from Rust.
 
+**Permission naming rule:** Tauri permission identifiers are hyphenated even when the command name is underscored. For example, the `set_headers` command maps to `allow-set-headers` / `deny-set-headers` in permissions and capabilities. Do not write `allow-set_headers`.
+
 **Rules:**
 - `Content-Type` is reserved and rejected as a custom header.
 - Headers are validated using HTTP header parsing types. Invalid updates do not replace existing headers (atomic).
@@ -331,6 +334,7 @@ Local write → outbox entry → plugin polls → push to server → pull from s
 | **Watermark** | The `sync_updated_at` value on the server — timestamp component of the cursor. |
 | **writeTransaction** | Transaction wrapping Drizzle writes with outbox entry creation. Ensures atomicity. |
 | **Runtime request headers** | Custom HTTP headers sent with every sync request. Set via `setHeaders` (JS) or `set_headers` (Rust). Plugin-wide, atomic updates, transport snapshots per request. |
+| **Tauri permission IDs** | Command names use underscores, but Tauri permission identifiers use hyphens. `set_headers` becomes `allow-set-headers` in generated permissions and capabilities. |
 
 ## Commands
 
@@ -375,3 +379,4 @@ If you are unsure which command applies, use `Prompt Processing (MANDATORY)` fir
 - Never put `Content-Type` in `setHeaders` — it is reserved.
 - Never log header values — they contain secrets.
 - Never recreate the sync client to refresh tokens — call `setHeaders` instead.
+- Never write capability permission identifiers with underscores when the command uses underscores. Tauri permissions are hyphenated, e.g. `allow-set-headers` for `set_headers`.

@@ -17,30 +17,59 @@ const state = {
 
 let syncClient = createFixtureSyncClient({
   api_url: "http://127.0.0.1:3001",
+  auth_token: null,
 });
 
-const el = <T extends HTMLElement>(selector: string) =>
-  document.querySelector(selector) as T;
-
-const appStatus = el<HTMLElement>("#app-status");
-const dbPath = el<HTMLElement>("#db-path");
-const dbSize = el<HTMLElement>("#db-size");
-const migrationCount = el<HTMLElement>("#migration-count");
-const transportMode = el<HTMLElement>("#transport-mode");
-const dirtyCount = el<HTMLElement>("#dirty-count");
-const watermark = el<HTMLElement>("#watermark");
-const needsBaseline = el<HTMLElement>("#needs-baseline");
-const syncResult = el<HTMLElement>("#sync-result");
-const smokeState = el<HTMLElement>("#smoke-state");
-const categoriesList = el<HTMLUListElement>("#categories-list");
-const productsList = el<HTMLUListElement>("#products-list");
-const buttons = {
-  baseline: el<HTMLButtonElement>("#baseline-sync"),
-  create: el<HTMLButtonElement>("#create-row"),
-  sync: el<HTMLButtonElement>("#manual-sync"),
-  reset: el<HTMLButtonElement>("#reset-state"),
-  refresh: el<HTMLButtonElement>("#refresh-state"),
+let appStatus: HTMLElement;
+let dbPath: HTMLElement;
+let dbSize: HTMLElement;
+let migrationCount: HTMLElement;
+let transportMode: HTMLElement;
+let dirtyCount: HTMLElement;
+let watermark: HTMLElement;
+let needsBaseline: HTMLElement;
+let syncResult: HTMLElement;
+let smokeState: HTMLElement;
+let categoriesList: HTMLUListElement;
+let productsList: HTMLUListElement;
+let buttons: {
+  baseline: HTMLButtonElement;
+  create: HTMLButtonElement;
+  sync: HTMLButtonElement;
+  reset: HTMLButtonElement;
+  refresh: HTMLButtonElement;
 };
+
+function el<T extends HTMLElement>(selector: string): T {
+  const node = document.querySelector(selector);
+  if (!(node instanceof HTMLElement)) {
+    throw new Error(`Missing fixture element: ${selector}`);
+  }
+
+  return node as T;
+}
+
+function bindElements() {
+  appStatus = el<HTMLElement>("#app-status");
+  dbPath = el<HTMLElement>("#db-path");
+  dbSize = el<HTMLElement>("#db-size");
+  migrationCount = el<HTMLElement>("#migration-count");
+  transportMode = el<HTMLElement>("#transport-mode");
+  dirtyCount = el<HTMLElement>("#dirty-count");
+  watermark = el<HTMLElement>("#watermark");
+  needsBaseline = el<HTMLElement>("#needs-baseline");
+  syncResult = el<HTMLElement>("#sync-result");
+  smokeState = el<HTMLElement>("#smoke-state");
+  categoriesList = el<HTMLUListElement>("#categories-list");
+  productsList = el<HTMLUListElement>("#products-list");
+  buttons = {
+    baseline: el<HTMLButtonElement>("#baseline-sync"),
+    create: el<HTMLButtonElement>("#create-row"),
+    sync: el<HTMLButtonElement>("#manual-sync"),
+    reset: el<HTMLButtonElement>("#reset-state"),
+    refresh: el<HTMLButtonElement>("#refresh-state"),
+  };
+}
 
 function setBusy(isBusy: boolean) {
   for (const button of Object.values(buttons)) {
@@ -263,10 +292,19 @@ async function resetFixtureState() {
 async function bootstrap() {
   setBusy(true);
   try {
+    appStatus.textContent = "booting:runtime-config";
     const runtimeConfig = await getFixtureRuntimeConfig();
     syncClient = createFixtureSyncClient(runtimeConfig);
+    if (runtimeConfig.auth_token !== null) {
+      appStatus.textContent = "booting:set-headers";
+      await syncClient.setHeaders({
+        Authorization: `Bearer ${runtimeConfig.auth_token}`,
+      });
+    }
+    appStatus.textContent = "booting:migrations";
     transportMode.textContent = "json";
     await ensureMigrations();
+    appStatus.textContent = "booting:status";
     await refreshStatus();
     state.ready = true;
   } finally {
@@ -274,54 +312,76 @@ async function bootstrap() {
   }
 }
 
-buttons.baseline.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await runSync("baseline");
-  } finally {
-    setBusy(false);
-  }
-});
+function bindEvents() {
+  buttons.baseline.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await runSync("baseline");
+    } finally {
+      setBusy(false);
+    }
+  });
 
-buttons.create.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await createLocalRow();
-  } finally {
-    setBusy(false);
-  }
-});
+  buttons.create.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await createLocalRow();
+    } finally {
+      setBusy(false);
+    }
+  });
 
-buttons.sync.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await runSync("manual");
-  } finally {
-    setBusy(false);
-  }
-});
+  buttons.sync.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await runSync("manual");
+    } finally {
+      setBusy(false);
+    }
+  });
 
-buttons.reset.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await resetFixtureState();
-  } finally {
-    setBusy(false);
-  }
-});
+  buttons.reset.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await resetFixtureState();
+    } finally {
+      setBusy(false);
+    }
+  });
 
-buttons.refresh.addEventListener("click", async () => {
-  setBusy(true);
-  try {
-    await refreshStatus();
-  } finally {
-    setBusy(false);
-  }
-});
+  buttons.refresh.addEventListener("click", async () => {
+    setBusy(true);
+    try {
+      await refreshStatus();
+    } finally {
+      setBusy(false);
+    }
+  });
+}
 
-bootstrap().catch((error) => {
+function reportBootstrapError(error: unknown) {
   console.error("fixture bootstrap failed:", error);
-  appStatus.textContent = "error";
-  syncResult.textContent =
-    error instanceof Error ? error.message : String(error);
-});
+  const statusNode = document.getElementById("app-status");
+  const resultNode = document.getElementById("sync-result");
+  if (statusNode instanceof HTMLElement) {
+    statusNode.textContent = "error";
+  }
+  if (resultNode instanceof HTMLElement) {
+    resultNode.textContent =
+      error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function startFixtureApp() {
+  bindElements();
+  bindEvents();
+  await bootstrap();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    startFixtureApp().catch(reportBootstrapError);
+  });
+} else {
+  startFixtureApp().catch(reportBootstrapError);
+}

@@ -429,13 +429,13 @@
         {
           "description": "Enables the set_headers command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-set_headers",
+          "const": "allow-set-headers",
           "markdownDescription": "Enables the set_headers command without any pre-configured scope."
         },
         {
           "description": "Denies the set_headers command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-set_headers",
+          "const": "deny-set-headers",
           "markdownDescription": "Denies the set_headers command without any pre-configured scope."
         },
         {
@@ -511,10 +511,10 @@
           "markdownDescription": "Denies the sync_push command without any pre-configured scope."
         },
         {
-          "description": "### Default Permissions\n\nThis permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.\n\nThese commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.\n\n#### This default permission set includes:\n\n- `allow-run-sql`\n- `allow-run-sql-batch`\n- `allow-get-db-info`\n- `allow-run-migrations`\n- `allow-get-migration-status`\n- `allow-sync-now`\n- `allow-sync-push`\n- `allow-sync-pull`\n- `allow-set_headers`\n- `allow-sync-full-resync`\n- `allow-get-sync-local-state`\n- `allow-purge-synced-outbox`\n- `allow-run-garbage-collection`\n- `allow-start-polling`\n- `allow-stop-polling`\n- `allow-pause-polling`\n- `allow-resume-polling`\n- `allow-get-polling-status`",
+          "description": "### Default Permissions\n\nThis permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.\n\nThese commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.\n\n#### This default permission set includes:\n\n- `allow-run-sql`\n- `allow-run-sql-batch`\n- `allow-get-db-info`\n- `allow-run-migrations`\n- `allow-get-migration-status`\n- `allow-sync-now`\n- `allow-sync-push`\n- `allow-sync-pull`\n- `allow-set-headers`\n- `allow-sync-full-resync`\n- `allow-get-sync-local-state`\n- `allow-purge-synced-outbox`\n- `allow-run-garbage-collection`\n- `allow-start-polling`\n- `allow-stop-polling`\n- `allow-pause-polling`\n- `allow-resume-polling`\n- `allow-get-polling-status`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "### Default Permissions\n\nThis permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.\n\nThese commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.\n\n#### This default permission set includes:\n\n- `allow-run-sql`\n- `allow-run-sql-batch`\n- `allow-get-db-info`\n- `allow-run-migrations`\n- `allow-get-migration-status`\n- `allow-sync-now`\n- `allow-sync-push`\n- `allow-sync-pull`\n- `allow-set_headers`\n- `allow-sync-full-resync`\n- `allow-get-sync-local-state`\n- `allow-purge-synced-outbox`\n- `allow-run-garbage-collection`\n- `allow-start-polling`\n- `allow-stop-polling`\n- `allow-pause-polling`\n- `allow-resume-polling`\n- `allow-get-polling-status`"
+          "markdownDescription": "### Default Permissions\n\nThis permission set enables the Baresync local database, migration, sync, polling, and runtime header commands.\n\nThese commands are intended for trusted Tauri app frontends that own the local sync database and need to attach auth headers to sync requests.\n\n#### This default permission set includes:\n\n- `allow-run-sql`\n- `allow-run-sql-batch`\n- `allow-get-db-info`\n- `allow-run-migrations`\n- `allow-get-migration-status`\n- `allow-sync-now`\n- `allow-sync-push`\n- `allow-sync-pull`\n- `allow-set-headers`\n- `allow-sync-full-resync`\n- `allow-get-sync-local-state`\n- `allow-purge-synced-outbox`\n- `allow-run-garbage-collection`\n- `allow-start-polling`\n- `allow-stop-polling`\n- `allow-pause-polling`\n- `allow-resume-polling`\n- `allow-get-polling-status`"
         }
       ]
     }

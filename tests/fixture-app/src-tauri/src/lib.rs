@@ -3,7 +3,6 @@ use std::env;
 use std::error::Error;
 #[cfg(target_os = "android")]
 use std::fs;
-use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{command, generate_context, State};
@@ -15,6 +14,7 @@ use tauri_plugin_baresync::commands::{run_sql_batch_with_state, PluginState};
 #[derive(Serialize)]
 struct FixtureRuntimeConfig {
     api_url: String,
+    auth_token: Option<String>,
 }
 
 fn fixture_db_path() -> String {
@@ -54,6 +54,13 @@ fn fixture_api_url() -> String {
                 "http://127.0.0.1:3001".to_string()
             }
         })
+}
+
+fn fixture_auth_token() -> Option<String> {
+    env::var("BARESYNC_FIXTURE_AUTH_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
 }
 
 fn fixture_contract_tables() -> baresync_core::engine::SyncContractTables {
@@ -116,10 +123,16 @@ async fn reset_fixture_state(state: State<'_, PluginState>) -> Result<(), String
 async fn get_fixture_runtime_config() -> Result<FixtureRuntimeConfig, String> {
     let config = FixtureRuntimeConfig {
         api_url: fixture_api_url(),
+        auth_token: fixture_auth_token(),
     };
     eprintln!(
-        "[fixture-app] get_fixture_runtime_config api_url={}",
-        config.api_url
+        "[fixture-app] get_fixture_runtime_config api_url={} auth_token={}",
+        config.api_url,
+        if config.auth_token.is_some() {
+            "set"
+        } else {
+            "unset"
+        }
     );
     Ok(config)
 }

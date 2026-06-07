@@ -9,6 +9,7 @@ use baresync_core::pull::PullResult;
 use baresync_core::push::PushResult;
 
 use baresync_core::db::DbClient;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -592,9 +593,9 @@ pub async fn set_headers_with_state(
 #[command]
 pub async fn set_headers(
     state: State<'_, PluginState>,
-    headers: Vec<(String, String)>,
+    headers: HashMap<String, String>,
 ) -> Result<(), String> {
-    set_headers_with_state(&state, headers).await
+    set_headers_with_state(&state, headers.into_iter().collect()).await
 }
 
 async fn notify_polling_sync_completed(state: &PluginState) {
