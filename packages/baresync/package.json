@@ -1,6 +1,6 @@
 {
   "name": "baresync",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": false,
   "type": "module",
   "description": "SQLite-first sync infrastructure for Tauri apps",
@@ -23,7 +23,7 @@
   "sideEffects": false,
   "files": [
     "dist",
-    ".pack",
+    "skills",
     "README.md",
     "LICENSE"
   ],
@@ -69,10 +69,7 @@
   "scripts": {
     "build": "tsup",
     "build:types": "bun x tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "prepack": "bun run build && bun run pack:skills:stage",
-    "postpack": "bun run pack:skills:clean",
-    "pack:skills:stage": "bun ./scripts/stage-skills.mjs",
-    "pack:skills:clean": "bun ./scripts/clean-skills-pack.mjs",
+    "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "clean": "rm -rf dist"
   },

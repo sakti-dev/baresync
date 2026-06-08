@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "docsBaseUrl": "https://baresync.hieka.id",
+  "referencesBasePath": "/skills/baresync",
+  "fallbackRawBaseUrl": "https://raw.githubusercontent.com/sakti-dev/baresync/main/apps/docs/public/skills/baresync"
+}

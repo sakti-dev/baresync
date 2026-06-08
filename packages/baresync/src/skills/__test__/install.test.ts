@@ -21,7 +21,7 @@ function createHarnessDir(root: string, name: string): void {
 
 const SKILL_SOURCE = path.resolve(
   import.meta.dirname,
-  "../../../../../skills/baresync"
+  "../../../skills/baresync"
 );
 
 describe("findProjectRoot", () => {
@@ -118,10 +118,6 @@ describe("installSkills", () => {
 
     const skillMd = path.join(tmp, ".claude", "skills", "baresync", "SKILL.md");
     expect(fs.existsSync(skillMd)).toBe(true);
-
-    const refDir = path.join(tmp, ".claude", "skills", "baresync", "reference");
-    expect(fs.existsSync(refDir)).toBe(true);
-    expect(fs.readdirSync(refDir).length).toBeGreaterThan(0);
 
     fs.rmSync(tmp, { recursive: true });
   });

@@ -2,24 +2,28 @@
 
 This runbook keeps two things in sync with the source code:
 - **Web docs** (`apps/docs/content/docs/`) — human-facing documentation
-- **AI skill** (`skills/baresync/`) — compressed knowledge for coding agents
+- **AI skill bootstrap** (`packages/baresync/skills/baresync/SKILL.md`) — npm-packaged routing guidance for coding agents
+- **Hosted AI references** (`apps/docs/public/skills/baresync/<version>/reference/`) — detailed versioned knowledge for coding agents
 
-Source code is the ultimate truth. When source changes, both docs and skill must follow. When docs change, the skill must follow. When the skill is updated from source, docs must be updated too.
+Source code is the ultimate truth. When source changes, web docs and hosted skill references must follow. The packaged bootstrap skill should change only when routing, version detection, or fallback behavior changes.
 
 ## Three-way sync
 
 ```
-Source Code ──────→ Skills (verify & fix)
-     │                    │
-     │                    ↓
-     └──────────→ Web Docs (update)
+Source Code ──────→ Hosted References (verify & fix)
+     │                         │
+     │                         ↓
+     └──────────────→ Web Docs (update)
+                               │
+                               ↓
+                    Bootstrap Skill (routing only)
 ```
 
-**Direction 1: Source code → Skills → Docs**
-Use when source code changed. Verify skills against source, fix discrepancies, then update docs to match.
+**Direction 1: Source code → Hosted References → Docs**
+Use when source code changed. Verify hosted references against source, fix discrepancies, then update docs to match.
 
-**Direction 2: Docs → Skills**
-Use when docs changed (new content, corrections, additions). Read docs, compress into skill references.
+**Direction 2: Docs → Hosted References**
+Use when docs changed (new content, corrections, additions). Read docs, compress into hosted skill references for the supported version lines.
 
 **Direction 3: Full verification**
 Periodically run both directions to catch drift.
@@ -27,8 +31,11 @@ Periodically run both directions to catch drift.
 ## File structure
 
 ```
-skills/baresync/
-  SKILL.md                        # entrypoint: router, concepts, essential pieces, bans
+packages/baresync/skills/baresync/
+  SKILL.md                        # npm-packaged bootstrap: version detection, routing, fallback rules
+
+apps/docs/public/skills/baresync/<version>/
+  manifest.json                   # version metadata + reference URL map
   reference/
     setup.md                      # greenfield + brownfield integration guide
     write.md                      # local writes, outbox, transactions, coalescing
@@ -60,19 +67,19 @@ apps/docs/content/docs/
   architecture.mdx                # → SKILL.md concepts (already covered)
 ```
 
-## Direction 1: Source code → Skills → Docs
+## Direction 1: Source code → Hosted References → Docs
 
 Use when source code changed. This is the primary verification path.
 
-### Step 1: Verify skills against source code
+### Step 1: Verify hosted references against source code
 
 Run parallel subagents. Each reads skill file(s) AND source code, returns discrepancies.
 
 **Each subagent must:**
-1. Read the specified skill reference file(s)
+1. Read the specified hosted reference file(s)
 2. Read the specified source code files
 3. Compare every claim in the skill against the source
-4. Return a structured list of discrepancies: `[DISCREPANCY] skill file:line — "skill says X" → source says "Y" (source file:line)`
+4. Return a structured list of discrepancies: `[DISCREPANCY] reference file:line — "reference says X" → source says "Y" (source file:line)`
 5. Return `[MATCH]` if everything matches
 
 **Batch structure (run in parallel):**

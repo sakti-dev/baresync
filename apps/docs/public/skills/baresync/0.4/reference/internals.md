@@ -2,7 +2,7 @@
 
 Deep engine details that rarely come up in daily work but useful for understanding how baresync works under the hood.
 
-For exact Rust type signatures (`SyncEngine`, `SyncNowResult`, `PushResult`, `PullResult`, `LocalSyncState`), see the [Rust API reference](https://baresync.dev/docs/reference/rust-api). For Tauri IPC command signatures, see [reference/tauri-plugin.md](tauri-plugin.md).
+For exact Rust type signatures (`SyncEngine`, `SyncNowResult`, `PushResult`, `PullResult`, `LocalSyncState`), see the [Rust API reference](https://baresync.hieka.id/docs/reference/rust-api). For Tauri IPC command signatures, see [reference/tauri-plugin.md](tauri-plugin.md).
 
 ## Status flow
 

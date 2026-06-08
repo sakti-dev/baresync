@@ -98,26 +98,13 @@ export function resolveInstallTargets(
 }
 
 export function getSkillSourceDir(): string {
-  // Walk up from current file looking for the packaged or workspace skill source at any level
+  // Walk up from current file looking for the package-owned skill source.
   let dir = path.resolve(import.meta.dirname);
   while (dir !== path.dirname(dir)) {
-    // Check for the staged publish layout first when running from an installed package
     if (fs.existsSync(path.join(dir, "package.json"))) {
-      const staged = path.join(dir, ".pack", "skills", SKILL_NAME);
-      if (fs.existsSync(staged)) {
-        return staged;
-      }
-
       const packaged = path.join(dir, "skills", SKILL_NAME);
       if (fs.existsSync(packaged)) {
         return packaged;
-      }
-    }
-    // Check for skills/baresync/ with .git (monorepo root)
-    if (fs.existsSync(path.join(dir, ".git"))) {
-      const source = path.join(dir, "skills", SKILL_NAME);
-      if (fs.existsSync(source)) {
-        return source;
       }
     }
     dir = path.dirname(dir);

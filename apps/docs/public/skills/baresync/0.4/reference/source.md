@@ -10,7 +10,8 @@ For this repository, the source of truth is the checked-out workspace:
 
 - `packages/baresync/src/` for TypeScript runtime and generator behavior
 - `crates/` for Rust plugin and sync engine behavior
-- `apps/docs/content/docs/` and `skills/baresync/reference/` for the user-facing documentation and skill knowledge that should mirror the code
+- `apps/docs/content/docs/` for user-facing documentation
+- `apps/docs/public/skills/baresync/<version>/reference/` for hosted versioned skill references
 
 ## Installed Source Rule (MANDATORY)
 

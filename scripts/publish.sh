@@ -171,9 +171,6 @@ if [[ "$PUBLISH_NPM" == true ]]; then
   info "Staging baresync package..."
   BARESYNC_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/baresync-publish-XXXXXX")"
   cp -R "$REPO_ROOT/packages/baresync/." "$BARESYNC_STAGE_DIR/"
-  rm -rf "$BARESYNC_STAGE_DIR/skills/baresync"
-  mkdir -p "$BARESYNC_STAGE_DIR/skills"
-  cp -R "$REPO_ROOT/skills/baresync" "$BARESYNC_STAGE_DIR/skills/"
 
   info "Publishing baresync $BARESYNC_VERSION to npm..."
   (

@@ -60,12 +60,30 @@ The CLI SHALL support `bunx baresync skills update` to refresh the skill to the 
 - **THEN** the CLI prints "No baresync skill found. Run `bunx baresync skills install` first." and exits
 
 ### Requirement: Skill files are included in npm package
-The published npm package SHALL include the `skills/baresync/` directory.
+The published npm package SHALL include the `skills/baresync/SKILL.md` bootstrap skill directly under the package root and SHALL NOT require a generated `.pack` directory for skill installation.
 
-#### Scenario: Package contains skill files
+#### Scenario: Package contains bootstrap skill
 - **WHEN** user installs `baresync` via npm/bun/pnpm
 - **THEN** `node_modules/baresync/skills/baresync/SKILL.md` exists
-- **AND** `node_modules/baresync/skills/baresync/reference/` contains all reference files
+- **AND** `node_modules/baresync/skills/baresync/reference/` is not required for `baresync skills install` to succeed
+
+#### Scenario: Package is published with ignored scripts
+- **WHEN** `baresync` is packed or published with lifecycle scripts ignored
+- **THEN** the package still includes `skills/baresync/SKILL.md`
+- **AND** the installed CLI can copy that bootstrap skill into target harness directories
+
+### Requirement: Publish script packaging matches package manifest
+The repository publish script SHALL stage Baresync skill files in a package path that is included by `packages/baresync/package.json`.
+
+#### Scenario: Publish script ignores package lifecycle scripts
+- **WHEN** `scripts/publish.sh` publishes `packages/baresync` using `npm publish --ignore-scripts`
+- **THEN** the staged package includes `skills/baresync/SKILL.md`
+- **AND** `package.json` includes `skills` in the published files list
+
+#### Scenario: Publish script stages no external skill corpus
+- **WHEN** `scripts/publish.sh` prepares the `baresync` npm package
+- **THEN** it does not depend on copying root-level `skills/baresync/reference/**` into the package
+- **AND** it does not depend on `.pack` staging for skill install correctness
 
 ### Requirement: Project root detection
 The CLI SHALL find the project root by walking up from cwd looking for `.git`.

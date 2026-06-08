@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, "../../..");
 const PACKAGE_NAME = "baresync";
+const SKILL_SOURCE = path.join(PACKAGE_ROOT, "skills", "baresync");
 
 const createdTempDirs: string[] = [];
 
@@ -66,6 +67,49 @@ afterEach(() => {
 });
 
 describe("packaged skills install", () => {
+  it("includes publish-script staged skills when package scripts are ignored", () => {
+    const tmp = createTempDir();
+
+    fs.cpSync(
+      path.join(PACKAGE_ROOT, "package.json"),
+      path.join(tmp, "package.json")
+    );
+    fs.cpSync(
+      path.join(PACKAGE_ROOT, "README.md"),
+      path.join(tmp, "README.md")
+    );
+    fs.cpSync(path.join(PACKAGE_ROOT, "LICENSE"), path.join(tmp, "LICENSE"));
+    fs.mkdirSync(path.join(tmp, "dist", "cli"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "dist", "cli", "index.js"), "");
+    fs.mkdirSync(path.join(tmp, "skills"), { recursive: true });
+    fs.cpSync(SKILL_SOURCE, path.join(tmp, "skills", "baresync"), {
+      recursive: true,
+    });
+
+    const packResult = runCommand(
+      "npm",
+      ["pack", "--json", "--ignore-scripts"],
+      tmp
+    );
+    expectCommandSuccess(packResult);
+
+    const [packed] = parseNpmPackOutput(packResult.stdout);
+
+    expect(
+      packed.files.some((file) => file.path === "skills/baresync/SKILL.md")
+    ).toBe(true);
+    expect(
+      packed.files.some(
+        (file) => file.path === ".pack/skills/baresync/SKILL.md"
+      )
+    ).toBe(false);
+    expect(
+      packed.files.some((file) =>
+        file.path.startsWith("skills/baresync/reference/")
+      )
+    ).toBe(false);
+  });
+
   it("installs baresync skills from the packed npm tarball", () => {
     const packResult = runCommand("npm", ["pack", "--json"], PACKAGE_ROOT);
     expectCommandSuccess(packResult);
@@ -76,9 +120,7 @@ describe("packaged skills install", () => {
       true
     );
     expect(
-      packed.files.some(
-        (file) => file.path === ".pack/skills/baresync/SKILL.md"
-      )
+      packed.files.some((file) => file.path === "skills/baresync/SKILL.md")
     ).toBe(true);
 
     const tarballPath = path.join(PACKAGE_ROOT, packed.filename);

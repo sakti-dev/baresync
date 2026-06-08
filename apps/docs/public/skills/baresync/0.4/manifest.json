@@ -1,0 +1,27 @@
+{
+  "name": "baresync",
+  "referenceVersion": "0.4",
+  "compatiblePackages": {
+    "baresync": ">=0.4.0 <0.5.0",
+    "create-baresync": ">=0.4.0 <0.5.0",
+    "baresync-core": ">=0.4.0 <0.5.0",
+    "tauri-plugin-baresync": ">=0.4.0 <0.5.0"
+  },
+  "references": {
+    "setup": "/skills/baresync/0.4/reference/setup.md",
+    "write": "/skills/baresync/0.4/reference/write.md",
+    "schema": "/skills/baresync/0.4/reference/schema.md",
+    "generator": "/skills/baresync/0.4/reference/generator.md",
+    "server": "/skills/baresync/0.4/reference/server.md",
+    "tauri-plugin": "/skills/baresync/0.4/reference/tauri-plugin.md",
+    "ui-frameworks": "/skills/baresync/0.4/reference/ui-frameworks.md",
+    "debug": "/skills/baresync/0.4/reference/debug.md",
+    "verify": "/skills/baresync/0.4/reference/verify.md",
+    "query": "/skills/baresync/0.4/reference/query.md",
+    "internals": "/skills/baresync/0.4/reference/internals.md",
+    "production": "/skills/baresync/0.4/reference/production.md",
+    "testing": "/skills/baresync/0.4/reference/testing.md",
+    "source": "/skills/baresync/0.4/reference/source.md",
+    "prompt-fixtures": "/skills/baresync/0.4/reference/prompt-fixtures.md"
+  }
+}
