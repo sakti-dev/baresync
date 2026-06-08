@@ -3,6 +3,7 @@
 .codex
 .opencode
 .commandcode
+.pi
 .direnv
 .worktrees
 /docs/external
