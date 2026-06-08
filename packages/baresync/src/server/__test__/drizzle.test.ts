@@ -11,6 +11,9 @@ import {
   requiredNumber,
   requiredString,
 } from "../drizzle";
+import { parseSyncCursor } from "../service";
+
+const WATERMARK_CURSOR_PATTERN = /^sync:\d+:__watermark__:__scope__$/;
 
 const locations = sqliteTable("locations", {
   createdAt: text("created_at").notNull(),
@@ -434,7 +437,7 @@ describe("loadPullChanges", () => {
     });
   });
 
-  it("includes all tables by default and returns an empty cursor when no rows exist", async () => {
+  it("includes all tables by default and returns a watermark cursor when no rows exist", async () => {
     const repository = createRepository(createTestDb());
 
     const response = await repository.loadPullChanges({
@@ -448,7 +451,10 @@ describe("loadPullChanges", () => {
       "items",
       "stock_counts",
     ]);
-    expect(response.cursor).toBe("");
+    expect(parseSyncCursor(response.cursor)).toMatchObject({
+      rowId: "__scope__",
+      tableName: "__watermark__",
+    });
   });
 });
 
@@ -481,6 +487,19 @@ describe("loadSyncStatus", () => {
     expect(response.changedTables).toEqual([]);
     expect(response.hasChanges).toBe(false);
     expect(response.cursor).toBe("sync:300:stock_counts:count-1");
+  });
+
+  it("returns a watermark cursor when status has no rows", async () => {
+    const repository = createRepository(createTestDb());
+
+    const response = await repository.loadSyncStatus({
+      cursor: "",
+      scopeId: "missing",
+    });
+
+    expect(response.changedTables).toEqual([]);
+    expect(response.hasChanges).toBe(false);
+    expect(response.cursor).toMatch(WATERMARK_CURSOR_PATTERN);
   });
 });
 

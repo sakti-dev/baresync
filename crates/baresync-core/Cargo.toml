@@ -1,6 +1,6 @@
 [package]
 name = "baresync-core"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 description = "SQLite-first sync runtime for Tauri apps"
 license = "MIT"

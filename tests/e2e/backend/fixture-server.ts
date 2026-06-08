@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   decodeSyncRequest,
   encodeSyncResponse,
+  formatSyncWatermarkCursor,
 } from "../../../packages/baresync/src/server/index";
 import { resolveFixtureTransportMode } from "../fixture-transport";
 import { requireFixtureAuthorization } from "./fixture-auth";
@@ -46,6 +47,7 @@ const host = resolveFixtureBackendHost();
 const scopeId = process.env.BARESYNC_FIXTURE_SCOPE_ID ?? "merchant-1";
 const serverTime = "2026-05-20T00:00:00.000Z";
 const transportMode = resolveFixtureTransportMode();
+const startEmpty = resolveFixtureStartEmpty();
 const dbPath = resolveFixtureDbPath();
 const sqlite = createFixtureDatabase(dbPath);
 const runtime = globalThis as typeof globalThis & {
@@ -66,6 +68,11 @@ function resolveFixtureDbPath(): string {
 
   const runId = process.env.BARESYNC_FIXTURE_RUN_ID ?? "local";
   return path.resolve("/tmp", `baresync-fixture-${runId}.db`);
+}
+
+function resolveFixtureStartEmpty(): boolean {
+  const value = process.env.BARESYNC_FIXTURE_START_EMPTY;
+  return value === "1" || value === "true";
 }
 
 function createFixtureDatabase(filePath: string): SqliteDatabase {
@@ -107,14 +114,18 @@ function createFixtureDatabase(filePath: string): SqliteDatabase {
       recorded_at TEXT NOT NULL
     );
   `);
-  resetFixtureState(database);
+  resetFixtureState(database, startEmpty);
   return database;
 }
 
-function resetFixtureState(database: SqliteDatabase) {
+function resetFixtureState(database: SqliteDatabase, empty = false) {
   database.exec(
     "DELETE FROM pushed_rows; DELETE FROM products; DELETE FROM categories;"
   );
+  if (empty) {
+    return;
+  }
+
   database.run(
     `
       INSERT INTO categories (
@@ -235,7 +246,7 @@ function queryLatestCursorRows(): LatestCursorRow[] {
   ];
 }
 
-function buildLatestCursorRow(): LatestCursorRow {
+function buildLatestCursorRow(): LatestCursorRow | null {
   const rows = queryLatestCursorRows();
   const latest = rows.reduce<LatestCursorRow | null>((current, row) => {
     if (current === null) {
@@ -264,17 +275,15 @@ function buildLatestCursorRow(): LatestCursorRow {
     return row.id > current.id ? row : current;
   }, null);
 
-  return (
-    latest ?? {
-      id: "prod-1",
-      table: "products",
-      updatedAt: serverTime,
-    }
-  );
+  return latest;
 }
 
-function buildLatestCursor(): string {
+function buildResponseCursor(): string {
   const row = buildLatestCursorRow();
+  if (row === null) {
+    return formatSyncWatermarkCursor(Date.parse(serverTime));
+  }
+
   return `sync:${row.updatedAt}:${row.table}:${row.id}`;
 }
 
@@ -295,7 +304,7 @@ function queryPushedRows(table: string): Row[] {
 }
 
 function responseTables(requestCursor: string): TablePayload[] {
-  if (requestCursor === buildLatestCursor()) {
+  if (requestCursor === buildResponseCursor()) {
     return [
       {
         table: "categories",
@@ -341,7 +350,7 @@ function responseStatus(requestCursor: string): StatusPayload {
 
   return {
     changedTables,
-    cursor: buildLatestCursor(),
+    cursor: buildResponseCursor(),
     hasChanges: changedTables.length > 0,
     serverTime,
   };
@@ -499,7 +508,7 @@ function applyPush(body: Record<string, unknown>) {
 }
 
 function handleResetRequest(): Response | Promise<Response> {
-  resetFixtureState(sqlite);
+  resetFixtureState(sqlite, startEmpty);
   return Response.json({ ok: true, scopeId });
 }
 
@@ -553,7 +562,7 @@ async function handlePullRequest(request: Request): Promise<Response> {
 
     return encodeSyncResponse({
       body: {
-        cursor: buildLatestCursor(),
+        cursor: buildResponseCursor(),
         hasMore: false,
         serverTime,
         tables: responseTables(
@@ -578,7 +587,7 @@ async function handlePullRequest(request: Request): Promise<Response> {
 
   return encodeSyncResponse({
     body: {
-      cursor: buildLatestCursor(),
+      cursor: buildResponseCursor(),
       hasMore: false,
       serverTime,
       tables: responseTables(String(body.cursor ?? "")),

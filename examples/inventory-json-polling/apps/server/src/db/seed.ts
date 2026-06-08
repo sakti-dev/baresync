@@ -69,14 +69,6 @@ export async function seedInventoryDatabase(
   });
 }
 
-export function getSeedCursor() {
-  return {
-    id: "count-drill",
-    syncUpdatedAt: SEED_SYNC_UPDATED_AT,
-    tableName: "stock_counts",
-  } as const;
-}
-
 // `bun run src/db/seed.ts` uses this path through `predev`.
 export async function seedInventoryDatabaseForDev(): Promise<void> {
   await db.delete(syncBatchRequests);

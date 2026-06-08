@@ -19,8 +19,8 @@ Baresync has three useful verification layers. Do not collapse them into one UI 
    - Typical files: `packages/baresync/src/**`, `tests/e2e/**`
 
 3. Fixture backend contract tests
-   - Purpose: real HTTP request/response coverage for the deterministic fixture backend, backed by SQLite and exercised in both JSON and protobuf modes.
-   - Commands: `bun --cwd tests/e2e run fixture:backend:contract:json`, `bun --cwd tests/e2e run fixture:backend:contract:protobuf`
+   - Purpose: real HTTP request/response coverage for the deterministic fixture backend, backed by SQLite and exercised in JSON mode.
+   - Commands: `bun --cwd tests/e2e run fixture:backend:contract:json`
    - Typical files: `tests/e2e/backend/__test__/fixture-server.contract.test.ts`, `tests/e2e/backend/fixture-server.ts`
 
 4. Opt-in device smoke tests
@@ -70,9 +70,9 @@ The current backend exposes:
 - `POST /pull`
 - `POST /push`
 
-The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`. Use `protobuf` when you want the same smoke flow to exercise protobuf request/response bodies.
+The fixture transport mode is controlled by `BARESYNC_FIXTURE_ENCODING` and defaults to `json`.
 The E2E package also exposes `fixture:backend:json`, `desktop:sync:json`, `android:sync:json`, and `android:maestro:sync:json` for explicit transport or runner selection.
-It also exposes `fixture:backend:contract:json` and `fixture:backend:contract:protobuf` for the host-side backend contract gate.
+It also exposes `fixture:backend:contract:json` for the host-side backend contract gate.
 
 Important rule: the desktop runner should start and own the backend. Do not rely on a developer already having something on `localhost:3001`. That leads to stale state, port conflicts, and false passes.
 
@@ -193,7 +193,6 @@ Run:
 ```sh
 nix develop .#default --command bash -lc '
   cd tests/e2e
-  BARESYNC_FIXTURE_ENCODING=protobuf \
   BARESYNC_ANDROID_APP_ID=com.example.app \
   BARESYNC_ANDROID_READY_TEXT=Baresync \
     bun run android:sync

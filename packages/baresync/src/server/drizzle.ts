@@ -3,6 +3,7 @@ import {
   buildPullTables,
   changedTableNames,
   formatLatestSyncCursor,
+  formatSyncWatermarkCursor,
   parseSyncCursorTimestamp,
   pickLatestSyncCursorRow,
   type SyncRowChangeBucket,
@@ -316,10 +317,17 @@ async function readTableSnapshots<
   return { changes, latestCursorRows };
 }
 
-function formatCursorOrEmpty(
-  row: ReturnType<typeof latestCursorCandidate> | null
-): string {
-  return row ? formatLatestSyncCursor(row) : "";
+function nowMillis(): number {
+  return Date.now();
+}
+
+function formatCursorOrWatermark(input: {
+  latestRow: ReturnType<typeof latestCursorCandidate> | null;
+  observedAt: number;
+}): string {
+  return input.latestRow
+    ? formatLatestSyncCursor(input.latestRow)
+    : formatSyncWatermarkCursor(input.observedAt);
 }
 
 function latestCursorOrNull(input: {
@@ -363,12 +371,13 @@ async function buildPullResponse<
     scopeId: input.scopeId,
     tables: input.tables,
   });
+  const observedAt = nowMillis();
   const latestRow = latestCursorOrNull({ latestCursorRows });
 
   return {
-    cursor: formatCursorOrEmpty(latestRow),
+    cursor: formatCursorOrWatermark({ latestRow, observedAt }),
     hasMore: false,
-    serverTime: nowIso(),
+    serverTime: new Date(observedAt).toISOString(),
     tables: buildPullTables({
       allTables: Object.keys(input.tables) as DrizzleSyncTableName<TTables>[],
       changes,
@@ -456,12 +465,14 @@ export function createDrizzleSyncRepository<
         allTables: tableNames,
         changes,
       });
+      const observedAt = nowMillis();
+      const latestRow = latestCursorOrNull({ latestCursorRows });
 
       return {
         changedTables,
         hasChanges: changedTables.length > 0,
-        cursor: formatCursorOrEmpty(latestCursorOrNull({ latestCursorRows })),
-        serverTime: nowIso(),
+        cursor: formatCursorOrWatermark({ latestRow, observedAt }),
+        serverTime: new Date(observedAt).toISOString(),
       };
     },
   };

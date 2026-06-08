@@ -53,11 +53,13 @@ The helper SHALL parse the input cursor, call each table config's `readRows` for
 - **THEN** rows with `deletedAt === null` SHALL appear in `changedRows` without `syncUpdatedAt`
 - **AND** rows with non-null `deletedAt` SHALL contribute their `id` to `deletedIds`
 
-#### Scenario: Pull response formats latest cursor
+#### Scenario: Pull response formats cursor
 
 - **WHEN** at least one configured table has rows for the scope
 - **THEN** the response cursor SHALL be formatted from the latest row across all configured tables
-- **AND** when no configured table has rows for the scope, the response cursor SHALL be empty
+- **AND** the response cursor SHALL NOT be empty
+- **WHEN** no configured table has rows for the scope
+- **THEN** the response cursor SHALL be a non-empty synthetic server watermark cursor
 
 #### Scenario: Pull response has no pagination
 
@@ -81,10 +83,13 @@ The returned repository SHALL provide `loadSyncStatus({ cursor, scopeId })` that
 - **THEN** `changedTables` SHALL be empty
 - **AND** `hasChanges` SHALL be `false`
 
-#### Scenario: Status response formats latest cursor
+#### Scenario: Status response formats cursor
 
-- **WHEN** `loadSyncStatus` returns a response
-- **THEN** `cursor` SHALL be formatted from the latest row across all configured tables or be empty when no row exists
+- **WHEN** `loadSyncStatus` returns a response and at least one configured table has rows for the scope
+- **THEN** `cursor` SHALL be formatted from the latest row across all configured tables
+- **AND** `cursor` SHALL NOT be empty
+- **WHEN** `loadSyncStatus` returns a response and no configured table has rows for the scope
+- **THEN** `cursor` SHALL be a non-empty synthetic server watermark cursor
 - **AND** `serverTime` SHALL be set
 
 ### Requirement: Drizzle repository push application

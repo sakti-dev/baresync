@@ -1,13 +1,13 @@
 ## 1. TDD Ground Rules
 
-- [ ] 1.1 Read `openspec/changes/fix-baseline-cursor-watermark/proposal.md`, `design.md`, and all delta specs before editing code.
-- [ ] 1.2 Follow strict red-green-refactor: write one failing test, run it and confirm the expected failure, implement the smallest production change, then rerun the focused test until it passes.
-- [ ] 1.3 Do not change production code before the corresponding failing test exists and has been run.
-- [ ] 1.4 Do not use `apply_pull_batch_tables_tx()` as the cursor-storage regression surface; it only applies rows and has no start-cursor or cursor-write-policy context.
+- [x] 1.1 Read `openspec/changes/fix-baseline-cursor-watermark/proposal.md`, `design.md`, and all delta specs before editing code.
+- [x] 1.2 Follow strict red-green-refactor: write one failing test, run it and confirm the expected failure, implement the smallest production change, then rerun the focused test until it passes.
+- [x] 1.3 Do not change production code before the corresponding failing test exists and has been run.
+- [x] 1.4 Do not use `apply_pull_batch_tables_tx()` as the cursor-storage regression surface; it only applies rows and has no start-cursor or cursor-write-policy context.
 
 ## 2. Server Cursor Helper Tests
 
-- [ ] 2.1 RED: Add a failing test in `packages/baresync/src/server/__test__/service-primitives.test.ts` proving `formatSyncWatermarkCursor(1780915200000)` returns `"sync:1780915200000:__watermark__:__scope__"`.
+- [x] 2.1 RED: Add a failing test in `packages/baresync/src/server/__test__/service-primitives.test.ts` proving `formatSyncWatermarkCursor(1780915200000)` returns `"sync:1780915200000:__watermark__:__scope__"`.
 
 Suggested test:
 
@@ -23,7 +23,7 @@ describe("formatSyncWatermarkCursor", () => {
 });
 ```
 
-- [ ] 2.2 RED: Run the focused test and confirm it fails because `formatSyncWatermarkCursor` is missing, not because of a typo.
+- [x] 2.2 RED: Run the focused test and confirm it fails because `formatSyncWatermarkCursor` is missing, not because of a typo.
 
 Command:
 
@@ -31,7 +31,7 @@ Command:
 bun test packages/baresync/src/server/__test__/service-primitives.test.ts --test-name-pattern "formatSyncWatermarkCursor"
 ```
 
-- [ ] 2.3 GREEN: Implement and export `formatSyncWatermarkCursor` in `packages/baresync/src/server/service.ts`.
+- [x] 2.3 GREEN: Implement and export `formatSyncWatermarkCursor` in `packages/baresync/src/server/service.ts`.
 
 Suggested production code:
 
@@ -48,14 +48,14 @@ export function formatSyncWatermarkCursor(syncUpdatedAt: number): string {
 }
 ```
 
-- [ ] 2.4 GREEN: Ensure `formatSyncWatermarkCursor` is exported from `packages/baresync/src/server/index.ts` if server helpers are re-exported there.
-- [ ] 2.5 GREEN: Rerun the focused service primitive test and confirm it passes.
-- [ ] 2.6 RED: Add a second test proving `parseSyncCursor("sync:1780915200000:__watermark__:__scope__")` parses to `{ syncUpdatedAt: 1780915200000, tableName: "__watermark__", rowId: "__scope__" }`.
-- [ ] 2.7 GREEN: Run the focused service primitive tests and confirm both watermark helper tests pass without changing parser behavior.
+- [x] 2.4 GREEN: Ensure `formatSyncWatermarkCursor` is exported from `packages/baresync/src/server/index.ts` if server helpers are re-exported there.
+- [x] 2.5 GREEN: Rerun the focused service primitive test and confirm it passes.
+- [x] 2.6 RED: Add a second test proving `parseSyncCursor("sync:1780915200000:__watermark__:__scope__")` parses to `{ syncUpdatedAt: 1780915200000, tableName: "__watermark__", rowId: "__scope__" }`.
+- [x] 2.7 GREEN: Run the focused service primitive tests and confirm both watermark helper tests pass without changing parser behavior.
 
 ## 3. Drizzle Repository Watermark Tests
 
-- [ ] 3.1 RED: Update the existing no-rows pull test in `packages/baresync/src/server/__test__/drizzle.test.ts` from expecting an empty cursor to expecting a non-empty synthetic watermark cursor.
+- [x] 3.1 RED: Update the existing no-rows pull test in `packages/baresync/src/server/__test__/drizzle.test.ts` from expecting an empty cursor to expecting a non-empty synthetic watermark cursor.
 
 Current test name to modify:
 
@@ -79,7 +79,7 @@ expect(parseSyncCursor(response.cursor)).toMatchObject({
 });
 ```
 
-- [ ] 3.2 RED: Run only the updated Drizzle no-rows pull test and confirm it fails because the cursor is currently `""`.
+- [x] 3.2 RED: Run only the updated Drizzle no-rows pull test and confirm it fails because the cursor is currently `""`.
 
 Command:
 
@@ -87,7 +87,7 @@ Command:
 bun test packages/baresync/src/server/__test__/drizzle.test.ts --test-name-pattern "watermark cursor when no rows exist"
 ```
 
-- [ ] 3.3 GREEN: Replace the internal Drizzle helper behavior in `packages/baresync/src/server/drizzle.ts` so no-row responses use a synthetic watermark cursor.
+- [x] 3.3 GREEN: Replace the internal Drizzle helper behavior in `packages/baresync/src/server/drizzle.ts` so no-row responses use a synthetic watermark cursor.
 
 Suggested shape:
 
@@ -120,8 +120,8 @@ return {
 };
 ```
 
-- [ ] 3.4 GREEN: Rerun the focused Drizzle no-rows pull test and confirm it passes.
-- [ ] 3.5 RED: Add a no-rows status test in `packages/baresync/src/server/__test__/drizzle.test.ts` proving `loadSyncStatus({ cursor: "", scopeId: "missing" })` returns `hasChanges: false`, `changedTables: []`, and a non-empty synthetic watermark cursor.
+- [x] 3.4 GREEN: Rerun the focused Drizzle no-rows pull test and confirm it passes.
+- [x] 3.5 RED: Add a no-rows status test in `packages/baresync/src/server/__test__/drizzle.test.ts` proving `loadSyncStatus({ cursor: "", scopeId: "missing" })` returns `hasChanges: false`, `changedTables: []`, and a non-empty synthetic watermark cursor.
 
 Suggested test:
 
@@ -140,9 +140,9 @@ it("returns a watermark cursor when status has no rows", async () => {
 });
 ```
 
-- [ ] 3.6 RED: Run the focused status test and confirm it fails because status currently returns `""` for no rows.
-- [ ] 3.7 GREEN: Update `loadSyncStatus` in `packages/baresync/src/server/drizzle.ts` to use the same `formatCursorOrWatermark` behavior.
-- [ ] 3.8 GREEN: Rerun all Drizzle repository tests.
+- [x] 3.6 RED: Run the focused status test and confirm it fails because status currently returns `""` for no rows.
+- [x] 3.7 GREEN: Update `loadSyncStatus` in `packages/baresync/src/server/drizzle.ts` to use the same `formatCursorOrWatermark` behavior.
+- [x] 3.8 GREEN: Rerun all Drizzle repository tests.
 
 Command:
 
@@ -152,7 +152,7 @@ bun test packages/baresync/src/server/__test__/drizzle.test.ts
 
 ## 4. Rust Initial Baseline Table Scope Tests
 
-- [ ] 4.1 RED: Add a failing test in `crates/baresync-core/tests/simulation.rs` proving an uninitialized `sync_now()` full resync ignores status `changedTables` and pulls all contract tables.
+- [x] 4.1 RED: Add a failing test in `crates/baresync-core/tests/simulation.rs` proving an uninitialized `sync_now()` full resync ignores status `changedTables` and pulls all contract tables.
 
 Add near `sync_now_preserves_baseline_sync_when_local_cursor_missing`.
 
@@ -195,7 +195,7 @@ async fn sync_now_full_resync_pulls_all_tables_when_local_cursor_missing() {
 }
 ```
 
-- [ ] 4.2 RED: Run the focused test and confirm it fails because the pull request currently contains only `["categories"]`.
+- [x] 4.2 RED: Run the focused test and confirm it fails because the pull request currently contains only `["categories"]`.
 
 Command:
 
@@ -203,7 +203,7 @@ Command:
 cargo test --package baresync-core sync_now_full_resync_pulls_all_tables_when_local_cursor_missing
 ```
 
-- [ ] 4.3 GREEN: In `crates/baresync-core/src/engine.rs`, change the `needs_baseline_sync` branch to pass `None` to `run_full_resync`.
+- [x] 4.3 GREEN: In `crates/baresync-core/src/engine.rs`, change the `needs_baseline_sync` branch to pass `None` to `run_full_resync`.
 
 Minimal change:
 
@@ -213,9 +213,9 @@ if local_state.needs_baseline_sync {
 }
 ```
 
-- [ ] 4.4 GREEN: Rerun the focused baseline table-scope test and confirm it passes.
-- [ ] 4.5 REFACTOR: If straightforward, simplify `run_full_resync` so it no longer accepts `changed_tables`; all full-resync callers should pull all contract tables. Keep focused tests green after refactor.
-- [ ] 4.6 GREEN: Rerun the existing incremental changed-table filter test to confirm incremental sync still uses `changedTables`.
+- [x] 4.4 GREEN: Rerun the focused baseline table-scope test and confirm it passes.
+- [x] 4.5 REFACTOR: If straightforward, simplify `run_full_resync` so it no longer accepts `changed_tables`; all full-resync callers should pull all contract tables. Keep focused tests green after refactor.
+- [x] 4.6 GREEN: Rerun the existing incremental changed-table filter test to confirm incremental sync still uses `changedTables`.
 
 Command:
 
@@ -223,7 +223,7 @@ Command:
 cargo test --package baresync-core sync_now_pulls_changed_tables_without_push_when_local_is_clean
 ```
 
-- [ ] 4.7 GREEN: Rerun the existing reconciliation test to confirm rejected-table baseline filtering remains intact.
+- [x] 4.7 GREEN: Rerun the existing reconciliation test to confirm rejected-table baseline filtering remains intact.
 
 Command:
 
@@ -233,7 +233,7 @@ cargo test --package baresync-core sync_now_reconciles_rejected_tables_after_pus
 
 ## 5. Rust Baseline Cursor Storage Tests
 
-- [ ] 5.1 RED: Add a failing test in `crates/baresync-core/tests/simulation.rs` proving a baseline `pull::pull(...)` stores the non-empty response cursor when no cursor exists.
+- [x] 5.1 RED: Add a failing test in `crates/baresync-core/tests/simulation.rs` proving a baseline `pull::pull(...)` stores the non-empty response cursor when no cursor exists.
 
 Do not call `apply_pull_batch_tables_tx()` directly for this test.
 
@@ -284,7 +284,7 @@ async fn baseline_pull_stores_cursor_when_no_existing_cursor() {
 
 If `SyncEngine` fields are private and cannot be accessed from the test, call `engine.sync_now(1000)` instead and assert cursor afterward. The key is to exercise `pull::pull(...)` or `sync_now(...)`, not the low-level batch apply helper.
 
-- [ ] 5.2 RED: Run the focused test and confirm it fails because no cursor row is written.
+- [x] 5.2 RED: Run the focused test and confirm it fails because no cursor row is written.
 
 Command:
 
@@ -292,7 +292,7 @@ Command:
 cargo test --package baresync-core baseline_pull_stores_cursor_when_no_existing_cursor
 ```
 
-- [ ] 5.3 GREEN: Change `crates/baresync-core/src/pull.rs` cursor-write guard so a non-empty response cursor is stored for `PullStartCursor::Stored`, and also stored for `PullStartCursor::Baseline` only when `cursor::get_last_cursor(db, &config.scope_id)` returns empty.
+- [x] 5.3 GREEN: Change `crates/baresync-core/src/pull.rs` cursor-write guard so a non-empty response cursor is stored for `PullStartCursor::Stored`, and also stored for `PullStartCursor::Baseline` only when `cursor::get_last_cursor(db, &config.scope_id)` returns empty.
 
 Suggested implementation:
 
@@ -314,8 +314,8 @@ if !new_cursor.is_empty() {
 }
 ```
 
-- [ ] 5.4 GREEN: Rerun `baseline_pull_stores_cursor_when_no_existing_cursor` and confirm it passes.
-- [ ] 5.5 GREEN: Rerun existing `baseline_pull_does_not_advance_stored_cursor` and confirm it still passes.
+- [x] 5.4 GREEN: Rerun `baseline_pull_stores_cursor_when_no_existing_cursor` and confirm it passes.
+- [x] 5.5 GREEN: Rerun existing `baseline_pull_does_not_advance_stored_cursor` and confirm it still passes.
 
 Command:
 
@@ -323,7 +323,7 @@ Command:
 cargo test --package baresync-core baseline_pull_does_not_advance_stored_cursor
 ```
 
-- [ ] 5.6 RED: Add or update an integration test proving `sync_now()` moves from `FullResync` on first sync to non-baseline state afterward.
+- [x] 5.6 RED: Add or update an integration test proving `sync_now()` moves from `FullResync` on first sync to non-baseline state afterward.
 
 Suggested test:
 
@@ -360,7 +360,7 @@ async fn sync_now_clears_baseline_needed_after_successful_full_resync() {
 }
 ```
 
-- [ ] 5.7 GREEN: Run the focused integration test and confirm it passes after the cursor-write change.
+- [x] 5.7 GREEN: Run the focused integration test and confirm it passes after the cursor-write change.
 
 Command:
 
@@ -370,7 +370,7 @@ cargo test --package baresync-core sync_now_clears_baseline_needed_after_success
 
 ## 6. Empty Cursor Local State Tests
 
-- [ ] 6.1 RED or VERIFY: Add or confirm a test proving a stored empty cursor still reports `needs_baseline_sync=true`.
+- [x] 6.1 RED or VERIFY: Add or confirm a test proving a stored empty cursor still reports `needs_baseline_sync=true`.
 
 Search first:
 
@@ -387,18 +387,18 @@ assert_eq!(state.last_server_watermark, "");
 assert!(state.needs_baseline_sync);
 ```
 
-- [ ] 6.2 GREEN: If no test exists, add it and run the focused state test. No production change should be needed unless the test exposes a regression.
+- [x] 6.2 GREEN: If no test exists, add it and run the focused state test. No production change should be needed unless the test exposes a regression.
 
 ## 7. Example Repository Alignment
 
-- [ ] 7.1 Inspect `examples/inventory-json-polling/apps/server/src/db/v1/primitive/sync-repository.ts`; it already uses `latestRow ?? getSeedCursor()` and may already return non-empty cursor for the seeded example.
-- [ ] 7.2 If the primitive example can serve missing scopes, update it to use `formatSyncWatermarkCursor(Date.now())` instead of a domain-specific seed cursor when no rows exist for the requested scope.
-- [ ] 7.3 Inspect `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts`; it delegates to `createDrizzleSyncRepository`, so it should inherit watermark behavior after the helper change.
-- [ ] 7.4 Run relevant example/server tests if any assertions depend on empty cursor behavior.
+- [x] 7.1 Inspect `examples/inventory-json-polling/apps/server/src/db/v1/primitive/sync-repository.ts`; it already uses `latestRow ?? getSeedCursor()` and may already return non-empty cursor for the seeded example.
+- [x] 7.2 If the primitive example can serve missing scopes, update it to use `formatSyncWatermarkCursor(Date.now())` instead of a domain-specific seed cursor when no rows exist for the requested scope.
+- [x] 7.3 Inspect `examples/inventory-json-polling/apps/server/src/db/v1/drizzle-helper/sync-repository.ts`; it delegates to `createDrizzleSyncRepository`, so it should inherit watermark behavior after the helper change.
+- [x] 7.4 Run relevant example/server tests if any assertions depend on empty cursor behavior.
 
 ## 8. Spec And Documentation Consistency
 
-- [ ] 8.1 Search for stale language that says successful pull/status response cursors may be empty.
+- [x] 8.1 Search for stale language that says successful pull/status response cursors may be empty.
 
 Command:
 
@@ -406,12 +406,12 @@ Command:
 rg -n "cursor.*empty|empty cursor|watermark string or empty|when no .*row.*cursor.*empty" openspec packages examples crates
 ```
 
-- [ ] 8.2 Update source comments, tests names, and docs touched by this change so they say successful API responses return non-empty cursors.
-- [ ] 8.3 Do not edit archived OpenSpec change files unless a test or generated artifact directly requires it; current delta specs are the authoritative change record.
+- [x] 8.2 Update source comments, tests names, and docs touched by this change so they say successful API responses return non-empty cursors.
+- [x] 8.3 Do not edit archived OpenSpec change files unless a test or generated artifact directly requires it; current delta specs are the authoritative change record.
 
 ## 9. Full Verification
 
-- [ ] 9.1 Run all affected TypeScript server tests.
+- [x] 9.1 Run all affected TypeScript server tests.
 
 Command:
 
@@ -419,7 +419,7 @@ Command:
 bun test packages/baresync/src/server/__test__/service-primitives.test.ts packages/baresync/src/server/__test__/drizzle.test.ts
 ```
 
-- [ ] 9.2 Run all baresync-core tests.
+- [x] 9.2 Run all baresync-core tests.
 
 Command:
 
@@ -427,7 +427,7 @@ Command:
 cargo test --package baresync-core
 ```
 
-- [ ] 9.3 Run Ultracite check.
+- [x] 9.3 Run Ultracite check.
 
 Command:
 
@@ -435,7 +435,7 @@ Command:
 bun x ultracite check
 ```
 
-- [ ] 9.4 If Ultracite reports formatting or safe fixable lint issues, run fix, then re-run check.
+- [x] 9.4 If Ultracite reports formatting or safe fixable lint issues, run fix, then re-run check.
 
 Command:
 
@@ -444,7 +444,7 @@ bun x ultracite fix
 bun x ultracite check
 ```
 
-- [ ] 9.5 Run the repo typecheck script required by AGENTS.md.
+- [x] 9.5 Run the repo typecheck script required by AGENTS.md.
 
 Command:
 
@@ -452,13 +452,13 @@ Command:
 bun run typecheck
 ```
 
-- [ ] 9.6 If any task changed desktop, Android, Tauri, fixture app, fixture backend, or `tests/e2e` smoke automation, read `openspec/knowledge/E2E-TESTING-RUNBOOK.md` and run the required E2E verification before claiming completion. This change should not require E2E unless implementation touches those areas.
+- [x] 9.6 If any task changed desktop, Android, Tauri, fixture app, fixture backend, or `tests/e2e` smoke automation, read `openspec/knowledge/E2E-TESTING-RUNBOOK.md` and run the required E2E verification before claiming completion. This change should not require E2E unless implementation touches those areas.
 
 ## 10. Expected Final Behavior Checklist
 
-- [ ] 10.1 First sync with remote rows performs `FullResync`, pulls all contract tables, applies rows, stores the API cursor, and `needs_baseline_sync` becomes false.
-- [ ] 10.2 First sync with no remote rows performs `FullResync`, receives a synthetic watermark cursor, stores it after successful apply, and `needs_baseline_sync` becomes false.
-- [ ] 10.3 Failed baseline apply stores no cursor, leaving `needs_baseline_sync=true` for safe retry.
-- [ ] 10.4 Incremental pull still uses `status.changedTables` and advances stored cursor.
-- [ ] 10.5 Server-wins reconciliation baseline still pulls only rejected tables and preserves the existing cursor.
-- [ ] 10.6 A server returning `cursor: ""` remains fail-safe: the client does not store the empty cursor and remains baseline-needed.
+- [x] 10.1 First sync with remote rows performs `FullResync`, pulls all contract tables, applies rows, stores the API cursor, and `needs_baseline_sync` becomes false.
+- [x] 10.2 First sync with no remote rows performs `FullResync`, receives a synthetic watermark cursor, stores it after successful apply, and `needs_baseline_sync` becomes false.
+- [x] 10.3 Failed baseline apply stores no cursor, leaving `needs_baseline_sync=true` for safe retry.
+- [x] 10.4 Incremental pull still uses `status.changedTables` and advances stored cursor.
+- [x] 10.5 Server-wins reconciliation baseline still pulls only rejected tables and preserves the existing cursor.
+- [x] 10.6 A server returning `cursor: ""` remains fail-safe: the client does not store the empty cursor and remains baseline-needed.

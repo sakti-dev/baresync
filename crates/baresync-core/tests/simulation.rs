@@ -552,6 +552,142 @@ async fn sync_now_preserves_baseline_sync_when_local_cursor_missing() {
 }
 
 #[tokio::test]
+async fn sync_now_full_resync_pulls_all_tables_when_local_cursor_missing() {
+    let pool = temp_db().await;
+
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": ["categories"],
+            "hasChanges": true,
+            "cursor": "sync:status",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [],
+            "deletedIds": []
+        }, {
+            "table": "products",
+            "changedRows": [],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport.clone(), "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullResync);
+    let pull_request = &transport.calls()[1].1;
+    assert_eq!(pull_request["cursor"], "");
+    assert_eq!(
+        pull_request["tables"],
+        serde_json::json!(["categories", "products"])
+    );
+}
+
+#[tokio::test]
+async fn baseline_pull_stores_cursor_when_no_existing_cursor() {
+    let pool = temp_db().await;
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool.clone(), transport, "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullResync);
+    let cursor: String =
+        db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = 'merchant-1'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(cursor, "sync:1716120000000:products:prod-1");
+}
+
+#[tokio::test]
+async fn baseline_pull_does_not_store_empty_cursor() {
+    let pool = temp_db().await;
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": [],
+            "hasChanges": false,
+            "cursor": "",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        serde_json::json!({
+            "cursor": "",
+            "hasMore": false,
+            "serverTime": "2026-05-19T12:00:00.000Z",
+            "tables": [{
+                "table": "categories",
+                "changedRows": [],
+                "deletedIds": []
+            }],
+        }),
+    );
+    let engine = test_engine_with_transport(pool.clone(), transport, "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullResync);
+
+    let stored_cursor: Option<String> =
+        db_scalar("SELECT last_cursor FROM sync_cursors WHERE scope_id = ?1")
+            .bind("merchant-1")
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+    assert!(stored_cursor.is_none(), "empty response cursor must not be stored");
+
+    let state = engine.get_sync_local_state().await.unwrap();
+    assert!(state.needs_baseline_sync);
+    assert!(state.last_server_watermark.is_empty());
+}
+
+#[tokio::test]
+async fn sync_now_clears_baseline_needed_after_successful_full_resync() {
+    let pool = temp_db().await;
+    let transport = RecordingTransport::new(
+        response_with_table_ack("categories", vec![]),
+        serde_json::json!({
+            "changedTables": ["categories"],
+            "hasChanges": true,
+            "cursor": "sync:status",
+            "serverTime": "2026-05-19T12:00:00.000Z",
+        }),
+        response_with_pull_tables(serde_json::json!([{
+            "table": "categories",
+            "changedRows": [],
+            "deletedIds": []
+        }, {
+            "table": "products",
+            "changedRows": [],
+            "deletedIds": []
+        }])),
+    );
+    let engine = test_engine_with_transport(pool, transport, "merchant-1").await;
+
+    let result = engine.sync_now(1000).await.unwrap();
+    assert_eq!(result.mode, baresync_core::engine::SyncNowMode::FullResync);
+
+    let state = engine.get_sync_local_state().await.unwrap();
+    assert!(!state.needs_baseline_sync, "baseline should be cleared after successful full resync");
+}
+
+#[tokio::test]
 async fn sync_now_reconciles_rejected_tables_after_push() {
     let pool = temp_db().await;
     seed_cursor(&pool, "sync:phase14").await;

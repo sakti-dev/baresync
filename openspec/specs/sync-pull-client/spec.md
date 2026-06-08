@@ -94,7 +94,7 @@ The pull engine SHALL expect a JSON response with this structure:
 
 ```json
 {
-  "cursor": "<watermark string or empty>",
+  "cursor": "<non-empty watermark string>",
   "hasMore": false,
   "serverTime": "<ISO timestamp>",
   "tables": [

@@ -78,6 +78,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_cursor_means_needs_baseline_sync() {
+        let db = test_pool().await;
+        db.execute(
+            "INSERT INTO sync_cursors (scope_id, last_cursor, updated_at) VALUES ('scope-1', '', '0')",
+            vec![],
+        )
+        .await
+        .unwrap();
+
+        let state = get_sync_local_state(&db, "scope-1").await.unwrap();
+        assert!(state.needs_baseline_sync);
+        assert_eq!(state.last_server_watermark, "");
+    }
+
+    #[tokio::test]
     async fn get_sync_local_state_reflects_pending_and_cursor() {
         let db = test_pool().await;
         db.execute(

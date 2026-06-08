@@ -159,10 +159,20 @@ pub async fn pull(
     )
     .await?;
 
-    if matches!(start_cursor, PullStartCursor::Stored) && !new_cursor.is_empty() {
-        cursor::set_last_cursor_tx(db, &config.scope_id, &new_cursor)
+    if !new_cursor.is_empty() {
+        if matches!(start_cursor, PullStartCursor::Stored) {
+            cursor::set_last_cursor_tx(db, &config.scope_id, &new_cursor)
+                .await
+                .map_err(SyncError::Database)?;
+        } else if cursor::get_last_cursor(db, &config.scope_id)
             .await
-            .map_err(SyncError::Database)?;
+            .map_err(SyncError::Database)?
+            .is_empty()
+        {
+            cursor::set_last_cursor_tx(db, &config.scope_id, &new_cursor)
+                .await
+                .map_err(SyncError::Database)?;
+        }
     }
 
     Ok(PullResult {

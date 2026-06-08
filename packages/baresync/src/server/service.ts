@@ -207,6 +207,17 @@ export function formatLatestSyncCursor(input: {
   });
 }
 
+export const SYNC_WATERMARK_TABLE = "__watermark__";
+export const SYNC_WATERMARK_ROW = "__scope__";
+
+export function formatSyncWatermarkCursor(syncUpdatedAt: number): string {
+  return formatSyncCursor({
+    rowId: SYNC_WATERMARK_ROW,
+    syncUpdatedAt,
+    tableName: SYNC_WATERMARK_TABLE,
+  });
+}
+
 function compareSyncCursorRows<
   Row extends {
     id: string;

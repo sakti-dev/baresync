@@ -104,7 +104,7 @@ impl SyncEngine {
 
         if local_state.needs_baseline_sync {
             return self
-                .run_full_resync(limit, Some(&changed_tables), Some(status_result))
+                .run_full_resync(limit, Some(status_result))
                 .await;
         }
 
@@ -137,7 +137,7 @@ impl SyncEngine {
     }
 
     pub async fn sync_full_resync(&self, limit: i32) -> Result<SyncNowResult, SyncError> {
-        self.run_full_resync(limit, None, None).await
+        self.run_full_resync(limit, None).await
     }
 
     async fn run_push_only(
@@ -266,7 +266,6 @@ impl SyncEngine {
     async fn run_full_resync(
         &self,
         limit: i32,
-        changed_tables: Option<&[String]>,
         status_result: Option<SyncStatusResult>,
     ) -> Result<SyncNowResult, SyncError> {
         let pull_result = pull::pull(
@@ -277,7 +276,7 @@ impl SyncEngine {
             &self.tables.local_only_columns,
             limit,
             pull::PullStartCursor::Baseline,
-            changed_tables,
+            None,
         )
         .await?;
 

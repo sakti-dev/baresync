@@ -164,6 +164,14 @@ smokeSuite("public fixture desktop smoke", () => {
       (await text("#transport-mode")) === expectedTransportMode,
       "transport mode should match the selected fixture encoding"
     );
+    ensure(
+      (await text("#needs-baseline")) === "yes",
+      "fresh app should start needing a baseline sync"
+    );
+    ensure(
+      (await text("#watermark")) === "-",
+      "fresh app should not have a stored watermark before baseline sync"
+    );
 
     const baselineSync = await runtime.browser.$("#baseline-sync");
     await baselineSync.click();
@@ -173,6 +181,15 @@ smokeSuite("public fixture desktop smoke", () => {
       "#sync-result",
       "baseline:",
       "baseline sync should run"
+    );
+    await waitForText(
+      "#needs-baseline",
+      "no",
+      "baseline sync should clear the baseline-needed state"
+    );
+    ensure(
+      (await text("#watermark")) !== "-",
+      "baseline sync should store a watermark"
     );
 
     const createRow = await runtime.browser.$("#create-row");

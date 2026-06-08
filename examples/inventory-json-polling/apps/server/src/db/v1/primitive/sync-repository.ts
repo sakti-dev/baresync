@@ -7,19 +7,18 @@ import {
   buildPullTables,
   changedTableNames,
   formatLatestSyncCursor,
+  formatSyncWatermarkCursor,
   parseSyncCursorTimestamp,
   type SyncPushChange,
   validateSyncTable,
 } from "baresync/server";
 import { eq } from "drizzle-orm";
-import { getSeedCursor } from "../../seed";
 import {
   asRow,
   buildItemRow,
   buildLocationRow,
   buildStockCountRow,
   type InventoryDb,
-  nowIso,
   readLatestCursorRow,
   snapshotTables,
   TABLE_NAMES,
@@ -54,13 +53,16 @@ export interface InventoryStatusResponse {
 async function buildSnapshotResponse(
   db: InventoryDb,
   scopeId: string,
+  observedAt: number,
   serverTime: string
 ): Promise<InventoryPullResponse> {
   const snapshot = await snapshotTables(db, scopeId);
   const latestRow = await readLatestCursorRow(db, scopeId);
 
   return {
-    cursor: formatLatestSyncCursor(latestRow ?? getSeedCursor()),
+    cursor: latestRow
+      ? formatLatestSyncCursor(latestRow)
+      : formatSyncWatermarkCursor(observedAt),
     hasMore: false,
     serverTime,
     tables: buildPullTables({
@@ -72,6 +74,15 @@ async function buildSnapshotResponse(
       },
       requestedTables: [],
     }),
+  };
+}
+
+function buildResponseClock() {
+  const observedAt = Date.now();
+
+  return {
+    observedAt,
+    serverTime: new Date(observedAt).toISOString(),
   };
 }
 
@@ -185,7 +196,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
       scopeId: string;
       syncUpdatedAt: number;
     }): Promise<InventoryPullResponse> {
-      const serverTime = nowIso();
+      const { observedAt, serverTime } = buildResponseClock();
 
       await db.transaction(async (tx) => {
         for (const change of input.changes) {
@@ -197,7 +208,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
         }
       });
 
-      return buildSnapshotResponse(db, input.scopeId, serverTime);
+      return buildSnapshotResponse(db, input.scopeId, observedAt, serverTime);
     },
 
     async loadPullChanges(input: {
@@ -212,11 +223,14 @@ export function createInventorySyncRepository(db: InventoryDb) {
         cursorTimestamp
       );
       const latestRow = await readLatestCursorRow(db, input.scopeId);
+      const { observedAt, serverTime } = buildResponseClock();
 
       return {
-        cursor: formatLatestSyncCursor(latestRow ?? getSeedCursor()),
+        cursor: latestRow
+          ? formatLatestSyncCursor(latestRow)
+          : formatSyncWatermarkCursor(observedAt),
         hasMore: false,
-        serverTime: nowIso(),
+        serverTime,
         tables: buildPullTables({
           allTables: TABLE_NAMES,
           changes: {
@@ -240,6 +254,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
         cursorTimestamp
       );
       const latestRow = await readLatestCursorRow(db, input.scopeId);
+      const { observedAt, serverTime } = buildResponseClock();
 
       const changedTables = changedTableNames({
         allTables: TABLE_NAMES,
@@ -253,8 +268,10 @@ export function createInventorySyncRepository(db: InventoryDb) {
       return {
         changedTables,
         hasChanges: changedTables.length > 0,
-        cursor: formatLatestSyncCursor(latestRow ?? getSeedCursor()),
-        serverTime: nowIso(),
+        cursor: latestRow
+          ? formatLatestSyncCursor(latestRow)
+          : formatSyncWatermarkCursor(observedAt),
+        serverTime,
       };
     },
   };

@@ -6,6 +6,7 @@ import {
   countPushRows,
   formatLatestSyncCursor,
   formatSyncCursor,
+  formatSyncWatermarkCursor,
   mapSyncError,
   orderDeleteChanges,
   parseSyncCursor,
@@ -332,5 +333,26 @@ describe("countPushRows", () => {
 
   it("returns 0 for empty tables array", () => {
     expect(countPushRows({ tables: [] })).toBe(0);
+  });
+});
+
+describe("formatSyncWatermarkCursor", () => {
+  it("formats a synthetic server watermark cursor", () => {
+    expect(formatSyncWatermarkCursor(1_780_915_200_000)).toBe(
+      "sync:1780915200000:__watermark__:__scope__"
+    );
+  });
+});
+
+describe("watermark cursor roundtrip", () => {
+  it("parses a synthetic watermark cursor", () => {
+    const result = parseSyncCursor(
+      "sync:1780915200000:__watermark__:__scope__"
+    );
+    expect(result).toMatchObject({
+      syncUpdatedAt: 1_780_915_200_000,
+      tableName: "__watermark__",
+      rowId: "__scope__",
+    });
   });
 });
