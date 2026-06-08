@@ -164,19 +164,15 @@ When you add a table to `packages/sync-contract/sync.config.ts` and regenerate t
 
 ## Route handlers
 
-`apps/server/src/v1/routes.ts` wires the three sync endpoints using `createSyncPushHandler`, `createSyncPullHandler`, and `createSyncStatusHandler` from `baresync/server`. The example below shows the Hono variant; if you scaffolded with Elysia, the only difference is the router setup at the bottom of the file.
+`apps/server/src/v1/routes.ts` wires the three sync endpoints using `createSyncServer` from `baresync/server`. The example below shows the Hono variant; if you scaffolded with Elysia, the only difference is the router setup at the bottom of the file.
+Pass the raw Web `Request` to `syncServer.push`, `syncServer.pull`, and `syncServer.status`. Avoid framework middleware that consumes the body before Baresync reads it, because push idempotency hashes the raw request bytes.
 
 ```ts
 import { Hono } from "hono";
 import { SYNC_SCOPE } from "@sync-contract/constants";
-import {
-  createSyncPullHandler,
-  createSyncPushHandler,
-  createSyncStatusHandler,
-} from "baresync/server";
+import { createSyncServer } from "baresync/server";
 import { db } from "../db/client";
 import { createAppSyncRepository } from "../db/v1/sync-repository";
-
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== SYNC_SCOPE) {
     return {
@@ -185,57 +181,50 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
       body: { error: "single_scope_only" },
     };
   }
-
   return {
     ok: true as const,
     scope: { scopeId },
   };
 };
-
 const repository = createAppSyncRepository(db);
-
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: repository.tableNames,
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
-    repository.applyPushChanges({
-      changes,
-      scopeId: scope.scopeId,
-      syncUpdatedAt,
-    }),
+  push: {
+    upsertOrder: repository.tableNames,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({
+        changes,
+        scopeId: scope.scopeId,
+        syncUpdatedAt,
+      }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({
+        cursor,
+        scopeId: scope.scopeId,
+        tables,
+      }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({
+        cursor,
+        scopeId: scope.scopeId,
+      }),
+  },
 });
-
-const pull = createSyncPullHandler({
-  limit: 1000,
-  resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables }) =>
-    repository.loadPullChanges({
-      cursor,
-      scopeId: scope.scopeId,
-      tables,
-    }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) =>
-    repository.loadSyncStatus({
-      cursor,
-      scopeId: scope.scopeId,
-    }),
-});
-
 // Hono variant — mounts the handlers under /api/v1/sync at the index level.
 const sync = new Hono();
-
-sync.post("/push", (c) => push(c.req.raw, {}));
-sync.post("/pull", (c) => pull(c.req.raw, {}));
-sync.post("/status", (c) => status(c.req.raw, {}));
-
+sync.post("/push", (c) => syncServer.push(c.req.raw, {}));
+sync.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
+sync.post("/status", (c) => syncServer.status(c.req.raw, {}));
 export default sync;
 ```
-
-The handler factories handle body decoding, call your `resolveScope`, and delegate to the repository functions. The route module is self-contained — it imports the database client and repository directly, so you only need to import it from `index.ts`.
+`createSyncServer` is the batteries-included integration path. For custom protocol work, use the low-level primitives exported from `baresync/server`.
+The handler factory handles body decoding, calls your `resolveScope`, and delegates to the repository functions. The route module is self-contained — it imports the database client and repository directly, so you only need to import it from `index.ts`.
 
 ### Customizing scope resolution
 

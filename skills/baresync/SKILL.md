@@ -230,7 +230,7 @@ These must exist for baresync to work. Project structure (file paths, directory 
 | **`sync.config.ts`** | Maps table names to scope columns. Used by the generator. |
 | **Generated contract** | `bun run generate:sync` produces `generated/<YYYY-MM-DD>/sync-contract.json` and schema snapshots. |
 | **Server repository** | 5 functions per table: `buildRow`, `readLatestRow`, `readRows`, `softDeleteRow`, `upsertRow`. |
-| **Server routes** | Push/pull/status endpoints using `createSyncPushHandler` (requires `idempotency`), `createSyncPullHandler`, `createSyncStatusHandler`. |
+| **Server routes** | Push/pull/status endpoints using `createSyncServer` (grouped, preferred). Use low-level primitives for custom protocol work. |
 | **Client db helper** | `createTauriDrizzleDatabase` with a TABLE registry of all synced + runtime tables. |
 | **Client sync client** | `createSyncClient` scoped to `SYNC_SCOPE`. |
  | **Plugin config** | In `lib.rs`: `api_base_url`, `contract_json` (via `include_str!`), `db_path`, `migrations_path`, `poll_interval_secs`. |

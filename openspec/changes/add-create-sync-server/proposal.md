@@ -1,33 +1,32 @@
 ## Why
 
-Consumer server integrations currently have to compose three separate batteries-included handler factories:
-`createSyncPushHandler`, `createSyncPullHandler`, and `createSyncStatusHandler`. That shape leaks too much internal wiring into route modules: `db` is nested only under push idempotency, `resolveScope` is repeated three times, and downstream Elysia routes are prone to reconstructing `Request` objects from parsed bodies after the framework has consumed the original stream.
+Consumer server integrations should wire a sync route bundle as one grouped object, not as three separate handler factories. The current split API forces repeated `resolveScope` wiring, makes the idempotency database feel push-specific, and encourages framework adapters to reconstruct `Request` objects from parsed bodies.
 
-We need one preferred grouped server API that matches how consumers think about a sync route bundle, while keeping the old factories available for compatibility and low-level/custom use. The docs, skills, examples, and scaffold templates must all teach the same raw Web `Request` ownership model so future integrations do not lose push idempotency byte semantics.
+We want one preferred server API that matches how ordinary consumers think about sync routes: one grouped `createSyncServer({ db, resolveScope, push, pull, status })` object that returns raw-Web-Request handlers for `push`, `pull`, and `status`. The docs, skills, examples, and scaffold templates must teach the same raw `Request` ownership model so push idempotency continues to hash the original request bytes.
 
 ## What Changes
 
-- Add a new framework-neutral `createSyncServer({ db, resolveScope, push, pull, status })` factory exported from `baresync/server`.
-- Return a grouped `{ push, pull, status }` handler object where each handler keeps the existing `(request: Request, context: TContext) => Promise<Response>` contract.
-- Move the batteries-included idempotency database config to the grouped parent level as `db`, while adapting internally to the existing push idempotency guard.
-- Preserve `createSyncPushHandler`, `createSyncPullHandler`, and `createSyncStatusHandler` as source-compatible exports, but mark them deprecated for batteries-included route wiring.
-- Keep low-level primitives such as `decodeSyncRequest`, `encodeSyncResponse`, `createIdempotencyGuard`, `orderPushChanges`, and validation helpers as the custom-route API.
-- Update Hono scaffold output and examples to create one `syncServer` and pass `c.req.raw` directly.
+- Add `createSyncServer({ db, resolveScope, push, pull, status })` to `baresync/server`.
+- Keep the returned `push`, `pull`, and `status` handlers framework-neutral: `(request: Request, context: TContext) => Promise<Response>`.
+- Move batteries-included idempotency database configuration to the grouped parent level as `db`.
+- Remove the standalone route-factory exports from the public `baresync/server` API.
+- Keep the low-level primitives such as `decodeSyncRequest`, `encodeSyncResponse`, `createIdempotencyGuard`, `orderPushChanges`, and validation helpers for custom routes.
+- Update Hono scaffold output and example server code to create one `syncServer` and pass `c.req.raw` directly.
 - Update Elysia scaffold output and docs to create one `syncServer`, pass the original `request` directly, and configure routes so Elysia does not consume the body before Baresync reads it.
-- Update web docs under `apps/docs`, embedded docs examples, Baresync skill references under `skills/baresync` and `packages/baresync/skills`, the inventory example, scaffold tests, and release/migration notes to prefer `createSyncServer`.
+- Update docs, skills, examples, scaffold tests, and release notes to prefer `createSyncServer`.
 - Add TDD-shaped tests that first fail on the missing grouped API, stale scaffold output, and missing raw-body guidance, then drive the implementation and docs updates.
 
-No breaking changes are intended. Existing standalone handler factories remain exported and tested during the deprecation period.
+This is a hard cut in the public server route API. Consumers should migrate to `createSyncServer` and the raw-request route contract.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `sync-server-factory`: Preferred grouped batteries-included server factory and raw Web `Request` integration contract.
+- `sync-server-factory`: Preferred grouped server factory and raw Web `Request` integration contract.
 
 ### Modified Capabilities
 
-- `server-handler-helpers`: Existing framework-neutral handler requirements gain the grouped `createSyncServer` API and deprecation requirements for the three standalone factories.
+- `server-handler-helpers`: Server route behavior is surfaced through `createSyncServer` only.
 - `project-scaffolder`: Generated Hono and Elysia server route templates must use `createSyncServer`, avoid standalone handler imports, and preserve raw request ownership.
 - `inventory-example`: The inventory JSON polling example must demonstrate the grouped server API while retaining authorization and raw Hono request behavior.
 - `baresync-skill-guidance`: Agent-facing Baresync skills must prefer `createSyncServer` and warn about framework body parsing before Baresync reads the request.

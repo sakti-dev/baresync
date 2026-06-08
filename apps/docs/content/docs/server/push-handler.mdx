@@ -5,23 +5,32 @@ description: Implement the "accept local changes" endpoint.
 
 # Push Handler
 
-The push handler accepts local changes from the client, validates them, orders them, and passes them to your `applyPushChanges` callback.
+The push endpoint accepts local changes from the client, validates them, orders them, and passes them to your `applyPushChanges` callback. Configure it under [`createSyncServer`](/docs/server/overview).
 
-## Factory
+## Configure
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db: idempotencyDb,
   resolveScope,
-  upsertOrder: SYNC_UPSERT_ORDER,
-  idempotency: { db: idempotencyDb },
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
-    repository.applyPushChanges({
-      changes,
-      scopeId: scope.scopeId,
-      syncUpdatedAt,
-    }),
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({
+        changes,
+        scopeId: scope.scopeId,
+        syncUpdatedAt,
+      }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+  },
+  status: {
+    loadSyncStatus: async () => ({ hasChanges: false, changedTables: [], cursor: "", serverTime: "" }),
+  },
 });
 ```
 
@@ -83,7 +92,7 @@ If the limits are exceeded, the handler throws `SyncPayloadTooLargeError` and re
 ## Wire it up
 
 ```ts
-app.post("/push", (c) => push(c.req.raw, {}));
+app.post("/push", (c) => syncServer.push(c.req.raw, {}));
 ```
 
 ## Common mistakes

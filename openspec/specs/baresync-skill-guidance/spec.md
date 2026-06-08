@@ -102,17 +102,17 @@ The Baresync skill guidance SHALL update all relevant agent reference files so a
 
 #### Scenario: Agent loads setup guidance
 
-- **WHEN** an agent loads `packages/baresync/skills/reference/setup.md`
+- **WHEN** an agent loads `skills/baresync/reference/setup.md`
 - **THEN** the guidance SHALL include where authenticated apps call `setHeaders` in the setup flow
 
 #### Scenario: Agent loads UI guidance
 
-- **WHEN** an agent loads `packages/baresync/skills/reference/ui-frameworks.md`
+- **WHEN** an agent loads `skills/baresync/reference/ui-frameworks.md`
 - **THEN** the guidance SHALL include provider patterns for setting headers from auth state before polling protected routes
 
 #### Scenario: Agent loads plugin guidance
 
-- **WHEN** an agent loads `packages/baresync/skills/reference/tauri-plugin.md`
+- **WHEN** an agent loads `skills/baresync/reference/tauri-plugin.md`
 - **THEN** the guidance SHALL include the `set_headers` command and shared plugin header-store behavior
 
 #### Scenario: Agent loads operational guidance

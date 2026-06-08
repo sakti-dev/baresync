@@ -213,22 +213,16 @@ await sync.syncNow();
 ```
 
 Wire routes in the server created with `bun create hono`:
-
 ```ts title="apps/server/src/v1/routes.ts"
 // apps/server/src/v1/routes.ts
 import { Hono } from "hono";
-import {
-  createSyncPullHandler,
-  createSyncPushHandler,
-  createSyncStatusHandler,
-} from "baresync/server";
+import { createSyncServer } from "baresync/server";
 import {
   createDrizzleSyncRepository,
   optionalString,
   requiredString,
 } from "baresync/server/drizzle";
 import { db } from "../db/client";
-
 const resolveScope = ({ scopeId }: { scopeId: string }) => {
   if (scopeId !== "default") {
     return {
@@ -239,7 +233,6 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
   }
   return { ok: true as const, scope: { scopeId } };
 };
-
 const repository = createDrizzleSyncRepository({
   tables: {
     locations: {
@@ -265,38 +258,35 @@ const repository = createDrizzleSyncRepository({
     },
   },
 });
-
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: repository.tableNames,
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
-    repository.applyPushChanges({
-      changes,
-      scopeId: scope.scopeId,
-      syncUpdatedAt,
-    }),
+  push: {
+    upsertOrder: repository.tableNames,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({
+        changes,
+        scopeId: scope.scopeId,
+        syncUpdatedAt,
+      }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  },
 });
-
-const pull = createSyncPullHandler({
-  limit: 1000,
-  resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables }) =>
-    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
-});
-
 const sync = new Hono();
-sync.post("/push", (c) => push(c.req.raw, {}));
-sync.post("/pull", (c) => pull(c.req.raw, {}));
-sync.post("/status", (c) => status(c.req.raw, {}));
-
+sync.post("/push", (c) => syncServer.push(c.req.raw, {}));
+sync.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
+sync.post("/status", (c) => syncServer.status(c.req.raw, {}));
 export default sync;
 ```
+`createSyncServer` is the preferred batteries-included integration path. For custom protocol work, use the low-level primitives exported from `baresync/server`.
 
 The backend still owns authorization and persistence. Baresync decodes envelopes, validates push limits, orders table changes, and wraps idempotent push handling. The `resolveScope` function is where you check authorization — the handler factories call it on every request.
 

@@ -31,11 +31,10 @@ Your React code uses these through a provider pattern with React Query for cachi
 
 ## Server layer (your backend)
 
-Your server implements three routes using Baresync's handler factories:
+Your server implements routes using Baresync's grouped server API:
 
-- `createSyncPushHandler` — decodes the push payload and calls your `applyPushChanges`
-- `createSyncPullHandler` — decodes the pull request and calls your `loadPullChanges`
-- `createSyncStatusHandler` — decodes the status request and calls your `loadSyncStatus`
+- `createSyncServer` — composes push, pull, and status handlers in one place
+- low-level primitives — build custom route behavior when you need more control
 
 You keep full control over auth, scope resolution, and database persistence.
 

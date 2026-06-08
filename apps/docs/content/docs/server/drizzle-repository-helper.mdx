@@ -155,26 +155,32 @@ These four fields are required for the repository to split rows and compute curs
 ## Wire it all together
 
 ```ts
-const push = createSyncPushHandler({
-  resolveScope,
-  upsertOrder: SYNC_UPSERT_ORDER,
-  idempotency: { db },
-  applyPushChanges: ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) =>
-    repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
-});
+import { createSyncServer } from "baresync/server";
 
-const pull = createSyncPullHandler({
-  limit: 1000,
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  loadPullChanges: ({ cursor, scope, tables, scopeId, limit, context, request }) =>
-    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: ({ cursor, scope, scopeId, context, request }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) =>
+      repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: ({ cursor, scope, tables, scopeId, limit, context, request }) =>
+      repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  },
+  status: {
+    loadSyncStatus: ({ cursor, scope, scopeId, context, request }) =>
+      repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  },
 });
 ```
 
-Next: [Low Level Primitives](/docs/server/low-level-primitives).
+Wire the routes:
+
+```ts
+app.post("/push", (c) => syncServer.push(c.req.raw, {}));
+app.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
+app.post("/status", (c) => syncServer.status(c.req.raw, {}));
+```

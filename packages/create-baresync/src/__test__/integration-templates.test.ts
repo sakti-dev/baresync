@@ -24,8 +24,17 @@ describe("server and tauri scaffold templates", () => {
 
     expect(serverIndex?.content).toContain('app.route("/api/sync/v1"');
     expect(serverIndex?.content).toContain('import sync from "./v1/routes"');
-    expect(routes?.content).toContain("createSyncPushHandler");
-    expect(routes?.content).toContain("repository");
+    expect(routes?.content).toContain("createSyncServer");
+    expect(routes?.content).toContain("db,");
+    expect(routes?.content).toContain("push:");
+    expect(routes?.content).toContain("pull:");
+    expect(routes?.content).toContain("status:");
+    expect(routes?.content).toContain("syncServer.push(c.req.raw");
+    expect(routes?.content).not.toContain("createSyncPushHandler");
+    expect(routes?.content).not.toContain("createSyncPullHandler");
+    expect(routes?.content).not.toContain("createSyncStatusHandler");
+    expect(routes?.content).not.toContain("idempotency: { db }");
+    expect(routes?.content).not.toContain("new Request(");
     expect(fallback?.content).toContain("Manual mount required");
   });
 
@@ -47,8 +56,17 @@ describe("server and tauri scaffold templates", () => {
     expect(serverIndex?.content).toContain(
       'import { sync } from "./v1/routes"'
     );
-    expect(routes?.content).toContain("createSyncPushHandler");
-    expect(routes?.content).toContain("repository");
+    expect(routes?.content).toContain("createSyncServer");
+    expect(routes?.content).toContain("syncServer.push(request");
+    expect(routes?.content).toContain("syncServer.pull(request");
+    expect(routes?.content).toContain("syncServer.status(request");
+    expect(routes?.content).toContain('parse: "none"');
+    expect(routes?.content).not.toContain("createSyncPushHandler");
+    expect(routes?.content).not.toContain("createSyncPullHandler");
+    expect(routes?.content).not.toContain("createSyncStatusHandler");
+    expect(routes?.content).not.toContain("idempotency: { db }");
+    expect(routes?.content).not.toContain("new Request(");
+    expect(routes?.content).not.toContain("JSON.stringify(c.body)");
   });
 
   it("generates the tauri plugin builder setup and helper modules", () => {

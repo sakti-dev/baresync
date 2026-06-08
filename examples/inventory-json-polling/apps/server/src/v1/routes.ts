@@ -1,9 +1,5 @@
 import { SYNC_SCOPE } from "@sync-contract/constants";
-import {
-  createSyncPullHandler,
-  createSyncPushHandler,
-  createSyncStatusHandler,
-} from "baresync/server";
+import { createSyncServer } from "baresync/server";
 import { Hono } from "hono";
 import { requireInventoryAuthorization } from "../auth";
 import { db } from "../db/client";
@@ -29,36 +25,34 @@ const resolveScope = ({ scopeId }: { scopeId: string }) => {
 
 const repository = createInventorySyncRepository(db);
 
-const push = createSyncPushHandler({
-  idempotency: { db },
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: repository.tableNames,
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
-    repository.applyPushChanges({
-      changes,
-      scopeId: scope.scopeId,
-      syncUpdatedAt,
-    }),
-});
-
-const pull = createSyncPullHandler({
-  limit: 1000,
-  resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables }) =>
-    repository.loadPullChanges({
-      cursor,
-      scopeId: scope.scopeId,
-      tables,
-    }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) =>
-    repository.loadSyncStatus({
-      cursor,
-      scopeId: scope.scopeId,
-    }),
+  push: {
+    upsertOrder: repository.tableNames,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({
+        changes,
+        scopeId: scope.scopeId,
+        syncUpdatedAt,
+      }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({
+        cursor,
+        scopeId: scope.scopeId,
+        tables,
+      }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({
+        cursor,
+        scopeId: scope.scopeId,
+      }),
+  },
 });
 
 const sync = new Hono();
@@ -69,7 +63,7 @@ sync.post("/push", (c) => {
     return c.json(authorization.body, authorization.status);
   }
 
-  return push(c.req.raw, {});
+  return syncServer.push(c.req.raw, {});
 });
 sync.post("/pull", (c) => {
   const authorization = requireInventoryAuthorization(c.req.raw);
@@ -77,7 +71,7 @@ sync.post("/pull", (c) => {
     return c.json(authorization.body, authorization.status);
   }
 
-  return pull(c.req.raw, {});
+  return syncServer.pull(c.req.raw, {});
 });
 sync.post("/status", (c) => {
   const authorization = requireInventoryAuthorization(c.req.raw);
@@ -85,7 +79,7 @@ sync.post("/status", (c) => {
     return c.json(authorization.body, authorization.status);
   }
 
-  return status(c.req.raw, {});
+  return syncServer.status(c.req.raw, {});
 });
 
 export default sync;

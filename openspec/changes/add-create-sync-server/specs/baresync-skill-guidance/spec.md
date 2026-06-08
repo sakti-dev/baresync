@@ -11,13 +11,6 @@ The Baresync skill guidance SHALL teach agents to use `createSyncServer` as the 
 - **AND** configure parent-level `db` and shared `resolveScope`
 - **AND** configure nested `push`, `pull`, and `status` operation callbacks
 
-#### Scenario: Agent encounters old standalone factories
-
-- **WHEN** an agent sees `createSyncPushHandler`, `createSyncPullHandler`, or `createSyncStatusHandler` in existing code
-- **THEN** the skill guidance SHALL state that those factories remain compatible but are deprecated for batteries-included route wiring
-- **AND** it SHALL recommend `createSyncServer` for ordinary route bundles
-- **AND** it SHALL reserve low-level primitives for custom protocol routes
-
 ### Requirement: Skills document raw request ownership
 
 The Baresync skill guidance SHALL warn agents that Baresync handlers must receive the original raw Web `Request` before framework body parsing consumes the request stream.
@@ -43,7 +36,7 @@ The Baresync skill guidance SHALL warn agents that Baresync handlers must receiv
 
 ### Requirement: Skills enumerate grouped API blast radius
 
-The Baresync skill guidance SHALL update all relevant source-routing and reference files that currently teach the standalone handler route shape.
+The Baresync skill guidance SHALL update all relevant source-routing and reference files that currently teach the grouped server route shape.
 
 #### Scenario: Agent loads server reference
 
@@ -55,4 +48,5 @@ The Baresync skill guidance SHALL update all relevant source-routing and referen
 
 - **WHEN** an agent loads source, generator, testing, or verification references
 - **THEN** references to server route wiring SHALL point to `createSyncServer` as the preferred grouped API
-- **AND** standalone factories SHALL be described as compatibility or low-level APIs where they remain relevant
+- **AND** low-level primitives SHALL be reserved for custom protocol routes
+

@@ -45,13 +45,22 @@ BaresyncBuilder::new()
 If you use Baresync's server handler helpers, the push handler validates incoming requests with Baresync's default API limits: 2 MB per push body and 2000 total rows per push.
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const pushHandler = createSyncPushHandler({
-  applyPushChanges,
-  idempotency: { db },
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: ["categories", "products"],
+  push: {
+    upsertOrder: ["categories", "products"],
+    applyPushChanges,
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges,
+  },
+  status: {
+    loadSyncStatus,
+  },
 });
 ```
 

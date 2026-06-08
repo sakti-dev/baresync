@@ -13,6 +13,8 @@ target
 *.lock
 !.flake.lock
 dist
+packages/baresync/.pack/
+packages/baresync/*.tgz
 **/src-tauri/gen/
 examples/inventory/apps/tes/
 examples/inventory/apps/server/data/

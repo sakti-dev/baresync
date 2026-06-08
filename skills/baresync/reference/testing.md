@@ -200,10 +200,74 @@ it("creates an item and queues it for sync", async () => {
 
 Test handlers with real `Request` objects — no running HTTP server needed.
 
-### Push handler
+### Full route bundle with `createSyncServer`
+
+Use `createSyncServer` for tests that exercise the complete push/pull/status route bundle with idempotency:
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
+
+it("authorizes push, pull, and status through createSyncServer", async () => {
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
+    resolveScope: async ({ scopeId }) => ({ ok: true, scope: { merchantId: scopeId } }),
+    push: {
+      upsertOrder: ["categories", "products"],
+      applyPushChanges: vi.fn(async (input) => ({
+        serverTime: "2026-05-20T00:00:00.000Z",
+        tables: input.changes.map((c) => ({ table: c.table, changedRows: c.changedRows, deletedIds: c.deletedIds })),
+      })),
+    },
+    pull: {
+      limit: 1000,
+      loadPullChanges: vi.fn(async () => ({ cursor: "2026-05-20T00:00:00.000Z", tables: [] })),
+    },
+    status: {
+      loadSyncStatus: vi.fn(async () => ({ hasChanges: false, cursor: "" })),
+    },
+  });
+
+  const pushResponse = await syncServer.push(
+    new Request("https://api.test/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scopeId: "merchant-1", clientId: "client-1", idempotencyKey: "idem-1",
+        tables: [{ changedRows: [{ id: "cat-1" }], deletedIds: [], table: "categories" }],
+      }),
+    }),
+    {}
+  );
+  expect(pushResponse.status).toBe(200);
+
+  const pullResponse = await syncServer.pull(
+    new Request("https://api.test/pull", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeId: "merchant-1", cursor: "" }),
+    }),
+    {}
+  );
+  expect(pullResponse.status).toBe(200);
+
+  const statusResponse = await syncServer.status(
+    new Request("https://api.test/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeId: "merchant-1", cursor: "" }),
+    }),
+    {}
+  );
+  expect(statusResponse.status).toBe(200);
+});
+```
+
+### Endpoint tests
+
+For targeted push, pull, or status tests without a running HTTP server, create a grouped `syncServer` and call the endpoint method directly.
+
+```ts
+import { createSyncServer } from "baresync/server";
 
 it("authorizes and applies push in table order", async () => {
   const applyPushChanges = vi.fn(async (input) => ({
@@ -211,14 +275,23 @@ it("authorizes and applies push in table order", async () => {
     tables: input.changes.map((c) => ({ table: c.table, changedRows: c.changedRows, deletedIds: c.deletedIds })),
   }));
 
-  const handler = createSyncPushHandler({
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async ({ scopeId }) => ({ ok: true, scope: { merchantId: scopeId } }),
-    upsertOrder: ["categories", "products"],
-    idempotency: { db: createTestIdempotencyDb() },
-    applyPushChanges,
+    push: {
+      upsertOrder: ["categories", "products"],
+      applyPushChanges,
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async () => ({ cursor: "c1", hasMore: false, serverTime: "2026-05-20T00:00:00.000Z", tables: [] }),
+    },
+    status: {
+      loadSyncStatus: async () => ({ cursor: "c1", hasChanges: false, changedTables: [], serverTime: "2026-05-20T00:00:00.000Z" }),
+    },
   });
 
-  const response = await handler(
+  const response = await syncServer.push(
     new Request("https://api.test/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -234,23 +307,27 @@ it("authorizes and applies push in table order", async () => {
   );
 
   expect(response.status).toBe(200);
-  // Verify table ordering
   expect(applyPushChanges.mock.calls[0][0].changes.map((c) => c.table)).toEqual(["categories", "products"]);
 });
-```
 
-### Authorization
-
-```ts
 it("rejects unauthorized scopes", async () => {
-  const handler = createSyncPushHandler({
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async () => ({ ok: false, status: 403, body: { error: "forbidden" } }),
-    upsertOrder: ["items"],
-    idempotency: { db: createTestIdempotencyDb() },
-    applyPushChanges: vi.fn(),
+    push: {
+      upsertOrder: ["items"],
+      applyPushChanges: vi.fn(),
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+    },
+    status: {
+      loadSyncStatus: async () => ({ cursor: "", hasChanges: false, changedTables: [], serverTime: "" }),
+    },
   });
 
-  const response = await handler(createPushRequest({ scopeId: "other" }), {});
+  const response = await syncServer.push(createPushRequest({ scopeId: "other" }), {});
   expect(response.status).toBe(403);
 });
 ```

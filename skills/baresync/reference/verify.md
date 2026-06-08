@@ -48,8 +48,7 @@ Verify by layer:
 
 ## Server Checks
 
-- Push, pull, and status routes are mounted at the URLs used by the plugin.
-- `createSyncPushHandler` has `idempotency`.
+- `createSyncServer` has parent-level `db` for idempotency.
 - `resolveScope` authenticates and authorizes the requested scope.
 - Repository implements build/read/upsert/soft-delete behavior for every synced table.
 - Push handler uses generated `SYNC_UPSERT_ORDER`.

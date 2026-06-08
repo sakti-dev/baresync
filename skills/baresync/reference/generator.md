@@ -154,7 +154,7 @@ export const SYNC_UPSERT_ORDER = ["locations", "items"] as const;
 export const SYNC_DELETE_ORDER = ["items", "locations"] as const;
 ```
 
-Used by the server's `createSyncPushHandler` and the Rust plugin's `contract_tables()`.
+Used by `createSyncServer` (via `upsertOrder` in the `push` config) and the Rust plugin's `contract_tables()`.
 
 ### sync-contract.manifest.json
 

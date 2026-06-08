@@ -131,6 +131,29 @@ export type SyncPullHandlerOptions<TContext, TScope> = SyncPullHandlerBase<
   TScope
 >;
 
+export interface SyncServerOptions<
+  TContext,
+  TScope,
+  TDb extends SyncIdempotencyDatabase = SyncIdempotencyDatabase,
+> {
+  db: TDb;
+  pull: Omit<SyncPullHandlerOptions<TContext, TScope>, "resolveScope">;
+  push: Omit<
+    SyncPushHandlerOptions<TContext, TScope, TDb>,
+    "idempotency" | "resolveScope"
+  >;
+  resolveScope: (
+    input: SyncResolveScopeInput<TContext>
+  ) => Awaitable<SyncScopeResolution<TScope>>;
+  status: Omit<SyncStatusHandlerOptions<TContext, TScope>, "resolveScope">;
+}
+
+export interface SyncServer<TContext> {
+  pull: SyncHandler<TContext>;
+  push: SyncHandler<TContext>;
+  status: SyncHandler<TContext>;
+}
+
 function toSyncErrorResponse(error: unknown): Response {
   const mapped = mapSyncError(error);
   const status = getErrorStatus(error, mapped.code);
@@ -184,7 +207,7 @@ async function decodeAuthorizedScope<TContext, TScope>(input: {
   return scope;
 }
 
-export function createSyncPushHandler<TContext, TScope>(
+function createPushHandler<TContext, TScope>(
   options: SyncPushHandlerOptions<TContext, TScope>
 ): SyncHandler<TContext> {
   const idempotency = createIdempotencyGuard(options.idempotency);
@@ -248,7 +271,7 @@ export function createSyncPushHandler<TContext, TScope>(
   };
 }
 
-export function createSyncStatusHandler<TContext, TScope>(
+function createStatusHandler<TContext, TScope>(
   options: SyncStatusHandlerOptions<TContext, TScope>
 ): SyncHandler<TContext> {
   return async (request, context) => {
@@ -287,7 +310,7 @@ export function createSyncStatusHandler<TContext, TScope>(
   };
 }
 
-export function createSyncPullHandler<TContext, TScope>(
+function createPullHandler<TContext, TScope>(
   options: SyncPullHandlerOptions<TContext, TScope>
 ): SyncHandler<TContext> {
   return async (request, context) => {
@@ -325,5 +348,27 @@ export function createSyncPullHandler<TContext, TScope>(
     } catch (error) {
       return toSyncErrorResponse(error);
     }
+  };
+}
+
+export function createSyncServer<
+  TContext,
+  TScope,
+  TDb extends SyncIdempotencyDatabase = SyncIdempotencyDatabase,
+>(options: SyncServerOptions<TContext, TScope, TDb>): SyncServer<TContext> {
+  return {
+    push: createPushHandler({
+      ...options.push,
+      idempotency: { db: options.db },
+      resolveScope: options.resolveScope,
+    }),
+    pull: createPullHandler({
+      ...options.pull,
+      resolveScope: options.resolveScope,
+    }),
+    status: createStatusHandler({
+      ...options.status,
+      resolveScope: options.resolveScope,
+    }),
   };
 }

@@ -116,6 +116,6 @@ const resolveScope = async ({ scopeId, request }) => {
 
 ## Type safety
 
-The handlers are generic over `TScope`. When you use `createSyncPushHandler<TContext, TScope>`, the `scope` parameter in your callbacks will be typed as `TScope`.
+`createSyncServer<TContext, TScope>` is generic over `TScope`. The `scope` parameter in your callbacks will be typed as `TScope` across push, pull, and status.
 
 Next: [Idempotency](/docs/server/idempotency).

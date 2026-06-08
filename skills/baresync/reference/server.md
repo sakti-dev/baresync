@@ -28,7 +28,7 @@ export const db = drizzle(sqlite);
 
 Override path with `MY_APP_SERVER_DB_PATH` env var. For Postgres/MySQL/libSQL, replace the driver.
 
-The idempotency guard itself is dialect-agnostic: `createSyncPushHandler` only needs a Drizzle database with transaction support for `idempotency: { db }`.
+The idempotency guard itself is dialect-agnostic: `createSyncServer` only needs a Drizzle database with transaction support at the top level `db` option.
 
 ## Sync repository
 
@@ -76,48 +76,52 @@ export function createAppSyncRepository(db) {
 
 ## Route handlers
 
-`routes.ts` wires the three endpoints:
+`routes.ts` wires all three endpoints with a single grouped server:
 
 ```ts
-import {
-  createSyncPushHandler,
-  createSyncPullHandler,
-  createSyncStatusHandler,
-} from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: repository.tableNames,
-  idempotency: { db },
-  applyPushChanges: async ({ changes, clientId, context, idempotencyKey, request, requestHash, scope, scopeId, syncUpdatedAt }) =>
-    repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
-});
-
-const pull = createSyncPullHandler({
-  limit: 1000,
-  resolveScope,
-  loadPullChanges: async ({ context, cursor, limit, request, scope, scopeId, tables }) =>
-    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ context, cursor, request, scope, scopeId }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  push: {
+    upsertOrder: repository.tableNames,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  },
 });
 ```
 
-That `db` can come from SQLite, Postgres, MySQL, or libSQL as long as the database implementation supports the operations the guard uses.
+Pass the raw Web `Request` directly to `syncServer.push`, `syncServer.pull`, and `syncServer.status`. Do not reconstruct `Request` objects from parsed bodies. Push idempotency hashes the raw request bytes, so framework body parsing before Baresync reads the request can break conflict detection.
 
 Mount in Hono:
 
 ```ts
 const sync = new Hono();
-sync.post("/push", (c) => push(c.req.raw, {}));
-sync.post("/pull", (c) => pull(c.req.raw, {}));
-sync.post("/status", (c) => status(c.req.raw, {}));
+sync.post("/push", (c) => syncServer.push(c.req.raw, {}));
+sync.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
+sync.post("/status", (c) => syncServer.status(c.req.raw, {}));
 export default sync;
 ```
+
+For Elysia, pass the original `request` directly and use `{ parse: "none" }` to prevent body parsing before Baresync reads the request:
+
+```ts
+app.post("/push", ({ request }) => syncServer.push(request, {}), { parse: "none" });
+app.post("/pull", ({ request }) => syncServer.pull(request, {}));
+app.post("/status", ({ request }) => syncServer.status(request, {}));
+```
+
+That `db` can come from SQLite, Postgres, MySQL, or libSQL as long as the database implementation supports the operations the idempotency guard uses.
 
 ## Scope resolution
 
@@ -143,15 +147,7 @@ If it returns `{ ok: false }`, the handler returns that response immediately —
 
 ## Status handler
 
-The status handler answers: "Has anything changed since this cursor?" The sync engine calls this before every sync cycle to decide whether to pull.
-
-```ts
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ cursor, scope, scopeId, context, request }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
-});
-```
+The status handler answers: "Has anything changed since this cursor?" The sync engine calls this before every sync cycle to decide whether to pull. With `createSyncServer`, the same `resolveScope` and `loadSyncStatus` callback are shared with the grouped server bundle.
 
 ### How the engine uses this
 
@@ -234,7 +230,7 @@ Return `{ ok: false, status, body }` from `resolveScope` instead of throwing. Th
 
 ## Type safety
 
-The handlers are generic over `TScope`. When you use `createSyncPushHandler<TContext, TScope>`, the `scope` parameter in your callbacks is typed as `TScope`.
+`createSyncServer<TContext, TScope>` is generic over `TScope`. The `scope` parameter in your callbacks is typed as `TScope`.
 
 ## Low-level primitives
 

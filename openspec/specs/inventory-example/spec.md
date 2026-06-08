@@ -275,7 +275,7 @@ The inventory example server SHALL organize sync route handlers and sync reposit
 #### Scenario: Server has versioned route files
 
 - **WHEN** a contributor reads `apps/server/src/`
-- **THEN** they find versioned route files under `v1/` (or equivalent) containing `createSyncPushHandler`, `createSyncPullHandler`, `createSyncStatusHandler` for that version
+- **THEN** they find versioned route files under `v1/` (or equivalent) containing `createSyncServer` for that version
 
 #### Scenario: Server has versioned sync repositories
 
@@ -313,8 +313,8 @@ The inventory example SHALL use `defineSyncConfig` with path-based `localSyncedS
 - **AND** it generates JSON artifacts through `defineSyncConfig`
 - **AND** it does not require encoding-specific config naming
 
-### Requirement: Inventory server route uses dialect-neutral idempotency API
-The inventory example server route SHALL demonstrate the direct API-side idempotency database usage by passing the server Drizzle database as `idempotency: { db }`.
+### Requirement: Inventory server route uses grouped sync server API
+The inventory example server route SHALL demonstrate the grouped server API by passing the server Drizzle database as parent-level `db` to `createSyncServer({ db, resolveScope, push, pull, status })`.
 
 #### Scenario: Inventory route has no sqlite-proxy cast
 - **WHEN** a contributor reads `examples/inventory-json-polling/apps/server/src/v1/routes.ts`
@@ -322,6 +322,6 @@ The inventory example server route SHALL demonstrate the direct API-side idempot
 - **AND** the route SHALL NOT create an `idempotencyDb` cast variable
 
 #### Scenario: Inventory route passes direct database
-- **WHEN** a contributor reads the `createSyncPushHandler` call in `examples/inventory-json-polling/apps/server/src/v1/routes.ts`
-- **THEN** the push handler SHALL receive `idempotency: { db }`
+- **WHEN** a contributor reads the `createSyncServer` call in `examples/inventory-json-polling/apps/server/src/v1/routes.ts`
+- **THEN** the grouped server SHALL receive parent-level `db`
 - **AND** the route SHALL keep existing scope resolution, repository creation, and Hono mounting behavior

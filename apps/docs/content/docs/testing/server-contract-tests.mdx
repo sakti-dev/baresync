@@ -18,12 +18,75 @@ Use these tests for:
 - JSON payloads if your app uses Baresync
 - persistence of accepted changes
 
-## Test Handlers With Real Requests
+## Test a Full Route Bundle
 
-Baresync's server helpers accept real `Request` objects, so you can test your handler without a running HTTP server.
+For testing a full route bundle, prefer creating a grouped `syncServer` with `createSyncServer`. This tests push, pull, and status together, including idempotency and scope resolution.
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
+import { describe, expect, it, vi } from "vitest";
+
+it("pushes, pulls, and reports status through the grouped server", async () => {
+  const applyPushChanges = vi.fn(async (input) => ({
+    serverTime: "2026-05-20T00:00:00.000Z",
+    tables: input.changes.map((change) => ({
+      acceptedCreatedIds: change.changedRows.map((row) => String(row.id)),
+      acceptedDeletedIds: change.deletedIds,
+      acceptedUpdatedIds: [],
+      rejected: [],
+      table: change.table,
+    })),
+  }));
+
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
+    resolveScope: async ({ scopeId }) => ({
+      ok: true,
+      scope: { merchantId: scopeId },
+    }),
+    push: {
+      upsertOrder: ["categories", "products"],
+      applyPushChanges,
+    },
+    pull: {
+      limit: 1000,
+      loadPullChanges: vi.fn(async () => ({ cursor: "c1", tables: [] })),
+    },
+    status: {
+      loadSyncStatus: vi.fn(async () => ({ cursor: "c1", tables: [] })),
+    },
+  });
+
+  const pushResponse = await syncServer.push(
+    new Request("https://api.example.test/push", {
+      body: JSON.stringify({
+        clientId: "client-1",
+        idempotencyKey: "idem-1",
+        scopeId: "merchant-1",
+        tables: [
+          { changedRows: [{ id: "prod-1" }], deletedIds: [], table: "products" },
+          { changedRows: [{ id: "cat-1" }], deletedIds: [], table: "categories" },
+        ],
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }),
+    {}
+  );
+
+  expect(pushResponse.status).toBe(200);
+  expect(applyPushChanges.mock.calls[0][0].changes.map((c) => c.table)).toEqual([
+    "categories",
+    "products",
+  ]);
+});
+```
+
+## Test Handlers With Real Requests
+
+Baresync's server helpers accept real `Request` objects, so you can test each endpoint without a running HTTP server. For grouped route bundles, create one `syncServer` and exercise `push`, `pull`, and `status` directly.
+```ts
+import { createSyncServer } from "baresync/server";
 import { describe, expect, it, vi } from "vitest";
 
 it("authorizes and applies push changes in table order", async () => {
@@ -38,17 +101,26 @@ it("authorizes and applies push changes in table order", async () => {
     })),
   }));
 
-  const handler = createSyncPushHandler({
-    applyPushChanges,
-    idempotency: { db: createTestIdempotencyDb() },
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async ({ scopeId }) => ({
       ok: true,
       scope: { merchantId: scopeId },
     }),
-    upsertOrder: ["categories", "products"],
+    push: {
+      upsertOrder: ["categories", "products"],
+      applyPushChanges,
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async () => ({ cursor: "c1", hasMore: false, serverTime: "2026-05-20T00:00:00.000Z", tables: [] }),
+    },
+    status: {
+      loadSyncStatus: async () => ({ cursor: "c1", hasChanges: false, changedTables: [], serverTime: "2026-05-20T00:00:00.000Z" }),
+    },
   });
 
-  const response = await handler(
+  const response = await syncServer.push(
     new Request("https://api.example.test/push", {
       body: JSON.stringify({
         clientId: "client-1",
@@ -80,18 +152,27 @@ Your backend owns scope authorization. Test both accepted and rejected scopes.
 ```ts
 it("rejects unauthorized scopes before applying changes", async () => {
   const applyPushChanges = vi.fn();
-  const handler = createSyncPushHandler({
-    applyPushChanges,
-    idempotency: { db: createTestIdempotencyDb() },
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async () => ({
       body: { error: "forbidden" },
       ok: false,
       status: 403,
     }),
-    upsertOrder: ["items"],
+    push: {
+      upsertOrder: ["items"],
+      applyPushChanges,
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+    },
+    status: {
+      loadSyncStatus: async () => ({ cursor: "", hasChanges: false, changedTables: [], serverTime: "" }),
+    },
   });
 
-  const response = await handler(createPushRequest({ scopeId: "other" }), {
+  const response = await syncServer.push(createPushRequest({ scopeId: "other" }), {
     sessionId: "session-1",
   });
 
@@ -105,24 +186,35 @@ it("rejects unauthorized scopes before applying changes", async () => {
 Status and pull tests should assert your cursor, scope, and table behavior.
 
 ```ts
-import { createSyncPullHandler, createSyncStatusHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
 it("returns status for an authorized scope", async () => {
-  const handler = createSyncStatusHandler({
-    loadSyncStatus: async ({ cursor, scopeId }) => ({
-      changedTables: ["items"],
-      cursor,
-      hasChanges: true,
-      scopeId,
-      serverTime: "2026-05-20T00:00:00.000Z",
-    }),
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async ({ scopeId }) => ({
       ok: true,
       scope: { merchantId: scopeId },
     }),
+    push: {
+      upsertOrder: ["items"],
+      applyPushChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async () => ({ cursor: "c1", hasMore: false, serverTime: "2026-05-20T00:00:00.000Z", tables: [] }),
+    },
+    status: {
+      loadSyncStatus: async ({ cursor, scopeId }) => ({
+        changedTables: ["items"],
+        cursor,
+        hasChanges: true,
+        scopeId,
+        serverTime: "2026-05-20T00:00:00.000Z",
+      }),
+    },
   });
 
-  const response = await handler(
+  const response = await syncServer.status(
     createJsonRequest({
       cursor: "",
       scopeId: "merchant-1",
@@ -137,25 +229,35 @@ it("returns status for an authorized scope", async () => {
 });
 
 it("returns requested pull tables", async () => {
-  const handler = createSyncPullHandler({
-    limit: 100,
-    loadPullChanges: async ({ tables }) => ({
-      cursor: "sync:1:items:item-1",
-      hasMore: false,
-      serverTime: "2026-05-20T00:00:00.000Z",
-      tables: tables.map((table) => ({
-        changedRows: [],
-        deletedIds: [],
-        table,
-      })),
-    }),
+  const syncServer = createSyncServer({
+    db: createTestIdempotencyDb(),
     resolveScope: async ({ scopeId }) => ({
       ok: true,
       scope: { merchantId: scopeId },
     }),
+    push: {
+      upsertOrder: ["items"],
+      applyPushChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+    },
+    pull: {
+      limit: 100,
+      loadPullChanges: async ({ tables }) => ({
+        cursor: "sync:1:items:item-1",
+        hasMore: false,
+        serverTime: "2026-05-20T00:00:00.000Z",
+        tables: tables.map((table) => ({
+          changedRows: [],
+          deletedIds: [],
+          table,
+        })),
+      }),
+    },
+    status: {
+      loadSyncStatus: async () => ({ cursor: "", hasChanges: false, changedTables: [], serverTime: "" }),
+    },
   });
 
-  const response = await handler(
+  const response = await syncServer.pull(
     createJsonRequest({
       cursor: "",
       scopeId: "merchant-1",

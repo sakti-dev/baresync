@@ -23,7 +23,7 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "skills",
+    ".pack",
     "README.md",
     "LICENSE"
   ],
@@ -69,7 +69,10 @@
   "scripts": {
     "build": "tsup",
     "build:types": "bun x tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "prepack": "bun run build && cp -r ../../skills/baresync ./skills",
+    "prepack": "bun run build && bun run pack:skills:stage",
+    "postpack": "bun run pack:skills:clean",
+    "pack:skills:stage": "bun ./scripts/stage-skills.mjs",
+    "pack:skills:clean": "bun ./scripts/clean-skills-pack.mjs",
     "pack:dry-run": "bun pm pack --dry-run",
     "clean": "rm -rf dist"
   },

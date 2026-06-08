@@ -557,49 +557,38 @@ function computeSyncTableOrder(input: {
 ```
 
 ---
-
 ## Server Handlers
 
-### `createSyncPushHandler`
+### `createSyncServer`
 
-Creates a push endpoint handler.
+Creates a grouped sync server with push, pull, and status handlers in a single call. This is the preferred batteries-included integration path.
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const pushHandler = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db, // Drizzle instance — used for push idempotency
   resolveScope: async ({ scopeId }) => {
     if (!isAuthorized(scopeId)) return { ok: false, status: 403, body: { error: "forbidden" } };
     return { ok: true, scope: { scopeId } };
   },
-  applyPushChanges: async ({ changes, scopeId }) => { ... },
-  idempotency: { db },
-  upsertOrder: SYNC_UPSERT_ORDER,
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) => { ... },
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) => { ... },
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) => { ... },
+  },
 });
+
+// Returns { push, pull, status } — each is a (Request, context) => Promise<Response> handler.
 ```
 
-### `createSyncStatusHandler`
-
-Creates a status endpoint handler. Returns `has_changes` and `cursor` for the client to decide whether to pull.
-
-```ts
-const statusHandler = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ scopeId, cursor }) => { ... },
-});
-```
-
-### `createSyncPullHandler`
-
-Creates a pull endpoint handler.
-
-```ts
-const pullHandler = createSyncPullHandler({
-  resolveScope,
-  loadPullChanges: async ({ scopeId, cursor, limit, tables }) => { ... },
-  limit: 500,
-});
-```
+Pass the raw Web `Request` to `syncServer.push`, `syncServer.pull`, and `syncServer.status`. Avoid framework middleware that consumes the body before Baresync reads it, because push idempotency hashes the raw request bytes.
 
 ### Handler options base types
 

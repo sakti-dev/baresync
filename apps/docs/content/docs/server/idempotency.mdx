@@ -17,20 +17,25 @@ The guard stores push results in a `sync_batch_requests` table. When a push arri
 4. **If completed with different hash** → reject with `409 Conflict`
 5. **If not found** → reserve a pending slot, run the callback, finalize with the result
 
+
 ## Setup
 
-The push handler requires an `idempotency` config:
+With `createSyncServer`, pass `db` at the parent level — idempotency is handled automatically:
 
 ```ts
-import { createSyncPushHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db: yourDrizzleDb, // used for idempotency automatically
   resolveScope,
-  upsertOrder: SYNC_UPSERT_ORDER,
-  idempotency: { db: yourDrizzleDb },
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) => {
-    // ...
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt, clientId, context, idempotencyKey, request, requestHash, scopeId }) => {
+      // ...
+    },
   },
+  pull: { limit: 1000, loadPullChanges: async () => ({ cursor: "", tables: [] }) },
+  status: { loadSyncStatus: async () => ({ hasChanges: false, changedTables: [], cursor: "", serverTime: "" }) },
 });
 ```
 

@@ -5,17 +5,28 @@ description: Implement the "are there changes?" endpoint.
 
 # Status Handler
 
-The status handler answers a simple question: "Has anything changed since this cursor?" The sync engine calls this before every sync cycle to decide whether to pull.
+The status endpoint answers a simple question: "Has anything changed since this cursor?" Configure it under [`createSyncServer`](/docs/server/overview).
 
-## Factory
+## Configure
 
 ```ts
-import { createSyncStatusHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const status = createSyncStatusHandler({
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  loadSyncStatus: async ({ cursor, scope, scopeId, context, request }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  },
 });
 ```
 
@@ -80,7 +91,7 @@ When `sync_now()` runs:
 ## Wire it up
 
 ```ts
-app.post("/status", (c) => status(c.req.raw, {}));
+app.post("/status", (c) => syncServer.status(c.req.raw, {}));
 ```
 
 The second argument `{}` is the context — it is passed through to your callbacks. Use it to carry request-scoped data like auth tokens or trace IDs.

@@ -50,7 +50,7 @@ export const SYNC_DELETE_ORDER = ["stock_counts", "items", "locations"] as const
 ```
 
 Used by:
-- The server's `createSyncPushHandler` to apply changes in the correct order
+- The server's `createSyncServer` to apply changes in the correct order
 - The Rust plugin's `contract_tables()` for the same purpose
 
 Import it from your sync contract package:

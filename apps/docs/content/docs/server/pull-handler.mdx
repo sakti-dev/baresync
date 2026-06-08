@@ -5,18 +5,28 @@ description: Implement the "give me changed rows" endpoint.
 
 # Pull Handler
 
-The pull handler returns all rows that changed since a given cursor, grouped by table.
+The pull endpoint returns all rows that changed since a given cursor, grouped by table. Configure it under [`createSyncServer`](/docs/server/overview).
 
-## Factory
+## Configure
 
 ```ts
-import { createSyncPullHandler } from "baresync/server";
+import { createSyncServer } from "baresync/server";
 
-const pull = createSyncPullHandler({
-  limit: 1000,
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables, scopeId, limit, context, request }) =>
-    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  push: {
+    upsertOrder: SYNC_UPSERT_ORDER,
+    applyPushChanges: async () => ({ cursor: "", hasMore: false, serverTime: "", tables: [] }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  },
+  status: {
+    loadSyncStatus: async () => ({ hasChanges: false, changedTables: [], cursor: "", serverTime: "" }),
+  },
 });
 ```
 
@@ -100,7 +110,7 @@ The `limit` in the handler config is passed to your callback. Use it to cap the 
 ## Wire it up
 
 ```ts
-app.post("/pull", (c) => pull(c.req.raw, {}));
+app.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
 ```
 
 Next: [Push Handler](/docs/server/push-handler).

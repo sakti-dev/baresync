@@ -33,7 +33,7 @@ The server package SHALL define the idempotency database contract around transac
 
 #### Scenario: Compatible Drizzle backends share the same call shape
 - **WHEN** a compatible Drizzle database instance provides a transaction API usable by the idempotency guard
-- **THEN** the consumer SHALL pass it as `idempotency: { db }` without changing the push handler route shape
+- **THEN** the consumer SHALL pass it as the parent `db` option on `createSyncServer` without changing the grouped route shape
 
 ### Requirement: Idempotency uses library-managed table
 The idempotency guard SHALL use the `sync_batch_requests` table by convention. The consumer SHALL NOT need to pass or configure the table name.

@@ -81,11 +81,7 @@ $ bunx baresync generate # write contract artifacts
     description:
       "Baresync decodes requests, validates limits, orders table writes, and handles idempotency. You write auth, scope resolution, and persistence.",
     code: `import { Hono } from "hono";
-import {
-  createSyncPushHandler,
-  createSyncPullHandler,
-  createSyncStatusHandler,
-} from "baresync/server";
+import { createSyncServer } from "baresync/server";
 import { repository } from "./db/sync-repository";
 
 const resolveScope = ({ scopeId }) => {
@@ -95,30 +91,29 @@ const resolveScope = ({ scopeId }) => {
   return { ok: true, scope: { scopeId } };
 };
 
-const push = createSyncPushHandler({
+const syncServer = createSyncServer({
+  db,
   resolveScope,
-  upsertOrder: repository.tableNames,
-  applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
-    repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
-});
-
-const pull = createSyncPullHandler({
-  limit: 1000,
-  resolveScope,
-  loadPullChanges: async ({ cursor, scope, tables }) =>
-    repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
-});
-
-const status = createSyncStatusHandler({
-  resolveScope,
-  loadSyncStatus: async ({ cursor, scope }) =>
-    repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  push: {
+    upsertOrder: repository.tableNames,
+    applyPushChanges: async ({ changes, scope, syncUpdatedAt }) =>
+      repository.applyPushChanges({ changes, scopeId: scope.scopeId, syncUpdatedAt }),
+  },
+  pull: {
+    limit: 1000,
+    loadPullChanges: async ({ cursor, scope, tables }) =>
+      repository.loadPullChanges({ cursor, scopeId: scope.scopeId, tables }),
+  },
+  status: {
+    loadSyncStatus: async ({ cursor, scope }) =>
+      repository.loadSyncStatus({ cursor, scopeId: scope.scopeId }),
+  },
 });
 
 const sync = new Hono();
-sync.post("/push", (c) => push(c.req.raw, {}));
-sync.post("/pull", (c) => pull(c.req.raw, {}));
-sync.post("/status", (c) => status(c.req.raw, {}));
+sync.post("/push", (c) => syncServer.push(c.req.raw, {}));
+sync.post("/pull", (c) => syncServer.pull(c.req.raw, {}));
+sync.post("/status", (c) => syncServer.status(c.req.raw, {}));
 
 export default sync;`,
     lang: "typescript",

@@ -51,7 +51,7 @@ Path: `packages/baresync/src/`
 | Directory | Contains |
 |-----------|----------|
 | `packages/baresync/src/tauri/client.ts` | `createSyncClient`, `writeTransaction`, `writeLocalChange` — client-side sync logic |
-| `packages/baresync/src/server/` | `createSyncPushHandler`, `createSyncPullHandler`, `createDrizzleSyncRepository` — server handler factories |
+| `packages/baresync/src/server/` | `createSyncServer`, low-level primitives, `createDrizzleSyncRepository` — server route helpers |
 | `packages/baresync/src/generator/` | `defineSyncConfig`, `generateSyncArtifacts`, diagnostics — sync config and code generation |
 | `packages/baresync/src/schema/` | `defineSyncContract`, `defineSyncedTable`, `apiSyncColumns`, `localSyncColumns` — schema helpers |
 | `packages/baresync/src/tauri/` | `createTauriDrizzleDatabase`, Drizzle proxy — Tauri database bridge |
@@ -95,8 +95,8 @@ Path: `crates/`
 | CLI generator behavior | `packages/baresync/src/cli/generator.ts` |
 | `writeTransaction()` behavior | `packages/baresync/src/tauri/client.ts` using `rg "writeTransaction"` |
 | `writeLocalChange()` behavior | `packages/baresync/src/tauri/client.ts` using `rg "writeLocalChange"` |
-| server push handler | `packages/baresync/src/server/` using `rg "createSyncPushHandler"` |
-| server pull handler | `packages/baresync/src/server/` using `rg "createSyncPullHandler"` |
+| server push handler | `packages/baresync/src/server/` using `rg "createSyncServer"` or the low-level primitives |
+| server pull handler | `packages/baresync/src/server/` using `rg "createSyncServer"` or the low-level primitives |
 | Drizzle repository | `packages/baresync/src/server/` using `rg "createDrizzleSyncRepository"` |
 | Tauri DB bridge | `packages/baresync/src/tauri/` using `rg "createTauriDrizzleDatabase"` |
 | `setHeaders()` JS client method | `packages/baresync/src/tauri/client.ts` using `rg "setHeaders"` |
