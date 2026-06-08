@@ -261,40 +261,6 @@ describe("runDiagnostics", () => {
     ).toBe(true);
   });
 
-  it("reports SYNC_SCHEMA_NO_CONFLICT_STRATEGY as warning", () => {
-    const table = makeValidTable("no_conflict");
-    const def = defineSyncedTable({
-      table,
-      scope: { source: "scope", field: "scope", column: table.scope },
-    });
-    const contract = defineSyncContract({
-      tables: [def],
-    });
-    const diagnostics = runDiagnostics(contract);
-    const warning = diagnostics.find(
-      (d) => d.code === "SYNC_SCHEMA_NO_CONFLICT_STRATEGY"
-    );
-    expect(warning).toBeDefined();
-    expect(warning!.severity).toBe("warning");
-  });
-
-  it("reports SYNC_SCHEMA_NO_DELETE_STRATEGY as warning", () => {
-    const table = makeValidTable("no_delete_strategy");
-    const def = defineSyncedTable({
-      table,
-      scope: { source: "scope", field: "scope", column: table.scope },
-    });
-    const contract = defineSyncContract({
-      tables: [def],
-    });
-    const diagnostics = runDiagnostics(contract);
-    const warning = diagnostics.find(
-      (d) => d.code === "SYNC_SCHEMA_NO_DELETE_STRATEGY"
-    );
-    expect(warning).toBeDefined();
-    expect(warning!.severity).toBe("warning");
-  });
-
   it("reports SYNC_SCHEMA_NULLABLE_SCOPE_COLUMN as warning", () => {
     const table = sqliteTable("nullable_scope", {
       id: text("id").primaryKey(),
@@ -335,7 +301,7 @@ describe("runDiagnostics", () => {
     expect(warnings.every((w) => w.severity === "warning")).toBe(true);
   });
 
-  it("reports SYNC_INDEX_MISSING_LOCAL_DIRTY when is_synced present", () => {
+  it("does not report SYNC_INDEX_MISSING_LOCAL_DIRTY when is_synced present", () => {
     const table = makeValidTable("dirty_table");
     const def = makeSyncedDef(table);
     const contract = makeValidContract([def]);
@@ -343,8 +309,7 @@ describe("runDiagnostics", () => {
     const warning = diagnostics.find(
       (d) => d.code === "SYNC_INDEX_MISSING_LOCAL_DIRTY"
     );
-    expect(warning).toBeDefined();
-    expect(warning!.severity).toBe("warning");
+    expect(warning).toBeUndefined();
   });
 
   it("reports SYNC_SCHEMA_LARGE_TEXT_FIELD for text column with length > 10000", () => {
@@ -625,16 +590,30 @@ describe("runDiagnostics", () => {
     ).toBe(true);
   });
 
-  it("reports SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1 when table has both localOnly and serverOnly columns", () => {
-    const table = makeValidTable("split_table");
+  it("reports SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1 when table has additional custom one-sided columns", () => {
+    const table = sqliteTable("split_table", {
+      id: text("id").primaryKey(),
+      scope: text("scope").notNull(),
+      draftState: text("draft_state"),
+      deletedAt: text("deleted_at"),
+      createdAt: text("created_at").notNull(),
+      updatedAt: text("updated_at").notNull(),
+      syncUpdatedAt: integer("sync_updated_at").notNull().default(0),
+      isSynced: integer("is_synced", { mode: "boolean" })
+        .notNull()
+        .default(false),
+    });
     const contract = buildRawContract([
       {
         table,
         scopeField: "scope",
-        localOnlyColumns: ["is_synced"],
+        localOnlyColumns: ["is_synced", "draft_state"],
       },
     ]);
-    contract.tablesMeta[0].serverOnlyColumns = ["server_secret"];
+    contract.tablesMeta[0].serverOnlyColumns = [
+      "syncUpdatedAt",
+      "server_secret",
+    ];
     const diagnostics = runDiagnostics(contract);
     expect(
       diagnostics.some(

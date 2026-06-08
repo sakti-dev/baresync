@@ -6,7 +6,7 @@ import type {
 } from "../generator/config";
 import { runDiagnostics, type SyncDiagnostic } from "../generator/diagnostics";
 import {
-  buildContractFromPairedConfig,
+  buildPairedContractFromPairedConfig,
   generateSyncArtifacts,
   SyncDiagnosticError,
 } from "../generator/index";
@@ -89,8 +89,16 @@ export async function runGenerate(
 
   if (isPairedConfig(source)) {
     if (options?.check) {
-      const contract = await buildContractFromPairedConfig(source);
-      throwIfDiagnosticErrors(contract);
+      const build = await buildPairedContractFromPairedConfig(source);
+      const diagnostics = runDiagnostics(build.contract, {
+        pairedTables: build.tables,
+      });
+      const errors = diagnostics.filter(
+        (diagnostic) => diagnostic.severity === "error"
+      );
+      if (errors.length > 0) {
+        throw new SyncDiagnosticError(diagnostics);
+      }
       return;
     }
     await generateSyncArtifacts(source);
@@ -137,10 +145,12 @@ export async function runGenerateCommand(args: string[]): Promise<void> {
     const diagnostics: SyncDiagnostic[] = [];
     for (const entry of entries) {
       if (entry.pairedConfig) {
-        const contract = await buildContractFromPairedConfig(
+        const build = await buildPairedContractFromPairedConfig(
           entry.pairedConfig
         );
-        diagnostics.push(...runDiagnostics(contract));
+        diagnostics.push(
+          ...runDiagnostics(build.contract, { pairedTables: build.tables })
+        );
       } else if (entry.contract) {
         diagnostics.push(...runDiagnostics(entry.contract));
       }
@@ -194,10 +204,21 @@ export async function runDoctorCommand(args: string[]): Promise<void> {
   for (const entry of entries) {
     let contract: SyncContract;
     if (entry.pairedConfig) {
-      contract = await buildContractFromPairedConfig(entry.pairedConfig);
-    } else {
-      contract = entry.contract!;
+      const build = await buildPairedContractFromPairedConfig(
+        entry.pairedConfig
+      );
+      contract = build.contract;
+      if (
+        printDiagnosticsReport(
+          `diagnostics for ${entry.label}`,
+          runDiagnostics(contract, { pairedTables: build.tables })
+        )
+      ) {
+        process.exitCode = 1;
+      }
+      continue;
     }
+    contract = entry.contract!;
     if (
       printDiagnosticsReport(
         `diagnostics for ${entry.label}`,

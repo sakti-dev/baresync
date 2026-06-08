@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getTableConfig } from "drizzle-orm/sqlite-core";
+import { type AnySQLiteTable, getTableConfig } from "drizzle-orm/sqlite-core";
 import { isTable } from "drizzle-orm/table";
 import type { SyncContract } from "../schema/contract";
 import { syncSchema } from "../schema/contract";
 import { syncedTable } from "../schema/synced-table";
 import type { GeneratorConfig, PairedSyncGeneratorConfig } from "./config";
 import { validatePairedTableColumns } from "./config";
-import type { SyncDiagnostic } from "./diagnostics";
+import type { DiagnosticOptions, SyncDiagnostic } from "./diagnostics";
 import { runDiagnostics } from "./diagnostics";
 import { computeSyncTableOrder } from "./fk-order";
 import { formatGeneratedArtifacts } from "./formatter";
@@ -51,6 +51,15 @@ type SyncedSchemaModule = Record<
   import("drizzle-orm/sqlite-core").AnySQLiteTable
 >;
 
+interface PairedContractBuild {
+  contract: SyncContract;
+  tables: Array<{
+    apiTable: AnySQLiteTable;
+    exportName: string;
+    localTable: AnySQLiteTable;
+  }>;
+}
+
 function isPairedConfig(
   config: GeneratorConfig | PairedSyncGeneratorConfig | SyncContract
 ): config is PairedSyncGeneratorConfig {
@@ -87,12 +96,13 @@ async function loadSchemaModule(
   return schema;
 }
 
-export async function buildContractFromPairedConfig(
+export async function buildPairedContractFromPairedConfig(
   config: PairedSyncGeneratorConfig
-): Promise<SyncContract> {
+): Promise<PairedContractBuild> {
   const localModule = await loadSchemaModule(config.localSyncedSchemaPath);
   const apiModule = await loadSchemaModule(config.apiSyncedSchemaPath);
 
+  const pairedTables: PairedContractBuild["tables"] = [];
   const tables = Object.entries(config.tables).map(([exportName, options]) => {
     if (!options) {
       throw new Error(
@@ -125,6 +135,8 @@ export async function buildContractFromPairedConfig(
       serverOnlyColumns,
     });
 
+    pairedTables.push({ apiTable, exportName, localTable });
+
     return syncedTable(localTable, {
       scope: options.scopeColumn,
       localOnlyColumns: [...localOnlyColumns],
@@ -132,19 +144,30 @@ export async function buildContractFromPairedConfig(
     });
   });
 
-  return syncSchema({
-    limits: config.limits,
-    tables,
-  });
+  return {
+    contract: syncSchema({
+      limits: config.limits,
+      tables,
+    }),
+    tables: pairedTables,
+  };
+}
+
+export async function buildContractFromPairedConfig(
+  config: PairedSyncGeneratorConfig
+): Promise<SyncContract> {
+  const build = await buildPairedContractFromPairedConfig(config);
+  return build.contract;
 }
 
 function writeGenerationArtifacts(
   contract: SyncContract,
   dir: string,
   options?: GenerateOptions,
-  schemaPaths?: { apiPath: string; localPath: string }
+  schemaPaths?: { apiPath: string; localPath: string },
+  diagnosticOptions?: DiagnosticOptions
 ): void {
-  const diagnostics = runDiagnostics(contract);
+  const diagnostics = runDiagnostics(contract, diagnosticOptions);
   const errors = diagnostics.filter((d) => d.severity === "error");
   const warnings = diagnostics.filter((d) => d.severity === "warning");
 
@@ -225,7 +248,8 @@ export function generateSyncArtifacts(
 ): void | Promise<void> {
   if (isPairedConfig(configOrContract)) {
     return (async () => {
-      const contract = await buildContractFromPairedConfig(configOrContract);
+      const build = await buildPairedContractFromPairedConfig(configOrContract);
+      const { contract } = build;
       writeGenerationArtifacts(
         contract,
         configOrContract.outputDir,
@@ -233,7 +257,8 @@ export function generateSyncArtifacts(
         {
           apiPath: configOrContract.apiSyncedSchemaPath,
           localPath: configOrContract.localSyncedSchemaPath,
-        }
+        },
+        { pairedTables: build.tables }
       );
     })();
   }

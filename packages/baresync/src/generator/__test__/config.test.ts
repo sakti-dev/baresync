@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { defineSyncConfig } from "../config";
 import { generateSyncArtifacts } from "../index";
@@ -157,14 +158,30 @@ describe("defineSyncConfig", () => {
     const require = createRequire(import.meta.url);
     const sqliteCorePath = require.resolve("drizzle-orm/sqlite-core");
     const schemaIndexPath = require.resolve("baresync/schema");
+    const counterPath = createTmpSchemaFile(
+      tmpDir,
+      "load-counter.ts",
+      [
+        "export const schemaLoadCounts = { api: 0, local: 0 };",
+        "",
+        'export function incrementSchemaLoad(key: "api" | "local") {',
+        "  schemaLoadCounts[key] += 1;",
+        "}",
+        "",
+      ].join("\n")
+    );
     const apiPath = createTmpSchemaFile(
       tmpDir,
       "api-synced-schema.ts",
       [
         `import { sqliteTable, text } from ${JSON.stringify(sqliteCorePath)};`,
         `import { apiSyncColumns } from ${JSON.stringify(schemaIndexPath)};`,
+        `import { incrementSchemaLoad } from ${JSON.stringify(
+          pathToFileURL(counterPath).href
+        )};`,
         "",
         "export const helper = { notATable: true };",
+        'incrementSchemaLoad("api");',
         "",
         'export const merchants = sqliteTable("merchants", {',
         '  id: text("id").primaryKey(),',
@@ -180,8 +197,12 @@ describe("defineSyncConfig", () => {
       [
         `import { sqliteTable, text } from ${JSON.stringify(sqliteCorePath)};`,
         `import { localSyncColumns } from ${JSON.stringify(schemaIndexPath)};`,
+        `import { incrementSchemaLoad } from ${JSON.stringify(
+          pathToFileURL(counterPath).href
+        )};`,
         "",
         "export const helper = { notATable: true };",
+        'incrementSchemaLoad("local");',
         "",
         'export const merchants = sqliteTable("merchants", {',
         '  id: text("id").primaryKey(),',
@@ -214,6 +235,23 @@ describe("defineSyncConfig", () => {
     expect(
       fs.existsSync(path.join(generatedDir, "local-synced-schema.ts"))
     ).toBe(true);
+
+    const counterModule = (await import(pathToFileURL(counterPath).href)) as {
+      schemaLoadCounts: { api: number; local: number };
+    };
+    expect(counterModule.schemaLoadCounts).toEqual({ api: 1, local: 1 });
+
+    const contractJson = JSON.parse(
+      fs.readFileSync(path.join(generatedDir, "sync-contract.json"), "utf-8")
+    ) as Record<string, unknown>;
+    expect(contractJson.tables).toBeDefined();
+    const tables = contractJson.tables as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(tables.merchants).toBeDefined();
+    expect(tables.merchants).not.toHaveProperty("table");
+    expect(tables.merchants).not.toHaveProperty("indexes");
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

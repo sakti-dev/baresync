@@ -35,6 +35,16 @@ The runtime SHALL choose:
 - **WHEN** `sync_now` is called and local state reports `needs_baseline_sync`
 - **THEN** the engine SHALL perform baseline pull behavior instead of skipping transfer work, even if status reports no changes
 
+#### Scenario: Initial baseline sync ignores changedTables filter
+- **WHEN** `sync_now` is called, local state reports `needs_baseline_sync`, and server status reports `changedTables: ["categories"]`
+- **THEN** the baseline pull request SHALL include all contract upsert tables
+- **AND** the baseline pull request SHALL use an empty cursor string
+
+#### Scenario: Incremental pull still uses changedTables filter
+- **WHEN** `sync_now` is called, local state has a non-empty cursor, the outbox is empty, and server status reports `changedTables: ["categories"]`
+- **THEN** the pull request SHALL include only `["categories"]`
+- **AND** the pull request SHALL use the stored cursor
+
 ### Requirement: PullStartCursor enum
 The pull module SHALL support a `PullStartCursor` enum with two variants: `Baseline` (empty cursor, pulls everything) and `Stored` (uses the cursor stored in `sync_cursors`). The `pull` function SHALL accept this enum.
 

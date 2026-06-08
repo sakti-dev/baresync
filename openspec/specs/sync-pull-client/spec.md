@@ -44,6 +44,12 @@ The pull engine SHALL:
 - **WHEN** `PullStartCursor::Baseline` is used (reconciliation pull for rejected tables)
 - **THEN** the main cursor in `sync_cursors` SHALL NOT be updated
 
+#### Scenario: Baseline pull can initialize cursor without overwriting existing cursor
+
+- **WHEN** `PullStartCursor::Baseline` is used and no cursor exists in `sync_cursors`
+- **THEN** the pull engine SHALL initialize the cursor after successful local application when the response cursor is non-empty
+- **AND** when a cursor already exists in `sync_cursors`, the baseline pull SHALL NOT overwrite it
+
 #### Scenario: Pull with table filter
 
 - **WHEN** a table filter `["categories", "products"]` is provided
@@ -66,17 +72,34 @@ The pull engine SHALL apply soft deletes by setting `deleted_at`, `updated_at`, 
 
 ### Requirement: Cursor storage and advancement
 
-The pull engine SHALL store the cursor in a `sync_cursors` table keyed by `scope_id`. After applying all rows, the cursor from the response SHALL be written, overwriting the previous value.
+The pull engine SHALL store non-empty pull response cursors in a `sync_cursors` table keyed by `scope_id` only after local row/delete application succeeds.
 
-#### Scenario: Cursor advances after successful pull
+Stored-cursor pulls SHALL overwrite the previous cursor with the non-empty response cursor. Baseline pulls SHALL initialize the cursor only when no cursor is currently stored for the scope. Baseline pulls SHALL NOT overwrite an existing cursor.
 
-- **WHEN** a pull response returns cursor `"sync:1716123600000:products:prod-99"`
+#### Scenario: Cursor advances after successful stored-cursor pull
+
+- **WHEN** `PullStartCursor::Stored` is used and a pull response returns cursor `"sync:1716123600000:products:prod-99"`
 - **THEN** `sync_cursors` for the scope_id is updated to that value
+
+#### Scenario: Cursor initializes after successful baseline pull
+
+- **WHEN** `PullStartCursor::Baseline` is used, no cursor exists in `sync_cursors`, and a pull response returns cursor `"sync:1716123600000:products:prod-99"`
+- **THEN** `sync_cursors` for the scope_id is inserted or updated to that value
+
+#### Scenario: Empty response cursor is not stored
+
+- **WHEN** a pull response returns an empty cursor string
+- **THEN** the pull engine SHALL NOT write that empty cursor to `sync_cursors`
 
 #### Scenario: Cursor does not advance on failure
 
 - **WHEN** row application fails mid-way through a pull
 - **THEN** the cursor is not updated and remains at the previous value
+
+#### Scenario: Baseline cursor does not overwrite existing cursor
+
+- **WHEN** `PullStartCursor::Baseline` is used and the scope already has cursor `"sync:original"`
+- **THEN** the cursor remains `"sync:original"` even when the pull response returns a newer non-empty cursor
 
 ### Requirement: Runtime status request
 
@@ -106,6 +129,8 @@ The pull engine SHALL expect a JSON response with this structure:
   ]
 }
 ```
+
+The server may return a synthetic watermark cursor when no rows exist for the scope.
 
 Row data SHALL be converted from camelCase to snake_case for local SQLite column names. Columns listed in the contract's `localOnlyColumns` SHALL be added with default values (`is_synced = 1`) during upsert.
 

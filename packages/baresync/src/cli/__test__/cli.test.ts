@@ -54,39 +54,140 @@ function writeSyncConfigModule(
 ): string {
   const outputSuffix = options.outputSuffix ?? "generated";
   const outputDir = path.join(dir, outputSuffix).replaceAll(path.sep, "/");
+  const apiSchemaPath = path.join(dir, "api-synced-schema.ts");
+  const localSchemaPath = path.join(dir, "local-synced-schema.ts");
   const configPath = path.join(dir, "sync.config.ts");
-  const source = `
+  const apiSchemaSource = `
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
-import {
-  apiSyncColumns,
-  defineSyncConfig,
-  localSyncColumns,
-} from ${JSON.stringify(baresyncSourceUrl)};
+import { apiSyncColumns } from ${JSON.stringify(baresyncSourceUrl)};
 
-const localCategories = sqliteTable("categories", {
-  id: text("id").primaryKey(),
-  scopeId: text("scope_id").notNull(),
-  name: text("name").notNull(),
-  ...localSyncColumns(),
-});
-
-const apiCategories = sqliteTable("categories", {
+export const categories = sqliteTable("categories", {
   id: text("id").primaryKey(),
   scopeId: text("scope_id").notNull(),
   name: text("name").notNull(),
   ...apiSyncColumns(),
 });
+`;
+  const localSchemaSource = `
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { localSyncColumns } from ${JSON.stringify(baresyncSourceUrl)};
+
+export const categories = sqliteTable("categories", {
+  id: text("id").primaryKey(),
+  scopeId: text("scope_id").notNull(),
+  name: text("name").notNull(),
+  ...localSyncColumns(),
+});
+`;
+  const source = `
+import {
+  defineSyncConfig,
+} from ${JSON.stringify(baresyncSourceUrl)};
 
 export const syncGeneratorConfig = defineSyncConfig({
-  apiSyncedSchema: { categories: apiCategories },
-  localSyncedSchema: { categories: localCategories },
+  apiSyncedSchema: ${JSON.stringify(apiSchemaPath)},
+  localSyncedSchema: ${JSON.stringify(localSchemaPath)},
   outputDir: ${JSON.stringify(outputDir)},
   tables: {
     categories: { scopeColumn: "scope_id" },
   },
 });
 `;
+  fs.writeFileSync(apiSchemaPath, apiSchemaSource);
+  fs.writeFileSync(localSchemaPath, localSchemaSource);
   fs.writeFileSync(configPath, source);
+  return configPath;
+}
+
+function writeMultiTableSyncConfigModule(dir: string): string {
+  const outputDir = path.join(dir, "generated").replaceAll(path.sep, "/");
+  const apiSchemaPath = path.join(dir, "api-synced-schema.ts");
+  const localSchemaPath = path.join(dir, "local-synced-schema.ts");
+  const configPath = path.join(dir, "sync.config.ts");
+
+  fs.writeFileSync(
+    apiSchemaPath,
+    [
+      'import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";',
+      `import { apiSyncColumns } from ${JSON.stringify(baresyncSourceUrl)};`,
+      "",
+      'export const customers = sqliteTable("customers", {',
+      '  id: text("id").primaryKey(),',
+      '  merchantId: text("merchant_id").notNull(),',
+      '  name: text("name").notNull(),',
+      "  ...apiSyncColumns(),",
+      "}, (table) => [",
+      '  index("customers_scope_sync_idx").on(table.merchantId, table.syncUpdatedAt),',
+      "]);",
+      "",
+      'export const orders = sqliteTable("orders", {',
+      '  id: text("id").primaryKey(),',
+      '  locationId: text("location_id").notNull(),',
+      '  totalMinorUnits: integer("total_minor_units").notNull(),',
+      "  ...apiSyncColumns(),",
+      "}, (table) => [",
+      '  index("orders_scope_sync_idx").on(table.locationId, table.syncUpdatedAt, table.id),',
+      "]);",
+      "",
+      'export const inventoryItems = sqliteTable("inventory_items", {',
+      '  id: text("id").primaryKey(),',
+      '  warehouseId: text("warehouse_id").notNull(),',
+      '  sku: text("sku").notNull(),',
+      "  ...apiSyncColumns(),",
+      "});",
+      "",
+    ].join("\n")
+  );
+
+  fs.writeFileSync(
+    localSchemaPath,
+    [
+      'import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";',
+      `import { localSyncColumns } from ${JSON.stringify(baresyncSourceUrl)};`,
+      "",
+      'export const customers = sqliteTable("customers", {',
+      '  id: text("id").primaryKey(),',
+      '  merchantId: text("merchant_id").notNull(),',
+      '  name: text("name").notNull(),',
+      "  ...localSyncColumns(),",
+      "});",
+      "",
+      'export const orders = sqliteTable("orders", {',
+      '  id: text("id").primaryKey(),',
+      '  locationId: text("location_id").notNull(),',
+      '  totalMinorUnits: integer("total_minor_units").notNull(),',
+      "  ...localSyncColumns(),",
+      "});",
+      "",
+      'export const inventoryItems = sqliteTable("inventory_items", {',
+      '  id: text("id").primaryKey(),',
+      '  warehouseId: text("warehouse_id").notNull(),',
+      '  sku: text("sku").notNull(),',
+      "  ...localSyncColumns(),",
+      "});",
+      "",
+    ].join("\n")
+  );
+
+  fs.writeFileSync(
+    configPath,
+    [
+      `import { defineSyncConfig } from ${JSON.stringify(baresyncSourceUrl)};`,
+      "",
+      "export const syncGeneratorConfig = defineSyncConfig({",
+      `  apiSyncedSchema: ${JSON.stringify(apiSchemaPath)},`,
+      `  localSyncedSchema: ${JSON.stringify(localSchemaPath)},`,
+      `  outputDir: ${JSON.stringify(outputDir)},`,
+      "  tables: {",
+      '    customers: { scopeColumn: "merchant_id" },',
+      '    orders: { scopeColumn: "location_id" },',
+      '    inventoryItems: { scopeColumn: "warehouse_id" },',
+      "  },",
+      "});",
+      "",
+    ].join("\n")
+  );
+
   return configPath;
 }
 
@@ -230,6 +331,48 @@ describe("CLI config discovery", () => {
       } finally {
         stdoutSpy.mockRestore();
       }
+    } finally {
+      process.chdir(previousCwd);
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("shares paired context between doctor and generate --check", async () => {
+    const cwd = createRepoTempDir("baresync-multi-");
+    writeMultiTableSyncConfigModule(cwd);
+
+    const previousCwd = process.cwd();
+    process.chdir(cwd);
+    try {
+      const { runDoctorCommand, runGenerateCommand } = await import(
+        "../generator"
+      );
+      const stdoutSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
+
+      try {
+        await runDoctorCommand([]);
+        const doctorOutput = stdoutSpy.mock.calls
+          .map((call) => String(call[0]))
+          .join("");
+        expect(doctorOutput).toContain(
+          "SYNC_INDEX_MISSING_SCOPE_WATERMARK [inventory_items]"
+        );
+        expect(doctorOutput).toContain("0 error(s), 1 warning(s), 0 info(s)");
+        expect(doctorOutput).not.toContain("SYNC_SCHEMA_NO_CONFLICT_STRATEGY");
+        expect(doctorOutput).not.toContain("SYNC_SCHEMA_NO_DELETE_STRATEGY");
+      } finally {
+        stdoutSpy.mockRestore();
+      }
+
+      await expect(runGenerateCommand(["--check"])).resolves.toBeUndefined();
+      await runGenerateCommand([]);
+
+      const today = new Date().toISOString().slice(0, 10);
+      expect(
+        fs.existsSync(path.join(cwd, "generated", today, "sync-contract.json"))
+      ).toBe(true);
     } finally {
       process.chdir(previousCwd);
       fs.rmSync(cwd, { recursive: true, force: true });

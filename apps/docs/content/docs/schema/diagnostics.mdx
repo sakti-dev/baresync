@@ -7,6 +7,8 @@ description: How the generator validates your schemas before producing output.
 
 Before the generator writes any output, it runs a diagnostic pass on your sync contract. If any errors are found, generation is aborted and the errors are printed.
 
+For paired configs, diagnostics inspect the configured API tables for index checks while the generated runtime contract still comes from the local tables.
+
 ## Run diagnostics
 
 ```bash
@@ -47,13 +49,12 @@ These do not block generation but may indicate problems:
 |---|---|
 | `SYNC_SCHEMA_MISSING_SYNC_UPDATED_AT` | Missing `sync_updated_at` on API schema |
 | `SYNC_SCHEMA_NULLABLE_SCOPE_COLUMN` | Scope column is nullable |
-| `SYNC_SCHEMA_NO_CONFLICT_STRATEGY` | No conflict strategy defined |
-| `SYNC_SCHEMA_NO_DELETE_STRATEGY` | No delete strategy defined |
 | `SYNC_SCHEMA_LARGE_TEXT_FIELD` | Text column over 10,000 chars |
 | `SYNC_SCHEMA_JSON_ONLY_FIELD` | JSON-typed column may not serialize cleanly in all cases |
 | `SYNC_INDEX_MISSING_SCOPE_WATERMARK` | No `(scope, sync_updated_at)` index |
-| `SYNC_INDEX_MISSING_LOCAL_DIRTY` | No `is_synced` index |
 | `SYNC_COMPAT_ADDITIVE_CHANGE` | Table removed from contract since last run |
+
+`SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1` ignores the built-in local/server sync columns (`isSynced` / `is_synced` and `syncUpdatedAt` / `sync_updated_at`) and only warns when additional custom one-sided columns remain on both sides.
 
 ## Treat warnings as errors
 

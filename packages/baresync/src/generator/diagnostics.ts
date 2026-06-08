@@ -1,4 +1,8 @@
-import { getTableConfig, type SQLiteColumn } from "drizzle-orm/sqlite-core";
+import {
+  type AnySQLiteTable,
+  getTableConfig,
+  type SQLiteColumn,
+} from "drizzle-orm/sqlite-core";
 import type { SyncContract } from "../schema/contract";
 import type { SyncedTableDefinition } from "../schema/synced-table";
 import { computeSyncTableOrder } from "./fk-order";
@@ -17,6 +21,11 @@ export interface SyncDiagnostic {
   severity: "error" | "warning" | "info";
   table?: string;
   why: string;
+}
+
+interface PairedDiagnosticTable {
+  apiTable: AnySQLiteTable;
+  localTable: AnySQLiteTable;
 }
 
 const KNOWN_COLUMN_TYPES = new Set([
@@ -412,6 +421,7 @@ function checkFkCycleAndExternalFk(contract: SyncContract): SyncDiagnostic[] {
 }
 
 export interface DiagnosticOptions {
+  pairedTables?: readonly PairedDiagnosticTable[];
   previousTables?: string[];
 }
 
@@ -441,44 +451,6 @@ function checkNullableScopeColumn(
   return [];
 }
 
-function checkNoConflictStrategy(
-  def: SyncedTableDefinition,
-  tableName: string
-): SyncDiagnostic[] {
-  if (!def.conflict) {
-    return [
-      {
-        code: "SYNC_SCHEMA_NO_CONFLICT_STRATEGY",
-        severity: "warning",
-        message: `Table "${tableName}" has no conflict strategy defined`,
-        table: tableName,
-        why: "Without a conflict strategy, last-write-wins is assumed which may cause data loss",
-        fix: "Add a conflict strategy (e.g., { strategy: 'last-write-wins', column: <updatedAtColumn> })",
-      },
-    ];
-  }
-  return [];
-}
-
-function checkNoDeleteStrategy(
-  def: SyncedTableDefinition,
-  tableName: string
-): SyncDiagnostic[] {
-  if (!def.delete) {
-    return [
-      {
-        code: "SYNC_SCHEMA_NO_DELETE_STRATEGY",
-        severity: "warning",
-        message: `Table "${tableName}" has no delete strategy defined`,
-        table: tableName,
-        why: "Without a delete strategy, rows are only soft-deleted if deleted_at is set externally",
-        fix: 'Add a delete strategy (e.g., { mode: "soft", column: <deletedAtColumn> })',
-      },
-    ];
-  }
-  return [];
-}
-
 function checkBatteriesIncludedNot1To1(
   meta: {
     localOnlyColumns?: string[];
@@ -486,8 +458,12 @@ function checkBatteriesIncludedNot1To1(
   },
   tableName: string
 ): SyncDiagnostic[] {
-  const localOnly = meta.localOnlyColumns ?? [];
-  const serverOnly = meta.serverOnlyColumns ?? [];
+  const localOnly = (meta.localOnlyColumns ?? []).filter(
+    (column) => camelToSnake(column) !== "is_synced"
+  );
+  const serverOnly = (meta.serverOnlyColumns ?? []).filter(
+    (column) => camelToSnake(column) !== "sync_updated_at"
+  );
 
   if (localOnly.length > 0 && serverOnly.length > 0) {
     return [
@@ -503,6 +479,70 @@ function checkBatteriesIncludedNot1To1(
   }
 
   return [];
+}
+
+function isSQLiteColumn(value: unknown): value is SQLiteColumn {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof (value as { name?: unknown }).name === "string"
+  );
+}
+
+function getIndexColumnNames(index: {
+  config: {
+    columns: unknown[];
+  };
+}): string[] | null {
+  const names: string[] = [];
+
+  for (const column of index.config.columns) {
+    if (!isSQLiteColumn(column)) {
+      return null;
+    }
+    names.push(column.name);
+  }
+
+  return names;
+}
+
+function indexHasOrderedPrefix(
+  index: {
+    config: {
+      columns: unknown[];
+    };
+  },
+  expectedPrefix: string[]
+): boolean {
+  const columns = getIndexColumnNames(index);
+  if (!columns || columns.length < expectedPrefix.length) {
+    return false;
+  }
+
+  for (let i = 0; i < expectedPrefix.length; i++) {
+    if (columns[i] !== expectedPrefix[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function findPhysicalColumnName(
+  table: AnySQLiteTable,
+  fieldName: string
+): string | undefined {
+  const config = getTableConfig(table);
+  const snakeField = camelToSnake(fieldName);
+  const camelField = snakeToCamel(fieldName);
+
+  return (config.columns as SQLiteColumn[]).find(
+    (column) =>
+      column.name === fieldName ||
+      column.name === snakeField ||
+      column.name === camelField
+  )?.name;
 }
 
 function checkLargeTextField(
@@ -555,7 +595,33 @@ function checkJsonOnlyField(
   return diagnostics;
 }
 
-function checkMissingScopeWatermark(tableName: string): SyncDiagnostic[] {
+function checkMissingScopeWatermark(
+  def: SyncedTableDefinition,
+  tableName: string,
+  table: AnySQLiteTable
+): SyncDiagnostic[] {
+  const config = getTableConfig(table);
+  const hasSyncUpdatedAt = (config.columns as SQLiteColumn[]).some(
+    (column) => column.name === "sync_updated_at"
+  );
+
+  if (!hasSyncUpdatedAt) {
+    return [];
+  }
+
+  const scopeColumn = findPhysicalColumnName(table, def.scope.field);
+  if (!scopeColumn) {
+    return [];
+  }
+
+  const hasScopeWatermarkIndex = config.indexes.some((index) =>
+    indexHasOrderedPrefix(index, [scopeColumn, "sync_updated_at"])
+  );
+
+  if (hasScopeWatermarkIndex) {
+    return [];
+  }
+
   return [
     {
       code: "SYNC_INDEX_MISSING_SCOPE_WATERMARK",
@@ -566,30 +632,6 @@ function checkMissingScopeWatermark(tableName: string): SyncDiagnostic[] {
       fix: "Create a composite index on (scope_column, sync_updated_at) for efficient watermark queries",
     },
   ];
-}
-
-function checkMissingLocalDirty(
-  def: SyncedTableDefinition,
-  tableName: string,
-  columns: string[]
-): SyncDiagnostic[] {
-  const hasIsSynced =
-    columns.includes("is_synced") ||
-    (def.localOnlyColumns ?? []).includes("is_synced") ||
-    (def.localOnlyColumns ?? []).includes("isSynced");
-  if (hasIsSynced) {
-    return [
-      {
-        code: "SYNC_INDEX_MISSING_LOCAL_DIRTY",
-        severity: "warning",
-        message: `Table "${tableName}" may be missing an index on (is_synced) for dirty row queries`,
-        table: tableName,
-        why: "Without an is_synced index, finding pending changes requires a full table scan",
-        fix: "Create an index on is_synced for efficient dirty row queries",
-      },
-    ];
-  }
-  return [];
 }
 
 function checkBatteriesIncludedComplexMapping(
@@ -649,6 +691,12 @@ export function runDiagnostics(
   options?: DiagnosticOptions
 ): SyncDiagnostic[] {
   const diagnostics: SyncDiagnostic[] = [];
+  const pairedTablesByName = new Map<string, AnySQLiteTable>();
+
+  for (const pair of options?.pairedTables ?? []) {
+    const localTableName = getTableConfig(pair.localTable).name;
+    pairedTablesByName.set(localTableName, pair.apiTable);
+  }
 
   diagnostics.push(...checkDuplicateTableName(contract.tablesMeta));
   diagnostics.push(...checkFkCycleAndExternalFk(contract));
@@ -672,13 +720,16 @@ export function runDiagnostics(
     diagnostics.push(...checkReservedFieldReused(def, tableName));
 
     diagnostics.push(...checkNullableScopeColumn(def, tableName));
-    diagnostics.push(...checkNoConflictStrategy(def, tableName));
-    diagnostics.push(...checkNoDeleteStrategy(def, tableName));
     diagnostics.push(...checkBatteriesIncludedNot1To1(meta, tableName));
     diagnostics.push(...checkLargeTextField(def, tableName));
     diagnostics.push(...checkJsonOnlyField(def, tableName));
-    diagnostics.push(...checkMissingScopeWatermark(tableName));
-    diagnostics.push(...checkMissingLocalDirty(def, tableName, columns));
+    diagnostics.push(
+      ...checkMissingScopeWatermark(
+        def,
+        tableName,
+        pairedTablesByName.get(tableName) ?? def.table
+      )
+    );
     diagnostics.push(...checkBatteriesIncludedComplexMapping(def, tableName));
   }
 
