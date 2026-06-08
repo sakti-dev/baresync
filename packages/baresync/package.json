@@ -1,6 +1,6 @@
 {
   "name": "baresync",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "private": false,
   "type": "module",
   "description": "SQLite-first sync infrastructure for Tauri apps",
