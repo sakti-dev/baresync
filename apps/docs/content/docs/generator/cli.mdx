@@ -67,8 +67,8 @@ bunx baresync doctor
 Loaded config: /path/to/sync.config.ts
 Running diagnostics for syncGeneratorConfig
 WARN  SYNC_INDEX_MISSING_SCOPE_WATERMARK [locations]: Table "locations" may be missing a composite index on (scope, sync watermark)
-       Why: Without a scope+watermark index, incremental sync queries may be slow on large tables
-       Fix: Create a composite index on (scope_column, sync_updated_at) for efficient watermark queries
+       Why: For paired configs, this check inspects the API schema table; without a scope+watermark index, incremental sync queries may be slow
+       Fix: Create a composite index on (scope_column, sync_updated_at) in the API schema
 0 error(s), 1 warning(s), 0 info(s)
 ```
 

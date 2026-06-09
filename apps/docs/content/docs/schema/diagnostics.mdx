@@ -54,6 +54,8 @@ These do not block generation but may indicate problems:
 | `SYNC_INDEX_MISSING_SCOPE_WATERMARK` | No `(scope, sync_updated_at)` index |
 | `SYNC_COMPAT_ADDITIVE_CHANGE` | Table removed from contract since last run |
 
+For paired configs, index checks inspect the API schema table. The generator no longer emits the legacy local-dirty and strategy warnings that were tied to the old single-schema flow.
+
 `SYNC_SCHEMA_BATTERIES_INCLUDED_NOT_1_TO_1` ignores the built-in local/server sync columns (`isSynced` / `is_synced` and `syncUpdatedAt` / `sync_updated_at`) and only warns when additional custom one-sided columns remain on both sides.
 
 ## Treat warnings as errors

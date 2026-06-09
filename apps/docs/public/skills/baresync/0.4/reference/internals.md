@@ -169,5 +169,5 @@ const chunks = chunkArray(rows, chunkSize);
 ## Cursor storage
 
 - Stored cursors advance after incremental pulls
-- Baseline pulls (empty cursor) do NOT overwrite an existing stored cursor
-- This prevents a baseline pull from clobbering a cursor from a previous partial sync
+- Baseline pulls (empty request cursor) only write the response cursor when no cursor is already stored
+- This prevents a baseline pull from clobbering a cursor from a previous partial sync while still allowing a fresh device to initialize from the response

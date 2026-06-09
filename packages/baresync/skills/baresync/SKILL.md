@@ -30,12 +30,13 @@ Before loading any reference, detect the installed version:
 These rules are binding for every Baresync task. Follow them before answering anything else.
 
 1. Do not assume missing details. Read the relevant skill reference or workspace source first.
-2. Prefer the workspace source of truth over `node_modules` or published-package copies.
-3. If the skill or docs conflict with source code, trust the source code and treat the skill as stale.
-4. If a reference does not fully answer the question, continue to the next deeper reference or source file instead of guessing.
-5. Only ask the user a question when the answer cannot be determined from the workspace or the references.
-6. Never silently substitute a nearby concept, command, or file when the exact one is available.
-7. When instructions conflict, use this priority:
+2. If the task needs code or implementation behavior, read `reference/source.md` first and follow its workspace source map. Do not treat any other file or installed package as an equivalent source path.
+3. Prefer the workspace source of truth over `node_modules` or published-package copies.
+4. If the skill or docs conflict with source code, trust the source code and treat the skill as stale.
+5. If a reference does not fully answer the question, continue to the next deeper reference or source file instead of guessing.
+6. Only ask the user a question when the answer cannot be determined from the workspace or the references.
+7. Never silently substitute a nearby concept, command, or file when the exact one is available.
+8. When instructions conflict, use this priority:
    - system
    - developer
    - workspace source code
@@ -60,9 +61,10 @@ Before doing anything:
 1. Classify the user's intent using `Intent Routing`.
 2. Load the narrowest matching reference.
 3. Answer only from the loaded reference if it fully covers the request.
-4. If the reference is incomplete, read the `source` reference and inspect the mapped workspace source file.
-5. If docs and source conflict, trust source, mention the mismatch, and continue from source.
-6. If the answer still cannot be determined, ask one short clarifying question.
+4. If the request needs code or implementation detail, read `source` reference immediately after the narrow reference, then inspect only the mapped workspace source file named there.
+5. Do not use `Cargo.toml`, `Cargo.lock`, `node_modules`, or published-package copies as code lookup paths when workspace source is available.
+6. If docs and source conflict, trust source, mention the mismatch, and continue from source.
+7. If the answer still cannot be determined, ask one short clarifying question.
 
 Do not answer Baresync API behavior from memory when a reference or workspace source file exists.
 

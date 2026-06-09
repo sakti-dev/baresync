@@ -244,6 +244,7 @@ import {
   encodeSyncResponse,
   formatLatestSyncCursor,
   formatSyncCursor,
+  formatSyncWatermarkCursor,
   getWriteChunkSize,
   orderDeleteChanges,
   orderPushChanges,

@@ -13,6 +13,8 @@ For this repository, the source of truth is the checked-out workspace:
 - `apps/docs/content/docs/` for user-facing documentation
 - `apps/docs/public/skills/baresync/<version>/reference/` for hosted versioned skill references
 
+Do not infer implementation paths from `Cargo.toml`, `Cargo.lock`, package metadata, or `node_modules`. Cargo files and installed packages are for version/package metadata only, not for locating code in this repository.
+
 ## Installed Source Rule (MANDATORY)
 
 Do not inspect `node_modules/baresync` when this workspace contains Baresync source.
@@ -38,6 +40,8 @@ Do NOT use this for:
 - Server questions → load `reference/server.md`
 - General debugging → load `reference/debug.md`
 - Any question that other references already answer
+
+If a Baresync task needs code, this file is the only approved entry point for source lookup in this repository. Do not bypass it by reading Cargo manifests, `node_modules`, or guessing alternate source locations.
 
 ## Step 1: Navigate the workspace source
 

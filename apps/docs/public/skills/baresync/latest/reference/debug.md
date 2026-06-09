@@ -221,7 +221,8 @@ bunx baresync generate --warnings-as-errors
 | `SYNC_SCHEMA_MISSING_SYNC_UPDATED_AT` | Missing `sync_updated_at` on API schema |
 | `SYNC_SCHEMA_NULLABLE_SCOPE_COLUMN` | Scope column is nullable (should be NOT NULL) |
 | `SYNC_INDEX_MISSING_SCOPE_WATERMARK` | No `(scope, sync_updated_at)` index |
-| `SYNC_INDEX_MISSING_LOCAL_DIRTY` | No `is_synced` index |
+
+For paired configs, index checks inspect the API schema table. The generator no longer emits the legacy local-dirty and strategy warnings that belonged to the old single-schema flow.
 
 See [generator reference](generator.md) for programmatic diagnostics (`runDiagnostics()`) and CLI flags (`--check`, `--warnings-as-errors`).
 

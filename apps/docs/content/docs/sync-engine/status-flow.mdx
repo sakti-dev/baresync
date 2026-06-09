@@ -43,7 +43,7 @@ If no cursor exists (first sync), the engine sends an empty string.
 |---|---|
 | `hasChanges` | Whether any table has rows newer than the cursor |
 | `changedTables` | Specific tables with changes (used as pull filter) |
-| `cursor` | Server's latest cursor |
+| `cursor` | Server's latest cursor, including synthetic watermark cursors when no real rows exist |
 | `serverTime` | Server clock at response time |
 
 ## How changedTables is used

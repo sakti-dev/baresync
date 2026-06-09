@@ -90,7 +90,7 @@ The engine converts between `camelCase` (API) and `snake_case` (SQLite) automati
 
 ## Cursor is only stored for incremental pulls
 
-When using `PullStartCursor::Stored` (the normal path), the engine stores the new cursor after applying changes. For baseline pulls (`PullStartCursor::Baseline`), the cursor from the response is **not** stored — this prevents a baseline pull from overwriting the cursor if one already exists from a previous partial sync.
+When using `PullStartCursor::Stored` (the normal path), the engine stores the new cursor after applying changes. For baseline pulls (`PullStartCursor::Baseline`), the engine only writes the response cursor if no cursor is already stored. That lets a baseline pull initialize the cursor on a fresh device without clobbering a cursor from a previous partial sync.
 
 ## Table ordering
 

@@ -57,7 +57,7 @@ Every synced row belongs to a scope (tenant, workspace, merchant). Your server's
 
 ## How does pull work incrementally?
 
-The local database stores a cursor timestamp per scope. The server returns only rows changed after that cursor. After applying pulled rows, the cursor advances to the latest `syncUpdatedAt` from the response.
+The local database stores a cursor timestamp per scope. The server returns only rows changed after that cursor. After applying pulled rows, the cursor advances to the latest cursor from the response, which may be a synthetic watermark cursor when the server has no real rows to use.
 
 ## What are soft deletes?
 

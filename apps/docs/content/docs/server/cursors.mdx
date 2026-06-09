@@ -31,16 +31,25 @@ An empty string (`""`) means "no cursor" — the client has never synced (baseli
 ## Parsing
 
 ```ts
-import { parseSyncCursor, parseSyncCursorTimestamp } from "baresync/server";
+import {
+  formatSyncWatermarkCursor,
+  parseSyncCursor,
+  parseSyncCursorTimestamp,
+} from "baresync/server";
 
 const parsed = parseSyncCursor("sync:1747894800000:items:item-99");
 // { syncUpdatedAt: 1747894800000, tableName: "items", rowId: "item-99" }
 
 const timestamp = parseSyncCursorTimestamp("sync:1747894800000:items:item-99");
 // 1747894800000
+
+formatSyncWatermarkCursor(1747894900000);
+// "sync:1747894900000:__watermark__:__scope__"
 ```
 
 `parseSyncCursor` returns `null` for empty cursors. `parseSyncCursorTimestamp` returns `0` for empty cursors.
+
+`formatSyncWatermarkCursor` creates the synthetic cursor the server can use when it needs to return a cursor without a real row, such as an empty pull or status response. The value is still parseable, but the table and row segments are reserved markers.
 
 ## Formatting
 
@@ -76,7 +85,7 @@ This ensures cursors are monotonically increasing as long as the server assigns 
 For each table, the repository:
 1. Queries rows where `syncUpdatedAt > cursorTimestamp` (or all rows if cursor is empty)
 2. Splits results into `changedRows` (no `deletedAt`) and `deletedIds` (has `deletedAt`)
-3. Finds the latest row across all tables for the new cursor
+3. Finds the latest row across all tables for the new cursor, or falls back to a synthetic watermark cursor when no rows exist
 
 Your `readRows` callback should filter by `syncUpdatedAt > cursorTimestamp` and order by `syncUpdatedAt DESC, updatedAt DESC, id DESC`.
 
