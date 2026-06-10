@@ -110,49 +110,131 @@ async function finalizePushBatchResponse(
     );
 }
 
+async function reclaimStalePendingRow(
+  db: unknown,
+  params: GuardParams
+): Promise<void> {
+  await (
+    db as {
+      update: (table: unknown) => {
+        set: (data: unknown) => {
+          where: (condition: unknown) => Promise<void>;
+        };
+      };
+    }
+  )
+    .update(syncBatchRequests)
+    .set({
+      status: "pending",
+      responseBody: '{"pending":true}',
+      createdAt: Date.now(),
+    })
+    .where(
+      and(
+        eq(syncBatchRequests.clientId, params.clientId),
+        eq(syncBatchRequests.idempotencyKey, params.idempotencyKey)
+      )
+    );
+}
+
+async function deletePendingRow(
+  db: unknown,
+  params: GuardParams
+): Promise<void> {
+  await (
+    db as {
+      delete: (table: unknown) => {
+        where: (condition: unknown) => Promise<void>;
+      };
+    }
+  )
+    .delete(syncBatchRequests)
+    .where(
+      and(
+        eq(syncBatchRequests.clientId, params.clientId),
+        eq(syncBatchRequests.idempotencyKey, params.idempotencyKey)
+      )
+    );
+}
+
 export function createIdempotencyGuard<TDb extends SyncIdempotencyDatabase>({
   db,
+  pendingTimeoutMs = 30_000,
 }: {
   db: TDb;
+  pendingTimeoutMs?: number;
 }) {
   return {
-    run<T>(
+    async run<T>(
       params: GuardParams,
       callback: () => Promise<T>
     ): Promise<GuardResult<T>> {
-      return Promise.resolve(
-        db.transaction(async (tx) => {
-          const existing = await loadPushBatchResponse(tx, params);
+      const existing = await loadPushBatchResponse(db, params);
 
-          if (existing) {
-            if (
-              existing.status === "completed" &&
-              existing.requestHash === params.requestHash
-            ) {
-              return {
-                result: JSON.parse(existing.responseBody!) as T,
-                wasReplay: true,
-              };
-            }
-            if (existing.status === "pending") {
-              throw new ConflictRequestError(
-                "sync push is already in progress"
-              );
-            }
+      if (existing) {
+        if (
+          existing.status === "completed" &&
+          existing.requestHash === params.requestHash
+        ) {
+          return {
+            result: JSON.parse(existing.responseBody!) as T,
+            wasReplay: true,
+          };
+        }
+        if (existing.status === "completed") {
+          throw new ConflictRequestError(
+            "idempotency key already used with different request body"
+          );
+        }
+        if (existing.status === "pending") {
+          const age = Date.now() - existing.createdAt;
+          if (age < pendingTimeoutMs) {
             throw new ConflictRequestError(
-              "idempotency key already used with different request body"
+              "sync push is already in progress"
             );
           }
+          // Stale — reclaim via UPDATE in-place, row stays as pending
+          await reclaimStalePendingRow(db, params);
+        }
+      }
 
-          await reservePushBatchResponse(tx, params);
+      // Reserve — only INSERT if no row exists (not reclaimed)
+      if (!existing) {
+        try {
+          await reservePushBatchResponse(db, params);
+        } catch (reserveError) {
+          const reloaded = await loadPushBatchResponse(db, params);
+          if (!reloaded) {
+            throw reserveError;
+          }
+          if (
+            reloaded.status === "completed" &&
+            reloaded.requestHash === params.requestHash
+          ) {
+            return {
+              result: JSON.parse(reloaded.responseBody!) as T,
+              wasReplay: true,
+            };
+          }
+          throw new ConflictRequestError("sync push is already in progress");
+        }
+      }
 
-          const result = await callback();
+      // Callback — cleanup pending row on failure
+      let result: T;
+      try {
+        result = await callback();
+      } catch (callbackError) {
+        try {
+          await deletePendingRow(db, params);
+        } catch {
+          // Swallow cleanup error — original error is more important
+        }
+        throw callbackError;
+      }
 
-          await finalizePushBatchResponse(tx, { ...params, response: result });
-
-          return { result, wasReplay: false };
-        })
-      );
+      await finalizePushBatchResponse(db, { ...params, response: result });
+      return { result, wasReplay: false };
     },
   };
 }

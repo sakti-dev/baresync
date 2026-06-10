@@ -89,6 +89,7 @@ interface SyncPushHandlerBase<
   ) => Awaitable<unknown>;
   idempotency: {
     db: TDb;
+    pendingTimeoutMs?: number;
   };
   resolveScope: (
     input: SyncResolveScopeInput<TContext>
@@ -137,6 +138,7 @@ export interface SyncServerOptions<
   TDb extends SyncIdempotencyDatabase = SyncIdempotencyDatabase,
 > {
   db: TDb;
+  pendingTimeoutMs?: number;
   pull: Omit<SyncPullHandlerOptions<TContext, TScope>, "resolveScope">;
   push: Omit<
     SyncPushHandlerOptions<TContext, TScope, TDb>,
@@ -359,7 +361,7 @@ export function createSyncServer<
   return {
     push: createPushHandler({
       ...options.push,
-      idempotency: { db: options.db },
+      idempotency: { db: options.db, pendingTimeoutMs: options.pendingTimeoutMs },
       resolveScope: options.resolveScope,
     }),
     pull: createPullHandler({
