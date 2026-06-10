@@ -361,7 +361,10 @@ export function createSyncServer<
   return {
     push: createPushHandler({
       ...options.push,
-      idempotency: { db: options.db, pendingTimeoutMs: options.pendingTimeoutMs },
+      idempotency: {
+        db: options.db,
+        pendingTimeoutMs: options.pendingTimeoutMs,
+      },
       resolveScope: options.resolveScope,
     }),
     pull: createPullHandler({

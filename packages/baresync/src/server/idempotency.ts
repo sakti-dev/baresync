@@ -165,78 +165,120 @@ export function createIdempotencyGuard<TDb extends SyncIdempotencyDatabase>({
   pendingTimeoutMs?: number;
 }) {
   return {
-    async run<T>(
+    run: <T>(
       params: GuardParams,
       callback: () => Promise<T>
-    ): Promise<GuardResult<T>> {
-      const existing = await loadPushBatchResponse(db, params);
-
-      if (existing) {
-        if (
-          existing.status === "completed" &&
-          existing.requestHash === params.requestHash
-        ) {
-          return {
-            result: JSON.parse(existing.responseBody!) as T,
-            wasReplay: true,
-          };
-        }
-        if (existing.status === "completed") {
-          throw new ConflictRequestError(
-            "idempotency key already used with different request body"
-          );
-        }
-        if (existing.status === "pending") {
-          const age = Date.now() - existing.createdAt;
-          if (age < pendingTimeoutMs) {
-            throw new ConflictRequestError(
-              "sync push is already in progress"
-            );
-          }
-          // Stale — reclaim via UPDATE in-place, row stays as pending
-          await reclaimStalePendingRow(db, params);
-        }
-      }
-
-      // Reserve — only INSERT if no row exists (not reclaimed)
-      if (!existing) {
-        try {
-          await reservePushBatchResponse(db, params);
-        } catch (reserveError) {
-          const reloaded = await loadPushBatchResponse(db, params);
-          if (!reloaded) {
-            throw reserveError;
-          }
-          if (
-            reloaded.status === "completed" &&
-            reloaded.requestHash === params.requestHash
-          ) {
-            return {
-              result: JSON.parse(reloaded.responseBody!) as T,
-              wasReplay: true,
-            };
-          }
-          throw new ConflictRequestError("sync push is already in progress");
-        }
-      }
-
-      // Callback — cleanup pending row on failure
-      let result: T;
-      try {
-        result = await callback();
-      } catch (callbackError) {
-        try {
-          await deletePendingRow(db, params);
-        } catch {
-          // Swallow cleanup error — original error is more important
-        }
-        throw callbackError;
-      }
-
-      await finalizePushBatchResponse(db, { ...params, response: result });
-      return { result, wasReplay: false };
-    },
+    ): Promise<GuardResult<T>> =>
+      runGuard(db, pendingTimeoutMs, params, callback),
   };
+}
+
+async function runGuard<T>(
+  db: unknown,
+  pendingTimeoutMs: number,
+  params: GuardParams,
+  callback: () => Promise<T>
+): Promise<GuardResult<T>> {
+  const existing = await loadPushBatchResponse(db, params);
+
+  const resolved = await resolveExistingRow(
+    db,
+    pendingTimeoutMs,
+    params,
+    existing
+  );
+  if (resolved) {
+    return resolved as GuardResult<T>;
+  }
+
+  if (!existing) {
+    const recovered = await reserveWithRecovery(db, params);
+    if (recovered) {
+      return recovered as GuardResult<T>;
+    }
+  }
+
+  // Callback — cleanup pending row on failure
+  let result: T;
+  try {
+    result = await callback();
+  } catch (callbackError) {
+    try {
+      await deletePendingRow(db, params);
+    } catch {
+      // Swallow cleanup error — original error is more important
+    }
+    throw callbackError;
+  }
+
+  await finalizePushBatchResponse(db, { ...params, response: result });
+  return { result, wasReplay: false };
+}
+
+/** Returns a GuardResult if the row resolves to a replay/conflict, null to proceed. */
+async function resolveExistingRow(
+  db: unknown,
+  pendingTimeoutMs: number,
+  params: GuardParams,
+  existing: SyncBatchRequestRow | null
+): Promise<GuardResult<unknown> | null> {
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.status === "completed") {
+    if (existing.requestHash === params.requestHash) {
+      return {
+        result: JSON.parse(existing.responseBody!),
+        wasReplay: true,
+      };
+    }
+    throw new ConflictRequestError(
+      "idempotency key already used with different request body"
+    );
+  }
+
+  if (existing.status === "pending") {
+    const age = Date.now() - existing.createdAt;
+    if (age < pendingTimeoutMs) {
+      throw new ConflictRequestError("sync push is already in progress");
+    }
+    // Stale — reclaim via UPDATE in-place, row stays as pending
+    await reclaimStalePendingRow(db, params);
+  }
+
+  return null;
+}
+
+/** INSERT reserve row; on UNIQUE conflict, re-read and return replay/conflict. */
+async function reserveWithRecovery(
+  db: unknown,
+  params: GuardParams
+): Promise<GuardResult<unknown> | null> {
+  try {
+    await reservePushBatchResponse(db, params);
+    return null;
+  } catch (reserveError) {
+    const reloaded = await loadPushBatchResponse(db, params);
+    if (!reloaded) {
+      throw reserveError;
+    }
+    if (
+      reloaded.status === "completed" &&
+      reloaded.requestHash === params.requestHash
+    ) {
+      return {
+        result: JSON.parse(reloaded.responseBody!),
+        wasReplay: true,
+      };
+    }
+    if (reloaded.status === "completed") {
+      throw new ConflictRequestError(
+        "idempotency key already used with different request body"
+      );
+    }
+    throw new ConflictRequestError("sync push is already in progress");
+  }
 }
 
 export async function cleanupSyncBatchRequests<
