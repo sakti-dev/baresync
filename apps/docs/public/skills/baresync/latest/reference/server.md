@@ -28,7 +28,7 @@ export const db = drizzle(sqlite);
 
 Override path with `MY_APP_SERVER_DB_PATH` env var. For Postgres/MySQL/libSQL, replace the driver.
 
-The idempotency guard itself is dialect-agnostic: `createSyncServer` only needs a Drizzle database with transaction support at the top level `db` option.
+The idempotency guard is transactionless and dialect-agnostic: `createSyncServer` only needs a Drizzle database at the top level `db` option. It works with SQLite, Postgres, MySQL, libSQL (Turso), and other Drizzle-supported backends without requiring interactive transaction support.
 
 ## Sync repository
 

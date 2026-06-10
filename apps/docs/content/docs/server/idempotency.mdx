@@ -9,14 +9,19 @@ Push requests include a `clientId` and `idempotencyKey`. The idempotency guard u
 
 ## How it works
 
-The guard stores push results in a `sync_batch_requests` table. When a push arrives:
+The guard uses a `sync_batch_requests` table with a UNIQUE index on `(client_id, idempotency_key)`. It runs as **sequential auto-committed operations** — no database transactions. This makes it compatible with all Drizzle backends, including HTTP-based ones (Turso/libsql) where interactive transactions time out on idle streams.
+
+When a push arrives:
 
 1. Look up existing records for `(clientId, idempotencyKey)`
 2. **If completed with matching hash** → return the stored response (replay)
-3. **If pending** → reject with `409 Conflict`
-4. **If completed with different hash** → reject with `409 Conflict`
-5. **If not found** → reserve a pending slot, run the callback, finalize with the result
+3. **If completed with different hash** → reject with `409 Conflict`
+4. **If pending and fresh** (age < `pendingTimeoutMs`) → reject with `409 Conflict`
+5. **If pending and stale** (age ≥ `pendingTimeoutMs`) → reclaim the row, run the callback, finalize
+6. **If not found** → reserve a pending slot, run the callback, finalize with the result
+7. **If callback throws** → delete the pending row, rethrow
 
+Stale pending rows are reclaimed via UPDATE-in-place (not DELETE+INSERT) to avoid concurrency windows.
 
 ## Setup
 
@@ -39,13 +44,27 @@ const syncServer = createSyncServer({
 });
 ```
 
-The `db` can be any Drizzle database that supports transactions and includes the `sync_batch_requests` table. This is the same table exported from `baresync`:
+The `db` can be any Drizzle-compatible database that includes the `sync_batch_requests` table. This is the same table exported from `baresync`:
 
 ```ts
 import { syncBatchRequests } from "baresync";
 ```
 
 Include it in your server database schema and migrations. The scaffold uses SQLite by default, but the idempotency guard itself is dialect-agnostic.
+
+## pendingTimeoutMs
+
+By default, a pending row is considered stale after 30 seconds. Override this:
+
+```ts
+const syncServer = createSyncServer({
+  db: yourDrizzleDb,
+  pendingTimeoutMs: 60_000, // 60 seconds
+  // ...
+});
+```
+
+If a push leaves a stale pending row (e.g., the server crashed mid-callback), the next push with the same key will reclaim it once the timeout expires instead of permanently rejecting with 409.
 
 ## The sync_batch_requests table
 
@@ -55,7 +74,7 @@ Include it in your server database schema and migrations. The scaffold uses SQLi
 | `client_id` | `TEXT` | The device's client ID |
 | `idempotency_key` | `TEXT` | Unique key for this push batch |
 | `request_hash` | `TEXT` | SHA-256 hash of the request body |
-| `status` | `TEXT` | `"pending"`, `"completed"`, or `"failed"` |
+| `status` | `TEXT` | `"pending"` or `"completed"` |
 | `response_body` | `TEXT` | JSON-serialized response for replays |
 | `created_at` | `INTEGER` | Timestamp when the record was created |
 | `completed_at` | `INTEGER` | Timestamp when processing finished |
