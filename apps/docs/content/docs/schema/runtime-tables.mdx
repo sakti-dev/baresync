@@ -22,7 +22,7 @@ Tracks pending local changes that need to be pushed to the server.
 | `changed_at` | `text` | ISO timestamp of the change |
 | `synced_at` | `text` (nullable) | When the change was synced (null = pending) |
 
-The table has a unique partial index on `(table_name, row_id) WHERE synced_at IS NULL`. This means only one pending outbox entry per row. Writing to the same row while a pending entry exists causes a constraint violation.
+The table has a unique partial index on `(table_name, row_id) WHERE synced_at IS NULL`. This means only one pending outbox entry per row. When `enqueueChange` is called for a row that already has a pending entry, the existing row is updated (upsert coalescing) instead of causing a constraint violation. The `"insert"` operation is preserved if the existing entry was an insert; `"update"` replaces `"update"`.
 
 This table lives in the **local app database** only.
 

@@ -109,9 +109,9 @@ Use `enqueueChange` when the mutation is already done and you only need outbox t
 `writeTransaction` opens a Drizzle transaction. Inside it, `writeLocalChange`:
 
 1. Runs your `write` callback (the actual insert/update)
-2. Inserts a row into `sync_outbox` with table name, row ID, and operation
+2. Upserts a row into `sync_outbox` with table name, row ID, and operation
 
-The `sync_outbox` has a unique partial index on `(table_name, row_id) WHERE synced_at IS NULL`. Writing to the same row while a pending entry exists causes a constraint violation — catch the error or check for existing pending entries before inserting.
+The `sync_outbox` has a unique partial index on `(table_name, row_id) WHERE synced_at IS NULL`. If a pending entry already exists for the same row, `enqueueChange` coalesces the operations: `"insert"` is preserved (the server never saw the row), `"update"` replaces `"update"`, and `changed_at` is always refreshed. You can safely enqueue the same row multiple times without checking for existing pending entries.
 
 ## What happens to outbox entries before push
 

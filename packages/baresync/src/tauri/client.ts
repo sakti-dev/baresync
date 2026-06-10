@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { type AnySQLiteTable, getTableConfig } from "drizzle-orm/sqlite-core";
 import { syncOutbox } from "../schema/local-schema.js";
 
@@ -39,9 +40,16 @@ export interface WriteLocalChangeOptions<TTx> extends LocalChangeOptions {
   write: (tx: TTx) => Promise<unknown> | unknown;
 }
 
-export interface SyncTransaction {
+// biome-ignore lint/suspicious/noExplicitAny: generic default must be permissive for Drizzle ORM contravariance
+export interface SyncTransaction<TColumn = any> {
   insert(table: unknown): {
-    values(values: Record<string, unknown>): Promise<unknown> | unknown;
+    values(values: Record<string, unknown>): PromiseLike<unknown> & {
+      onConflictDoUpdate(config: {
+        target: TColumn | TColumn[];
+        targetWhere?: unknown;
+        set: Record<string, unknown>;
+      }): Promise<unknown>;
+    };
   };
 }
 
@@ -137,18 +145,28 @@ export function createSyncClient(config: SyncClientConfig): SyncClient {
     async enqueueChange(tx, options) {
       const tableName = getSyncTableName(options.table);
 
-      await tx.insert(syncOutbox).values({
-        id: createOutboxId({
-          operation: options.operation,
-          rowId: options.rowId,
+      await tx
+        .insert(syncOutbox)
+        .values({
+          id: createOutboxId({
+            operation: options.operation,
+            rowId: options.rowId,
+            tableName,
+          }),
           tableName,
-        }),
-        tableName,
-        rowId: options.rowId,
-        operation: options.operation,
-        scopeId,
-        changedAt: new Date().toISOString(),
-      });
+          rowId: options.rowId,
+          operation: options.operation,
+          scopeId,
+          changedAt: new Date().toISOString(),
+        })
+        .onConflictDoUpdate({
+          target: [syncOutbox.tableName, syncOutbox.rowId],
+          targetWhere: sql`${syncOutbox.syncedAt} IS NULL`,
+          set: {
+            operation: sql`CASE WHEN ${syncOutbox.operation} = 'insert' THEN 'insert' ELSE ${options.operation} END`,
+            changedAt: new Date().toISOString(),
+          },
+        });
     },
     syncNow() {
       return invoke(commands.syncNow, { scopeId });

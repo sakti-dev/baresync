@@ -1,3 +1,5 @@
+import { Database } from "bun:sqlite";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { createSyncClient } from "../client.js";
@@ -5,6 +7,19 @@ import { createSyncClient } from "../client.js";
 const testItems = sqliteTable("items", {
   id: text("id").primaryKey(),
 });
+
+/**
+ * Structural interface for the raw SQLite calls used in integration tests.
+ * Avoids depending on bun:sqlite type declarations which tsc cannot resolve.
+ */
+interface TestSqlite {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    all(): Record<string, unknown>[];
+    get(): Record<string, unknown> | undefined;
+    run(): void;
+  };
+}
 
 function createRecordingTx() {
   const inserted: Array<{ table: unknown; values: Record<string, unknown> }> =
@@ -14,13 +29,47 @@ function createRecordingTx() {
       return {
         values(values: Record<string, unknown>) {
           inserted.push({ table, values });
-          return Promise.resolve({ rowsAffected: 1 });
+          const thenable = Promise.resolve({ rowsAffected: 1 });
+          return Object.assign(thenable, {
+            onConflictDoUpdate() {
+              return Promise.resolve({ rowsAffected: 1 });
+            },
+          });
         },
       };
     },
   };
 
   return { inserted, tx };
+}
+
+/**
+ * Creates an in-memory SQLite database with the sync_outbox schema.
+ * Used for integration tests that need real SQL execution.
+ *
+ * The DDL below is a manual copy of the Drizzle schema in local-schema.ts.
+ * If the sync_outbox schema changes, this DDL must be updated to match.
+ */
+function createTestDb() {
+  const sqlite = new Database(":memory:") as unknown as TestSqlite;
+  sqlite.exec(`
+    CREATE TABLE sync_outbox (
+      id TEXT PRIMARY KEY,
+      table_name TEXT NOT NULL,
+      row_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      payload TEXT,
+      scope_id TEXT NOT NULL,
+      changed_at TEXT NOT NULL,
+      synced_at TEXT
+    )
+  `);
+  sqlite.exec(`
+    CREATE UNIQUE INDEX sync_outbox_pending_row_unique
+    ON sync_outbox (table_name, row_id)
+    WHERE synced_at IS NULL
+  `);
+  return { db: drizzle(sqlite as any), sqlite };
 }
 
 describe("createSyncClient", () => {
@@ -603,5 +652,327 @@ describe("createSyncClient", () => {
     });
     await client.setHeaders({ Authorization: "Bearer abc" });
     expect(calls[0]?.args).not.toHaveProperty("scopeId");
+  });
+});
+
+describe("enqueueChange upsert coalescing", () => {
+  it("inserts a row when no pending outbox entry exists", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare("SELECT operation, row_id, table_name FROM sync_outbox")
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      operation: "insert",
+      row_id: "item-1",
+      table_name: "items",
+    });
+  });
+
+  it("preserves insert operation when update follows insert for same row", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare(
+        "SELECT operation, row_id FROM sync_outbox WHERE synced_at IS NULL"
+      )
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.operation).toBe("insert");
+  });
+
+  it("uses new operation when update follows update for same row", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare(
+        "SELECT operation, row_id FROM sync_outbox WHERE synced_at IS NULL"
+      )
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.operation).toBe("update");
+  });
+
+  it("inserts fresh row when previous entry is already synced", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+    sqlite
+      .prepare(
+        "UPDATE sync_outbox SET synced_at = '2026-01-01T00:00:00.000Z' WHERE row_id = 'item-1'"
+      )
+      .run();
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const syncedAtValues = sqlite
+      .prepare("SELECT synced_at FROM sync_outbox")
+      .all()
+      .map((r) => r.synced_at as string | null);
+    expect(syncedAtValues).toHaveLength(2);
+    expect(syncedAtValues).toContain(null);
+    expect(syncedAtValues).toEqual(
+      expect.arrayContaining([expect.any(String)])
+    );
+  });
+
+  it("refreshes changedAt timestamp on conflict", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const beforeConflict = sqlite
+      .prepare("SELECT changed_at FROM sync_outbox")
+      .get()?.changed_at as string;
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const afterConflict = sqlite
+      .prepare("SELECT changed_at FROM sync_outbox WHERE synced_at IS NULL")
+      .get()?.changed_at as string;
+
+    expect(afterConflict).not.toBe(beforeConflict);
+  });
+
+  it("preserves insert operation when insert follows insert for same row", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare("SELECT operation FROM sync_outbox WHERE synced_at IS NULL")
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.operation).toBe("insert");
+  });
+
+  it("preserves original id and scopeId on conflict", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const original = sqlite
+      .prepare("SELECT id, scope_id FROM sync_outbox")
+      .get() as { id: string; scope_id: string };
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const afterConflict = sqlite
+      .prepare("SELECT id, scope_id FROM sync_outbox WHERE synced_at IS NULL")
+      .get() as { id: string; scope_id: string };
+
+    expect(afterConflict.id).toBe(original.id);
+    expect(afterConflict.scope_id).toBe(original.scope_id);
+  });
+
+  it("does not conflict across different tables with same rowId", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    const testCategories = sqliteTable("categories", {
+      id: text("id").primaryKey(),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "shared-id",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "shared-id",
+        table: testCategories,
+      });
+    });
+
+    const rows = sqlite
+      .prepare(
+        "SELECT table_name, operation FROM sync_outbox ORDER BY table_name"
+      )
+      .all();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      table_name: "categories",
+      operation: "insert",
+    });
+    expect(rows[1]).toMatchObject({ table_name: "items", operation: "insert" });
+  });
+
+  it("coalesces three consecutive enqueues preserving the original insert", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare("SELECT operation FROM sync_outbox WHERE synced_at IS NULL")
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.operation).toBe("insert");
+  });
+
+  it("preserves insert operation across separate transactions", async () => {
+    const { db, sqlite } = createTestDb();
+    const client = createSyncClient({
+      scopeId: "outlet-1",
+      invoke: () => Promise.resolve({}),
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "insert",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    await db.transaction(async (tx) => {
+      await client.enqueueChange(tx, {
+        operation: "update",
+        rowId: "item-1",
+        table: testItems,
+      });
+    });
+
+    const rows = sqlite
+      .prepare("SELECT operation FROM sync_outbox WHERE synced_at IS NULL")
+      .all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.operation).toBe("insert");
   });
 });

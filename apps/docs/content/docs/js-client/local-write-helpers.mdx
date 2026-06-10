@@ -90,19 +90,19 @@ This is the lower-level primitive that `writeLocalChange` uses internally. You t
 
 ## The outbox table
 
-Both `writeLocalChange` and `enqueueChange` insert into `sync_outbox`:
+Both `writeLocalChange` and `enqueueChange` upsert into `sync_outbox`:
 
 | Column | Description |
 |---|---|
-| `id` | Unique outbox entry ID |
+| `id` | Unique outbox entry ID (preserved on conflict) |
 | `table_name` | Drizzle table name (derived from the table config) |
 | `row_id` | The affected row's primary key |
-| `operation` | `"insert"` or `"update"` |
-| `scope_id` | The client's scopeId |
-| `changed_at` | ISO timestamp when the entry was created |
+| `operation` | `"insert"` or `"update"` (coalesced on conflict) |
+| `scope_id` | The client's scopeId (preserved on conflict) |
+| `changed_at` | ISO timestamp, refreshed on every conflict |
 | `synced_at` | `null` until the sync engine processes it |
 
-The table has a unique partial index on `(table_name, row_id)` where `synced_at IS NULL`, so only one pending outbox entry exists per row at a time. Writing to the same row while a pending entry exists causes a constraint violation.
+The table has a unique partial index on `(table_name, row_id)` where `synced_at IS NULL`, so only one pending outbox entry exists per row at a time. If you enqueue a change for a row that already has a pending entry, the existing entry is updated (upsert coalescing): `"insert"` operations are preserved, `"update"` replaces `"update"`, and `changed_at` is always refreshed. This means you can safely call `enqueueChange` multiple times for the same row without checking for existing pending entries.
 
 ## Common mistakes
 
