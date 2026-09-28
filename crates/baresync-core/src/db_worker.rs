@@ -331,12 +331,40 @@ fn batch_sql(
     conn: &mut Connection,
     statements: &[(String, Vec<Value>)],
 ) -> Result<DbExecutionResult, SyncError> {
+    let mut last_insert_id = 0;
+    let mut rows_affected = 0;
+
+    // When an ambient transaction is active (e.g. incremental pull applies
+    // rows and advances the cursor in one tx), join it via SAVEPOINT instead
+    // of BEGIN, which would fail with "cannot start a transaction within a
+    // transaction".
+    if !conn.is_autocommit() {
+        let sp = conn.savepoint().map_err(|e| {
+            SyncError::Database(format!("Failed to begin savepoint: {}", e))
+        })?;
+
+        for (sql, params) in statements {
+            let values = bind_values(params);
+            let affected = sp
+                .execute(sql, params_from_iter(values))
+                .map_err(|e| SyncError::Database(format!("Batch statement failed: {}", e)))?;
+            rows_affected += affected as u64;
+            last_insert_id = sp.last_insert_rowid();
+        }
+
+        sp.commit().map_err(|e| {
+            SyncError::Database(format!("Failed to release savepoint: {}", e))
+        })?;
+
+        return Ok(DbExecutionResult {
+            last_insert_id,
+            rows_affected,
+        });
+    }
+
     let tx = conn
         .transaction()
         .map_err(|e| SyncError::Database(format!("Failed to begin transaction: {}", e)))?;
-
-    let mut last_insert_id = 0;
-    let mut rows_affected = 0;
 
     for (sql, params) in statements {
         let values = bind_values(params);
@@ -478,7 +506,8 @@ fn value_ref_to_json(value: ValueRef<'_>) -> Result<Value, rusqlite::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DbRequest, DbWorker};
+    use super::{batch_sql, DbRequest, DbWorker};
+    use crate::db_worker::Connection;
     use serde_json::Value;
 
     async fn test_worker() -> DbWorker {
@@ -641,5 +670,34 @@ mod tests {
         assert_eq!(rows[0].values[2], Value::String("hello".to_string()));
         assert_eq!(rows[0].values[3], Value::String("3B".to_string()));
         assert_eq!(rows[0].values[4], Value::Null);
+    }
+    #[test]
+    fn batch_sql_joins_ambient_transaction_via_savepoint() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute("CREATE TABLE t (id integer, name text)", []).unwrap();
+
+        // Simulate an ambient transaction (incremental pull path).
+        let ambient = conn.transaction().unwrap();
+        // batch_sql needs &mut Connection while the ambient tx holds a
+        // borrow; drop the guard by committing — instead verify the exact
+        // production failure mode: BEGIN inside a transaction fails, and
+        // our savepoint branch avoids it.
+        drop(ambient);
+
+        conn.execute("BEGIN", []).unwrap();
+        let result = batch_sql(
+            &mut conn,
+            &[
+                ("INSERT INTO t (id, name) VALUES (1, 'a')".to_string(), vec![]),
+                ("INSERT INTO t (id, name) VALUES (2, 'b')".to_string(), vec![]),
+            ],
+        );
+        assert!(result.is_ok(), "batch inside ambient tx must use savepoint");
+        conn.execute("COMMIT", []).unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
     }
 }

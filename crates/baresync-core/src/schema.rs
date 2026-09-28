@@ -65,6 +65,9 @@ pub struct OutboxRowForSync {
 pub struct TablePushChanges {
     pub changed_rows: Vec<Value>,
     pub deleted_ids: Vec<String>,
+    /// Row ids whose outbox entries reference rows that no longer exist
+    /// locally (un-representable changes). Quarantined, never pushed.
+    pub skipped_missing_payload: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -108,12 +111,14 @@ pub fn outbox_rows_to_table_changes(
         };
         match entry.operation.as_str() {
             "insert" | "update" => {
-                let row = entry.row.ok_or_else(|| {
-                    format!(
-                        "Sync row {} with operation {} is missing payload",
-                        row_id, entry.operation
-                    )
-                })?;
+                let Some(row) = entry.row else {
+                    log::warn!(
+                        "[baresync] outbox entry for row {} has no local row; quarantining the change",
+                        row_id
+                    );
+                    changes.skipped_missing_payload.push(row_id);
+                    continue;
+                };
                 let filtered = filter_local_columns(&row, local_only_columns);
                 changes.changed_rows.push(filtered);
             }
@@ -221,8 +226,30 @@ pub async fn read_unsynced_table_changes_from_outbox_tx(
         });
     }
 
+    let changes = outbox_rows_to_table_changes(result, local_only_columns)?;
+    for row_id in &changes.skipped_missing_payload {
+        for outbox_id in outbox_ids_by_row_id.get(row_id).cloned().unwrap_or_default() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis().to_string())
+                .unwrap_or_else(|_| "0".to_string());
+            let _ = db
+                .execute(
+                    "UPDATE sync_outbox SET synced_at = ?1 WHERE id = ?2",
+                    vec![Value::String(now), Value::String(outbox_id.clone())],
+                )
+                .await;
+            log::error!(
+                "[baresync] quarantined outbox entry {} (table {}, row {} missing locally); marked synced to unblock push",
+                outbox_id,
+                table,
+                row_id
+            );
+        }
+    }
+
     Ok(TableOutboxChanges {
-        changes: outbox_rows_to_table_changes(result, local_only_columns)?,
+        changes,
         outbox_ids_by_row_id,
     })
 }
@@ -290,6 +317,58 @@ mod tests {
         assert_eq!(snake_to_camel("merchant_id"), "merchantId");
         assert_eq!(snake_to_camel("is_synced"), "isSynced");
         assert_eq!(snake_to_camel("id"), "id");
+    }
+
+    #[tokio::test]
+    async fn quarantine_missing_payload_outbox_entries() {
+        let db = crate::db::DbClient::connect(":memory:").await.unwrap();
+        db.execute(
+            "CREATE TABLE sync_outbox (
+                id text PRIMARY KEY,
+                table_name text NOT NULL,
+                row_id text NOT NULL,
+                operation text NOT NULL,
+                payload text,
+                scope_id text NOT NULL,
+                changed_at text NOT NULL,
+                synced_at text
+            )",
+            vec![],
+        )
+        .await
+        .unwrap();
+        db.execute(
+            "CREATE TABLE widgets (id text PRIMARY KEY, name text, updated_at text, is_synced integer)",
+            vec![],
+        )
+        .await
+        .unwrap();
+        db.execute(
+            "INSERT INTO sync_outbox (id, table_name, row_id, operation, scope_id, changed_at)
+             VALUES ('ob-1', 'widgets', 'w-ghost', 'update', 'scope-1', '2026-09-28T00:00:00Z')",
+            vec![],
+        )
+        .await
+        .unwrap();
+
+        let changes = read_unsynced_table_changes_from_outbox_tx(&db, "widgets", "scope-1", &[])
+            .await
+            .unwrap();
+
+        assert!(changes.changes.changed_rows.is_empty());
+        assert_eq!(
+            changes.changes.skipped_missing_payload,
+            vec!["w-ghost".to_string()]
+        );
+
+        let outbox_row = db
+            .query(
+                "SELECT synced_at FROM sync_outbox WHERE id = 'ob-1'",
+                vec![],
+            )
+            .await
+            .unwrap();
+        assert!(!outbox_row[0].values[0].is_null());
     }
 
     #[test]

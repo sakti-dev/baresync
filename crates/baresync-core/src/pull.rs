@@ -87,7 +87,29 @@ pub async fn apply_pull_batch_tables_tx(
     }
 
     if !statements.is_empty() {
-        db.batch(statements).await?;
+        if let Err(batch_err) = db.batch(statements.clone()).await {
+            // A single constraint-violating row (e.g. an orphaned child on
+            // the server whose parent row is gone) must not brick the sync
+            // forever. Fall back to per-statement apply: succeed for every
+            // representable row, skip + loudly log the poison rows.
+            log::warn!(
+                "[baresync] pull batch failed ({}), falling back to per-row apply: {}",
+                statements.len(),
+                batch_err
+            );
+            for (sql, params) in &statements {
+                match db.execute(sql, params.clone()).await {
+                    Ok(_) => {}
+                    Err(row_err) => {
+                        log::error!(
+                            "[baresync] pull row skipped (quarantined): {} — {}",
+                            row_err,
+                            sql
+                        );
+                    }
+                }
+            }
+        }
     }
 
     Ok(applied)
@@ -179,4 +201,67 @@ pub async fn pull(
         rows_received: applied,
         server_time,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn pull_batch_falls_back_to_per_row_apply_on_fk_failure() {
+        let db = crate::db::DbClient::connect(":memory:").await.unwrap();
+        db.execute(
+            "CREATE TABLE parent (id text PRIMARY KEY, updated_at text, is_synced integer)",
+            vec![],
+        )
+        .await
+        .unwrap();
+        db.execute(
+            "CREATE TABLE child (
+                id text PRIMARY KEY,
+                parent_id text NOT NULL REFERENCES parent(id),
+                updated_at text,
+                is_synced integer
+            )",
+            vec![],
+        )
+        .await
+        .unwrap();
+
+        // c-poison references a parent that never arrives; c-good is fine.
+        let response_tables = json!([
+            {
+                "table": "parent",
+                "changedRows": [
+                    { "id": "p1", "updatedAt": "2026-01-01T00:00:00Z" }
+                ]
+            },
+            {
+                "table": "child",
+                "changedRows": [
+                    { "id": "c-poison", "parentId": "p-missing", "updatedAt": "2026-01-01T00:00:00Z" },
+                    { "id": "c-good", "parentId": "p1", "updatedAt": "2026-01-01T00:00:00Z" }
+                ]
+            }
+        ]);
+
+        let applied = apply_pull_batch_tables_tx(
+            &db,
+            &["parent".to_string(), "child".to_string()],
+            &[],
+            &response_tables,
+            "2026-01-01T00:00:00Z",
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(applied, 3);
+        let parents = db.query("SELECT id FROM parent", vec![]).await.unwrap();
+        assert_eq!(parents.len(), 1);
+        let children = db.query("SELECT id FROM child", vec![]).await.unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].values[0].as_str().unwrap(), "c-good");
+    }
 }
