@@ -32,8 +32,8 @@ export function createInventorySyncRepository(db: InventoryDb) {
           syncUpdatedAt,
           updatedAt,
         }),
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(locations)
             .where(eq(locations.scopeId, scopeId))
@@ -42,9 +42,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(locations.updatedAt),
               desc(locations.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
+            .limit(1),
         readRows: ({ cursorTimestamp, scopeId }) =>
           db
             .select()
@@ -61,20 +59,19 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(locations.syncUpdatedAt),
               desc(locations.updatedAt),
               desc(locations.id)
-            ) as Promise<readonly DrizzleSyncReadRow[]>,
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(locations)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(locations.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof locations>) => {
+            .where(eq(locations.id, id)),
+        upsertRow: (row: InferInsertModel<typeof locations>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(locations).values(row).onConflictDoUpdate({
+          return db.insert(locations).values(row).onConflictDoUpdate({
             target: locations.id,
             set: setValues,
           });
@@ -92,8 +89,8 @@ export function createInventorySyncRepository(db: InventoryDb) {
           syncUpdatedAt,
           updatedAt,
         }),
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(items)
             .where(eq(items.scopeId, scopeId))
@@ -102,9 +99,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(items.updatedAt),
               desc(items.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
+            .limit(1),
         readRows: ({ cursorTimestamp, scopeId }) =>
           db
             .select()
@@ -121,20 +116,19 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(items.syncUpdatedAt),
               desc(items.updatedAt),
               desc(items.id)
-            ) as Promise<readonly DrizzleSyncReadRow[]>,
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(items)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(items.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof items>) => {
+            .where(eq(items.id, id)),
+        upsertRow: (row: InferInsertModel<typeof items>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(items).values(row).onConflictDoUpdate({
+          return db.insert(items).values(row).onConflictDoUpdate({
             target: items.id,
             set: setValues,
           });
@@ -155,8 +149,8 @@ export function createInventorySyncRepository(db: InventoryDb) {
           syncUpdatedAt,
           updatedAt,
         }),
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(stockCounts)
             .where(eq(stockCounts.scopeId, scopeId))
@@ -165,9 +159,7 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(stockCounts.updatedAt),
               desc(stockCounts.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
+            .limit(1),
         readRows: ({ cursorTimestamp, scopeId }) =>
           db
             .select()
@@ -184,20 +176,19 @@ export function createInventorySyncRepository(db: InventoryDb) {
               desc(stockCounts.syncUpdatedAt),
               desc(stockCounts.updatedAt),
               desc(stockCounts.id)
-            ) as Promise<readonly DrizzleSyncReadRow[]>,
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(stockCounts)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(stockCounts.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof stockCounts>) => {
+            .where(eq(stockCounts.id, id)),
+        upsertRow: (row: InferInsertModel<typeof stockCounts>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(stockCounts).values(row).onConflictDoUpdate({
+          return db.insert(stockCounts).values(row).onConflictDoUpdate({
             target: stockCounts.id,
             set: setValues,
           });

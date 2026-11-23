@@ -1,12 +1,13 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { and, desc, eq, gt, type InferInsertModel } from "drizzle-orm";
+import { and, desc, eq, gt, sql, type InferInsertModel } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
   createDrizzleSyncRepository,
   type DrizzleSyncReadRow,
+  type SyncQuery,
   optionalString,
   requiredNumber,
   requiredString,
@@ -89,6 +90,10 @@ function createTestDb(): BunSQLiteDatabase<Record<string, never>> {
   return drizzle(sqlite) as unknown as BunSQLiteDatabase<Record<string, never>>;
 }
 
+/** Minimal SyncQuery stub for configs the pull path never awaits. */
+const stubQuery = (): SyncQuery<unknown> =>
+  ({ getSQL: () => undefined }) as unknown as SyncQuery<unknown>;
+
 function createRepository(db = createTestDb()) {
   return createDrizzleSyncRepository({
     tables: {
@@ -103,8 +108,8 @@ function createRepository(db = createTestDb()) {
             syncUpdatedAt,
             updatedAt,
           }) satisfies InferInsertModel<typeof locations>,
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(locations)
             .where(eq(locations.scopeId, scopeId))
@@ -113,11 +118,9 @@ function createRepository(db = createTestDb()) {
               desc(locations.updatedAt),
               desc(locations.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        readRows: async ({ cursorTimestamp, scopeId }) => {
-          const rows = await db
+            .limit(1),
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
             .select()
             .from(locations)
             .where(
@@ -132,22 +135,19 @@ function createRepository(db = createTestDb()) {
               desc(locations.syncUpdatedAt),
               desc(locations.updatedAt),
               desc(locations.id)
-            );
-          return rows as readonly DrizzleSyncReadRow[];
-        },
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(locations)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(locations.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof locations>) => {
+            .where(eq(locations.id, id)),
+        upsertRow: (row: InferInsertModel<typeof locations>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(locations).values(row).onConflictDoUpdate({
+          return db.insert(locations).values(row).onConflictDoUpdate({
             target: locations.id,
             set: setValues,
           });
@@ -166,8 +166,8 @@ function createRepository(db = createTestDb()) {
             syncUpdatedAt,
             updatedAt,
           }) satisfies InferInsertModel<typeof items>,
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(items)
             .where(eq(items.scopeId, scopeId))
@@ -176,11 +176,9 @@ function createRepository(db = createTestDb()) {
               desc(items.updatedAt),
               desc(items.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        readRows: async ({ cursorTimestamp, scopeId }) => {
-          const rows = await db
+            .limit(1),
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
             .select()
             .from(items)
             .where(
@@ -195,22 +193,19 @@ function createRepository(db = createTestDb()) {
               desc(items.syncUpdatedAt),
               desc(items.updatedAt),
               desc(items.id)
-            );
-          return rows as readonly DrizzleSyncReadRow[];
-        },
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(items)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(items.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof items>) => {
+            .where(eq(items.id, id)),
+        upsertRow: (row: InferInsertModel<typeof items>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(items).values(row).onConflictDoUpdate({
+          return db.insert(items).values(row).onConflictDoUpdate({
             target: items.id,
             set: setValues,
           });
@@ -232,8 +227,8 @@ function createRepository(db = createTestDb()) {
             syncUpdatedAt,
             updatedAt,
           }) satisfies InferInsertModel<typeof stockCounts>,
-        readLatestRow: async ({ scopeId }) => {
-          const rows = await db
+        readLatestRow: ({ scopeId }) =>
+          db
             .select()
             .from(stockCounts)
             .where(eq(stockCounts.scopeId, scopeId))
@@ -242,11 +237,9 @@ function createRepository(db = createTestDb()) {
               desc(stockCounts.updatedAt),
               desc(stockCounts.id)
             )
-            .limit(1);
-          return rows[0] ?? null;
-        },
-        readRows: async ({ cursorTimestamp, scopeId }) => {
-          const rows = await db
+            .limit(1),
+        readRows: ({ cursorTimestamp, scopeId }) =>
+          db
             .select()
             .from(stockCounts)
             .where(
@@ -261,22 +254,19 @@ function createRepository(db = createTestDb()) {
               desc(stockCounts.syncUpdatedAt),
               desc(stockCounts.updatedAt),
               desc(stockCounts.id)
-            );
-          return rows as readonly DrizzleSyncReadRow[];
-        },
-        softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-          await db
+            ),
+        softDeleteRow: ({ id, syncUpdatedAt, updatedAt }) =>
+          db
             .update(stockCounts)
             .set({
               deletedAt: updatedAt,
               syncUpdatedAt,
               updatedAt,
             })
-            .where(eq(stockCounts.id, id));
-        },
-        upsertRow: async (row: InferInsertModel<typeof stockCounts>) => {
+            .where(eq(stockCounts.id, id)),
+        upsertRow: (row: InferInsertModel<typeof stockCounts>) => {
           const { id: _id, ...setValues } = row;
-          await db.insert(stockCounts).values(row).onConflictDoUpdate({
+          return db.insert(stockCounts).values(row).onConflictDoUpdate({
             target: stockCounts.id,
             set: setValues,
           });
@@ -400,7 +390,10 @@ describe("loadPullChanges", () => {
     });
 
     expect(response.hasMore).toBe(false);
-    expect(response.cursor).toBe("sync:300:stock_counts:count-1");
+    // Cursor covers ONLY the tables actually read (requested subset): it
+    // advances conservatively so tables left out stay flagged on the next
+    // status instead of being skipped by a global watermark.
+    expect(response.cursor).toBe("sync:200:items:item-1");
     expect(response.tables.map((table) => table.table)).toEqual([
       "items",
       "locations",
@@ -456,9 +449,100 @@ describe("loadPullChanges", () => {
       tableName: "__watermark__",
     });
   });
+
+  it("only reads tables in requestedTables", async () => {
+    const db = createTestDb();
+    await seedTestData(db);
+    const reads = {
+      locationsLatest: 0,
+      locationsRows: 0,
+      itemsLatest: 0,
+      itemsRows: 0,
+    };
+    const repository = createDrizzleSyncRepository({
+      db,
+      tables: {
+        locations: {
+          buildRow: ({ row }) => ({ id: requiredString(row.id, "id") }),
+          readLatestRow: ({ scopeId }) => {
+            reads.locationsLatest++;
+            return db.select().from(locations).limit(1);
+          },
+          readRows: () => {
+            reads.locationsRows++;
+            return db.select().from(locations);
+          },
+          softDeleteRow: () => {
+            reads.locationsRows++;
+            return stubQuery();
+          },
+          upsertRow: () => stubQuery(),
+        },
+        items: {
+          buildRow: ({ row }) => ({ id: requiredString(row.id, "id") }),
+          readLatestRow: ({ scopeId }) => {
+            reads.itemsLatest++;
+            return db.select().from(items).limit(1);
+          },
+          readRows: () => {
+            reads.itemsRows++;
+            return db.select().from(items);
+          },
+          softDeleteRow: () => stubQuery(),
+          upsertRow: () => stubQuery(),
+        },
+      },
+    });
+
+    await repository.loadPullChanges({
+      cursor: "",
+      scopeId: "default",
+      tables: ["items"],
+    });
+
+    expect(reads.itemsLatest).toBe(1);
+    expect(reads.itemsRows).toBe(1);
+    expect(reads.locationsLatest).toBe(0);
+    expect(reads.locationsRows).toBe(0);
+  });
 });
 
 describe("loadSyncStatus", () => {
+  it("executes snapshot reads through the real libsql db.batch (regression: batch must stay bound)", async () => {
+    // A stub db masks unbound-method bugs: drizzle's batch() reads
+    // `this.session` internally, so the repository must call db.batch BOUND.
+    // This test runs the batch-capable libsql dialect for real.
+    const { createClient } = await import("@libsql/client");
+    const { drizzle: drizzleLibsql } = await import("drizzle-orm/libsql");
+    const client = createClient({ url: "file::memory:?cache=shared" });
+    const libsqlDb = drizzleLibsql(client);
+    await libsqlDb.run(
+      sql`create table locations (id text primary key, scope_id text not null, name text not null, deleted_at text, created_at text not null, updated_at text not null, sync_updated_at integer not null)`
+    );
+    await libsqlDb.run(
+      sql`create table items (id text primary key, scope_id text not null, location_id text not null, name text not null, sku text, deleted_at text, created_at text not null, updated_at text not null, sync_updated_at integer not null)`
+    );
+    await libsqlDb.run(
+      sql`create table stock_counts (id text primary key, scope_id text not null, item_id text not null, counted_quantity integer not null, recorded_at text not null, deleted_at text, created_at text not null, updated_at text not null, sync_updated_at integer not null)`
+    );
+    await libsqlDb.run(
+      sql`insert into locations (id, scope_id, name, created_at, updated_at, sync_updated_at) values ('loc-1', 'default', 'HQ', '2024-01-01T00:00:00.000Z', '2024-01-01T00:00:00.000Z', 100)`
+    );
+
+    const repository = createRepository(
+      libsqlDb as unknown as BunSQLiteDatabase<Record<string, never>>
+    );
+
+    const response = await repository.loadSyncStatus({
+      cursor: "",
+      scopeId: "default",
+    });
+
+    expect(response.hasChanges).toBe(true);
+    expect(response.changedTables).toEqual(["locations"]);
+    client.close();
+  });
+
   it("reports changed tables since the cursor", async () => {
     const db = createTestDb();
     await seedTestData(db);

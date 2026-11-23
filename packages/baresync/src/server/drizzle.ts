@@ -77,6 +77,19 @@ export function requiredNumber(value: unknown, label: string): number {
 }
 
 /**
+ * A drizzle query builder for one sync statement.
+ *
+ * Query builders are thenable — awaiting one executes the statement, which is
+ * the sequential fallback path for dialects whose driver has no `db.batch`
+ * (e.g. better-sqlite3). They are also batchable: dialects with a batch
+ * session (libsql, d1, …) accept builders directly in `db.batch`, collapsing
+ * every statement of one sync operation into a single HTTP subrequest.
+ * Cloudflare Workers cap subrequests at 50 per invocation; the batched path
+ * is what keeps `/status` (2 statements × N tables) under that cap.
+ */
+export type SyncQuery<T> = PromiseLike<T> & { getSQL(): unknown };
+
+/**
  * Shape of a row returned by `DrizzleSyncTableConfig.readRows` and `readLatestRow`.
  *
  * Every sync table must return at least these columns so the sync engine can
@@ -120,21 +133,21 @@ export interface DrizzleSyncTableConfig<
     /** ISO timestamp for this sync cycle. */
     updatedAt: string;
   }): TWriteRow;
-  /** Reads the most recent row (by `syncUpdatedAt`) for a given scope. */
-  readLatestRow(input: { scopeId: string }): Promise<TReadRow | null>;
-  /** Reads all rows changed since `cursorTimestamp` for a given scope. */
+  /** Returns the builder reading the most recent row (by `syncUpdatedAt`) for a scope. The repository takes `rows[0] ?? null`. */
+  readLatestRow(input: { scopeId: string }): SyncQuery<TReadRow[]>;
+  /** Returns the builder reading all rows changed since `cursorTimestamp` for a scope. */
   readRows(input: {
     cursorTimestamp: number;
     scopeId: string;
-  }): Promise<readonly TReadRow[]>;
-  /** Marks a row as soft-deleted by setting `deletedAt`. */
+  }): SyncQuery<TReadRow[]>;
+  /** Returns the builder marking a row as soft-deleted by setting `deletedAt`. */
   softDeleteRow(input: {
     id: string;
     syncUpdatedAt: number;
     updatedAt: string;
-  }): Promise<void>;
-  /** Inserts or updates a row. */
-  upsertRow(row: TWriteRow): Promise<void>;
+  }): SyncQuery<unknown>;
+  /** Returns the builder inserting or updating a row. */
+  upsertRow(row: TWriteRow): SyncQuery<unknown>;
 }
 
 /** Options for {@link createDrizzleSyncRepository}. */
@@ -143,6 +156,53 @@ export interface DrizzleSyncRepositoryOptions<
 > {
   /** Map of table names to their sync configs. */
   tables: TTables;
+  /**
+   * The Drizzle database handle. Strongly recommended: when the dialect
+   * exposes `db.batch` (libsql, d1, …) every sync operation executes all its
+   * statements as ONE batched call — one HTTP subrequest on remote drivers.
+   * Cloudflare Workers cap subrequests at 50 per invocation, and a per-table
+   * sequential snapshot issues two queries per table per request; without
+   * batching, large table registries die mid-request. Without `db`, each
+   * returned builder is awaited one by one (identical results, more round
+   * trips).
+   */
+  db?: unknown;
+}
+
+function batchFn(
+  db: unknown
+): ((queries: unknown[]) => Promise<unknown[]>) | null {
+  const candidate = db as { batch?: unknown } | undefined;
+  if (typeof candidate?.batch !== "function") {
+    return null;
+  }
+  // Bind to the db handle: `batch` is a method that reads `this.session`
+  // internally — extracting it unbound throws
+  // "Cannot read properties of undefined (reading 'session')" at call time.
+  const bound = candidate.batch as (queries: unknown[]) => Promise<unknown[]>;
+  return (queries: unknown[]) => bound.call(candidate, queries);
+}
+
+/**
+ * Execute sync statements in collection order via one driver call when the
+ * dialect supports batching, otherwise by awaiting each builder.
+ */
+async function runSyncStatements(
+  db: unknown,
+  queries: SyncQuery<unknown>[]
+): Promise<unknown[]> {
+  if (queries.length === 0) {
+    return [];
+  }
+  const batch = batchFn(db);
+  if (batch) {
+    return await batch(queries);
+  }
+  const results: unknown[] = [];
+  for (const query of queries) {
+    results.push(await query);
+  }
+  return results;
 }
 
 /** Extracts the string table names from a `TTables` map. */
@@ -250,39 +310,41 @@ function latestCursorCandidate(
   };
 }
 
-async function readTableSnapshot<TReadRow extends DrizzleSyncReadRow>(input: {
-  cursorTimestamp: number;
-  scopeId: string;
-  tableConfig: DrizzleSyncTableConfig<TReadRow, Record<string, unknown>>;
+interface TableSnapshotPlan {
   tableName: string;
-}): Promise<{
-  bucket: SyncRowChangeBucket<unknown>;
-  latestCursorRow: ReturnType<typeof latestCursorCandidate> | null;
-}> {
-  const latestRow = await input.tableConfig.readLatestRow({
-    scopeId: input.scopeId,
-  });
-  const rows = await input.tableConfig.readRows({
-    cursorTimestamp: input.cursorTimestamp,
-    scopeId: input.scopeId,
-  });
+  latestIndex: number;
+  rowsIndex: number;
+}
 
-  const { changedRows, deletedIds } = splitSyncRows(rows);
-
-  return {
-    bucket: {
-      changedRows,
-      deletedIds,
-    },
-    latestCursorRow: latestRow
-      ? latestCursorCandidate(latestRow, input.tableName)
-      : null,
-  };
+/**
+ * Plan one builder per read across all tables, IN REGISTRY ORDER — the batch
+ * executes statements sequentially, so FK-safe table order is preserved.
+ */
+function planTableSnapshots<TTables extends Record<string, DrizzleSyncTableConfig>>(
+  input: { scopeId: string; cursorTimestamp: number; tables: TTables },
+  queries: SyncQuery<unknown>[]
+): TableSnapshotPlan[] {
+  return (Object.keys(input.tables) as DrizzleSyncTableName<TTables>[]).map(
+    (tableName) => {
+      const config = input.tables[tableName];
+      const latestIndex = queries.length;
+      queries.push(config.readLatestRow({ scopeId: input.scopeId }));
+      const rowsIndex = queries.length;
+      queries.push(
+        config.readRows({
+          cursorTimestamp: input.cursorTimestamp,
+          scopeId: input.scopeId,
+        })
+      );
+      return { tableName, latestIndex, rowsIndex };
+    }
+  );
 }
 
 async function readTableSnapshots<
   TTables extends Record<string, DrizzleSyncTableConfig>,
 >(input: {
+  db: unknown;
   cursorTimestamp: number;
   scopeId: string;
   tables: TTables;
@@ -290,27 +352,26 @@ async function readTableSnapshots<
   changes: Record<DrizzleSyncTableName<TTables>, SyncRowChangeBucket<unknown>>;
   latestCursorRows: ReturnType<typeof latestCursorCandidate>[];
 }> {
-  const tableNames = Object.keys(
-    input.tables
-  ) as DrizzleSyncTableName<TTables>[];
+  const queries: SyncQuery<unknown>[] = [];
+  const plans = planTableSnapshots(input, queries);
+  const results = await runSyncStatements(input.db, queries);
+
   const changes = {} as Record<
     DrizzleSyncTableName<TTables>,
     SyncRowChangeBucket<unknown>
   >;
   const latestCursorRows: ReturnType<typeof latestCursorCandidate>[] = [];
 
-  for (const tableName of tableNames) {
-    const tableConfig = input.tables[tableName];
-    const result = await readTableSnapshot({
-      cursorTimestamp: input.cursorTimestamp,
-      scopeId: input.scopeId,
-      tableConfig,
-      tableName,
-    });
-
-    changes[tableName] = result.bucket;
-    if (result.latestCursorRow) {
-      latestCursorRows.push(result.latestCursorRow);
+  for (const plan of plans) {
+    const latestRows = results[plan.latestIndex] as unknown[];
+    const rows = results[plan.rowsIndex] as DrizzleSyncReadRow[];
+    changes[plan.tableName as DrizzleSyncTableName<TTables>] =
+      splitSyncRows(rows);
+    const latestRow = latestRows[0] ?? null;
+    if (latestRow) {
+      latestCursorRows.push(
+        latestCursorCandidate(latestRow as DrizzleSyncReadRow, plan.tableName)
+      );
     }
   }
 
@@ -361,15 +422,37 @@ function buildPushAck<TTableName extends string>(
 async function buildPullResponse<
   TTables extends Record<string, DrizzleSyncTableConfig>,
 >(input: {
+  db: unknown;
   cursorTimestamp: number;
   requestedTables: readonly string[];
   scopeId: string;
   tables: TTables;
 }): Promise<DrizzleSyncPullResponse<DrizzleSyncTableName<TTables>>> {
+  // Only build statements for tables the device actually requested — every
+  // builder still costs a statement inside the batch, and filtered pulls
+  // (status → changedTables → pull subset) previously read ALL tables. An
+  // empty request reads every table (baseline pull). The cursor is computed
+  // over the tables actually read: it advances conservatively, so tables
+  // left out of a filtered pull stay flagged for the next status instead of
+  // being skipped by a global watermark.
+  const requestedNames = new Set(input.requestedTables);
+  const tables: TTables =
+    input.requestedTables.length > 0
+      ? (Object.keys(input.tables) as DrizzleSyncTableName<TTables>[]).reduce<
+          TTables
+        >((picked, name) => {
+          if (requestedNames.has(name)) {
+            picked[name] = input.tables[name];
+          }
+          return picked;
+        }, {} as TTables)
+      : input.tables;
+
   const { changes, latestCursorRows } = await readTableSnapshots({
     cursorTimestamp: input.cursorTimestamp,
+    db: input.db,
     scopeId: input.scopeId,
-    tables: input.tables,
+    tables,
   });
   const observedAt = nowMillis();
   const latestRow = latestCursorOrNull({ latestCursorRows });
@@ -379,7 +462,7 @@ async function buildPullResponse<
     hasMore: false,
     serverTime: new Date(observedAt).toISOString(),
     tables: buildPullTables({
-      allTables: Object.keys(input.tables) as DrizzleSyncTableName<TTables>[],
+      allTables: Object.keys(tables) as DrizzleSyncTableName<TTables>[],
       changes,
       requestedTables: input.requestedTables,
     }),
@@ -418,6 +501,9 @@ export function createDrizzleSyncRepository<
     async applyPushChanges(input) {
       const updatedAt = new Date(input.syncUpdatedAt).toISOString();
 
+      // buildRow validation runs BEFORE any statement is collected — a
+      // malformed row rejects the whole chunk with zero partial writes.
+      const statements: SyncQuery<unknown>[] = [];
       for (const change of input.changes) {
         const tableName = validateSyncTable(change.table, tableNames);
         const tableConfig = options.tables[tableName];
@@ -430,17 +516,21 @@ export function createDrizzleSyncRepository<
             updatedAt,
           });
 
-          await tableConfig.upsertRow(nextRow);
+          statements.push(tableConfig.upsertRow(nextRow));
         }
 
         for (const id of change.deletedIds) {
-          await tableConfig.softDeleteRow({
-            id,
-            syncUpdatedAt: input.syncUpdatedAt,
-            updatedAt,
-          });
+          statements.push(
+            tableConfig.softDeleteRow({
+              id,
+              syncUpdatedAt: input.syncUpdatedAt,
+              updatedAt,
+            })
+          );
         }
       }
+
+      await runSyncStatements(options.db, statements);
 
       return buildPushAck(input.changes, tableNames);
     },
@@ -448,6 +538,7 @@ export function createDrizzleSyncRepository<
     loadPullChanges(input) {
       return buildPullResponse({
         cursorTimestamp: parseSyncCursorTimestamp(input.cursor),
+        db: options.db,
         requestedTables: input.tables,
         scopeId: input.scopeId,
         tables: options.tables,
@@ -458,6 +549,7 @@ export function createDrizzleSyncRepository<
       const cursorTimestamp = parseSyncCursorTimestamp(input.cursor);
       const { changes, latestCursorRows } = await readTableSnapshots({
         cursorTimestamp,
+        db: options.db,
         scopeId: input.scopeId,
         tables: options.tables,
       });

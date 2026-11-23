@@ -1,7 +1,6 @@
 import { lists, todos } from "@sync-contract/generated/__CONTRACT_DATE__/api-synced-schema";
 import {
   createDrizzleSyncRepository,
-  type DrizzleSyncReadRow,
   optionalString,
   requiredString,
 } from "baresync/server/drizzle";
@@ -9,6 +8,9 @@ import { and, desc, eq, gt, type InferInsertModel } from "drizzle-orm";
 import { db } from "../client";
 
 export const repository = createDrizzleSyncRepository({
+  // db enables batched execution (one driver call per sync operation) on
+  // dialects whose driver exposes `db.batch`.
+  db,
   tables: {
     lists: {
       buildRow: ({ row, scopeId, syncUpdatedAt, updatedAt }) => ({
@@ -21,8 +23,8 @@ export const repository = createDrizzleSyncRepository({
         syncUpdatedAt,
         updatedAt,
       }),
-      readLatestRow: async ({ scopeId }) => {
-        const rows = await db
+      readLatestRow: ({ scopeId }: { scopeId: string }) =>
+        db
           .select()
           .from(lists)
           .where(eq(lists.scopeId, scopeId))
@@ -31,10 +33,8 @@ export const repository = createDrizzleSyncRepository({
             desc(lists.updatedAt),
             desc(lists.id)
           )
-          .limit(1);
-        return rows[0] ?? null;
-      },
-      readRows: ({ cursorTimestamp, scopeId }) =>
+          .limit(1),
+      readRows: ({ cursorTimestamp, scopeId }: { cursorTimestamp: number; scopeId: string }) =>
         db
           .select()
           .from(lists)
@@ -50,16 +50,15 @@ export const repository = createDrizzleSyncRepository({
             desc(lists.syncUpdatedAt),
             desc(lists.updatedAt),
             desc(lists.id)
-          ) as Promise<readonly DrizzleSyncReadRow[]>,
-      softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-        await db
+          ),
+      softDeleteRow: ({ id, syncUpdatedAt, updatedAt }: { id: string; syncUpdatedAt: number; updatedAt: string }) =>
+        db
           .update(lists)
           .set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt })
-          .where(eq(lists.id, id));
-      },
-      upsertRow: async (row: InferInsertModel<typeof lists>) => {
+          .where(eq(lists.id, id)),
+      upsertRow: (row: InferInsertModel<typeof lists>) => {
         const { id: _id, ...setValues } = row;
-        await db.insert(lists).values(row).onConflictDoUpdate({
+        return db.insert(lists).values(row).onConflictDoUpdate({
           target: lists.id,
           set: setValues,
         });
@@ -77,8 +76,8 @@ export const repository = createDrizzleSyncRepository({
         syncUpdatedAt,
         updatedAt,
       }),
-      readLatestRow: async ({ scopeId }) => {
-        const rows = await db
+      readLatestRow: ({ scopeId }: { scopeId: string }) =>
+        db
           .select()
           .from(todos)
           .where(eq(todos.scopeId, scopeId))
@@ -87,10 +86,8 @@ export const repository = createDrizzleSyncRepository({
             desc(todos.updatedAt),
             desc(todos.id)
           )
-          .limit(1);
-        return rows[0] ?? null;
-      },
-      readRows: ({ cursorTimestamp, scopeId }) =>
+          .limit(1),
+      readRows: ({ cursorTimestamp, scopeId }: { cursorTimestamp: number; scopeId: string }) =>
         db
           .select()
           .from(todos)
@@ -106,16 +103,15 @@ export const repository = createDrizzleSyncRepository({
             desc(todos.syncUpdatedAt),
             desc(todos.updatedAt),
             desc(todos.id)
-          ) as Promise<readonly DrizzleSyncReadRow[]>,
-      softDeleteRow: async ({ id, syncUpdatedAt, updatedAt }) => {
-        await db
+          ),
+      softDeleteRow: ({ id, syncUpdatedAt, updatedAt }: { id: string; syncUpdatedAt: number; updatedAt: string }) =>
+        db
           .update(todos)
           .set({ deletedAt: updatedAt, syncUpdatedAt, updatedAt })
-          .where(eq(todos.id, id));
-      },
-      upsertRow: async (row: InferInsertModel<typeof todos>) => {
+          .where(eq(todos.id, id)),
+      upsertRow: (row: InferInsertModel<typeof todos>) => {
         const { id: _id, ...setValues } = row;
-        await db.insert(todos).values(row).onConflictDoUpdate({
+        return db.insert(todos).values(row).onConflictDoUpdate({
           target: todos.id,
           set: setValues,
         });
